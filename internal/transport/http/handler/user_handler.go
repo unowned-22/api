@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
+	"github.com/unowned-22/api/internal/contextx"
 	domain "github.com/unowned-22/api/internal/domain/user"
-	"github.com/unowned-22/api/internal/middleware"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
@@ -26,7 +26,7 @@ type UserResponse struct {
 
 // Me retrieves profile details of the currently logged-in user
 func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.GetUserID(r.Context())
+	userID, ok := contextx.UserID(r.Context())
 	if !ok {
 		response.SendUnauthorized(w, "unauthorized")
 		return

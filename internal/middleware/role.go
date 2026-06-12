@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 
+	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
@@ -11,7 +12,7 @@ import (
 func RequireRole(role string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userRole, ok := GetUserRole(r.Context())
+			userRole, ok := contextx.UserRole(r.Context())
 			if !ok || userRole != role {
 				response.SendForbidden(w, "you do not have permission to access this resource")
 				return

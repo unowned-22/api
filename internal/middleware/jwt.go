@@ -1,23 +1,17 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
+	"github.com/unowned-22/api/internal/contextx"
 	domain "github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
-type userContextKey string
-
-const (
-	UserIDContextKey   userContextKey = "user_id"
-	UserRoleContextKey userContextKey = "user_role"
-)
-
 // JWTAuth verifies the Authorization header, validates the JWT,
-// and stores user_id (and role if available) in the request context.
+// and stores the user ID (and role when available) in the request context
+// via the type-safe contextx package.
 func JWTAuth(tokenManager domain.TokenManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -42,8 +36,8 @@ func JWTAuth(tokenManager domain.TokenManager) func(http.Handler) http.Handler {
 					response.SendUnauthorized(w, "invalid or expired token")
 					return
 				}
-				ctx := context.WithValue(r.Context(), UserIDContextKey, userID)
-				ctx = context.WithValue(ctx, UserRoleContextKey, role)
+				ctx := contextx.SetUserID(r.Context(), userID)
+				ctx = contextx.SetUserRole(ctx, role)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
@@ -54,20 +48,8 @@ func JWTAuth(tokenManager domain.TokenManager) func(http.Handler) http.Handler {
 				response.SendUnauthorized(w, "invalid or expired token")
 				return
 			}
-			ctx := context.WithValue(r.Context(), UserIDContextKey, userID)
+			ctx := contextx.SetUserID(r.Context(), userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
-}
-
-// GetUserID retrieves the authenticated user ID from the request context.
-func GetUserID(ctx context.Context) (int64, bool) {
-	val, ok := ctx.Value(UserIDContextKey).(int64)
-	return val, ok
-}
-
-// GetUserRole retrieves the authenticated user's role from the request context.
-func GetUserRole(ctx context.Context) (string, bool) {
-	val, ok := ctx.Value(UserRoleContextKey).(string)
-	return val, ok
 }
