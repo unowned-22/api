@@ -46,6 +46,8 @@ func NewRouter(
 
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
+			r.Post("/auth/verify-email", authHandler.VerifyEmail)
+			r.Post("/auth/resend-verification", authHandler.ResendVerification)
 			r.Post("/auth/refresh", authHandler.Refresh)
 			r.Post("/auth/logout", authHandler.Logout)
 		})

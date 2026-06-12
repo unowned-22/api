@@ -194,13 +194,7 @@ func runServe() error {
 	// 6. TokenManager
 	tokenManager := auth.NewTokenManager(cfg.JWTSecret)
 
-	// 7. Services
-	authService := auth.NewAuthService(userRepo, refreshTokenRepo, roleRepo, tokenManager, publisher)
-	userService := service.NewUserService(userRepo)
-	permissionService := service.NewPermissionService(permissionRepo)
-	healthService := service.NewHealthService(pool)
-
-	// 8. Mailer
+	// 7. Mailer
 	smtpMailer = mailer.New(mailer.Config{
 		Host:     cfg.SMTPHost,
 		Port:     cfg.SMTPPort,
@@ -208,6 +202,12 @@ func runServe() error {
 		Password: cfg.SMTPPassword,
 		From:     cfg.SMTPFrom,
 	})
+
+	// 8. Services
+	authService := auth.NewAuthService(userRepo, refreshTokenRepo, roleRepo, tokenManager, smtpMailer, cfg.AppURL, cfg.AppName)
+	userService := service.NewUserService(userRepo)
+	permissionService := service.NewPermissionService(permissionRepo)
+	healthService := service.NewHealthService(pool)
 
 	// 9. Handlers
 	authHandler := handler.NewAuthHandler(authService)

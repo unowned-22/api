@@ -53,6 +53,14 @@ func SendError(w http.ResponseWriter, err error) {
 		status = http.StatusUnauthorized
 		code = "INVALID_REFRESH_TOKEN"
 		message = "refresh token is invalid"
+	} else if errors.Is(err, errs.ErrVerificationTokenInvalid) {
+		status = http.StatusBadRequest
+		code = "INVALID_VERIFICATION_TOKEN"
+		message = "verification token is invalid or expired"
+	} else if errors.Is(err, errs.ErrEmailAlreadyVerified) {
+		status = http.StatusConflict
+		code = "EMAIL_ALREADY_VERIFIED"
+		message = "email already verified"
 	} else if errors.Is(err, errs.ErrRoleNotFound) {
 		status = http.StatusInternalServerError
 		code = "INTERNAL_SERVER_ERROR"

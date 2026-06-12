@@ -21,3 +21,13 @@ type RefreshRequest struct {
 type LogoutRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
+
+// VerifyEmailRequest is the HTTP request body for email verification.
+type VerifyEmailRequest struct {
+	Token string `json:"token" validate:"required"`
+}
+
+// ResendVerificationRequest is the HTTP request body for resending verification emails.
+type ResendVerificationRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}

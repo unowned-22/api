@@ -113,6 +113,54 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 }
 
 // Logout revokes the given refresh token
+func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req dto.VerifyEmailRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.SendBadRequest(w, "invalid request body")
+		return
+	}
+
+	if err := validator.Validate(&req); err != nil {
+		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
+			response.SendValidationError(w, toFieldErrors(ve.Fields))
+			return
+		}
+		response.SendBadRequest(w, "invalid request")
+		return
+	}
+
+	if err := h.authService.VerifyEmail(r.Context(), req.Token); err != nil {
+		response.SendError(w, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, map[string]string{"message": "email verified successfully"})
+}
+
+func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request) {
+	var req dto.ResendVerificationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.SendBadRequest(w, "invalid request body")
+		return
+	}
+
+	if err := validator.Validate(&req); err != nil {
+		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
+			response.SendValidationError(w, toFieldErrors(ve.Fields))
+			return
+		}
+		response.SendBadRequest(w, "invalid request")
+		return
+	}
+
+	if err := h.authService.ResendVerification(r.Context(), req.Email); err != nil {
+		response.SendError(w, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, map[string]string{"message": "verification email resent"})
+}
+
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	var req dto.LogoutRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

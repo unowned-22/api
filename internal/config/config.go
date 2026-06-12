@@ -23,7 +23,7 @@ type Config struct {
 	SMTPPort     int    `envconfig:"SMTP_PORT" default:"1025"`
 	SMTPUsername string `envconfig:"SMTP_USERNAME" default:""`
 	SMTPPassword string `envconfig:"SMTP_PASSWORD" default:""`
-	SMTPFrom     string `envconfig:"SMTP_FROM" default:"No Reply "`
+	SMTPFrom     string `envconfig:"SMTP_FROM" default:"No Reply <noreply@example.com>"`
 	AppName      string `envconfig:"APP_NAME" default:"App"`
 	AppURL       string `envconfig:"APP_URL" default:"http://localhost:3222"`
 
