@@ -21,13 +21,16 @@ import (
 	"github.com/unowned-22/api/internal/auth"
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/database"
+	domainevent "github.com/unowned-22/api/internal/domain/event"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
+	"github.com/unowned-22/api/internal/infrastructure/queue"
 	"github.com/unowned-22/api/internal/logger"
 	postgresRepo "github.com/unowned-22/api/internal/repository/postgres"
 	"github.com/unowned-22/api/internal/service"
 	transportHttp "github.com/unowned-22/api/internal/transport/http"
 	"github.com/unowned-22/api/internal/transport/http/handler"
+	workerHandler "github.com/unowned-22/api/internal/worker/handler"
 )
 
 var (
@@ -51,6 +54,14 @@ var serveCmd = &cobra.Command{
 	Short: "Start HTTP REST API server",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runServe()
+	},
+}
+
+var workerCmd = &cobra.Command{
+	Use:   "worker",
+	Short: "Start RabbitMQ event consumer",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runWorker()
 	},
 }
 
@@ -121,6 +132,7 @@ func init() {
 	migrateCmd.AddCommand(migrateCreateCmd)
 
 	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(workerCmd)
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(versionCmd)
 }
@@ -165,16 +177,30 @@ func runServe() error {
 	roleRepo := postgresRepo.NewRoleRepository(pool)
 	permissionRepo := postgresRepo.NewPermissionRepository(pool)
 
-	// 5. TokenManager
+	// 5. Event Publisher (RabbitMQ)
+	publisher, err := queue.New(queue.Config{
+		URL:      cfg.RabbitMQURL,
+		Exchange: cfg.RabbitMQExchange,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initialize RabbitMQ publisher: %w", err)
+	}
+	defer func() {
+		if err := publisher.Close(); err != nil {
+			logger.Log.WithError(err).Error("Failed to close RabbitMQ publisher")
+		}
+	}()
+
+	// 6. TokenManager
 	tokenManager := auth.NewTokenManager(cfg.JWTSecret)
 
-	// 6. Services
-	authService := auth.NewAuthService(userRepo, refreshTokenRepo, roleRepo, tokenManager)
+	// 7. Services
+	authService := auth.NewAuthService(userRepo, refreshTokenRepo, roleRepo, tokenManager, publisher)
 	userService := service.NewUserService(userRepo)
 	permissionService := service.NewPermissionService(permissionRepo)
 	healthService := service.NewHealthService(pool)
 
-	// 7. Mailer
+	// 8. Mailer
 	smtpMailer = mailer.New(mailer.Config{
 		Host:     cfg.SMTPHost,
 		Port:     cfg.SMTPPort,
@@ -183,16 +209,16 @@ func runServe() error {
 		From:     cfg.SMTPFrom,
 	})
 
-	// 8. Handlers
+	// 9. Handlers
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	adminHandler := handler.NewAdminHandler(userService, permissionService)
 	healthHandler := handler.NewHealthHandler(healthService)
 
-	// 9. Router
+	// 10. Router
 	router := transportHttp.NewRouter(cfg, authHandler, userHandler, adminHandler, healthHandler, tokenManager, userService, permissionService)
 
-	// 9. HTTP Server
+	// 11. HTTP Server
 	srv := &http.Server{
 		Addr:              ":" + cfg.AppPort,
 		Handler:           router,
@@ -243,6 +269,98 @@ func runServe() error {
 		logger.Log.Errorf("HTTP server graceful shutdown failed: %v", err)
 	} else {
 		logger.Log.Info("HTTP server stopped accepting new requests")
+	}
+
+	logger.Log.Info("Graceful shutdown completed. Exiting.")
+	return nil
+}
+
+// runWorker starts the RabbitMQ event consumer with graceful shutdown.
+func runWorker() error {
+	// 1. Config
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// 2. Logger
+	if err := logger.Init(); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	logger.Log.Info("Logger successfully initialized")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 3. PostgreSQL (for future use, if needed by handlers)
+	pool, err := database.NewPostgresPool(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer func() {
+		pool.Close()
+		logger.Log.Info("PostgreSQL connection pool closed successfully")
+	}()
+	logger.Log.Info("PostgreSQL connection pool established")
+
+	// 4. SMTP Mailer
+	smtpMailer = mailer.New(mailer.Config{
+		Host:     cfg.SMTPHost,
+		Port:     cfg.SMTPPort,
+		Username: cfg.SMTPUsername,
+		Password: cfg.SMTPPassword,
+		From:     cfg.SMTPFrom,
+	})
+
+	// 5. Event Handlers
+	handlers := map[domainevent.Name]domainevent.Handler{
+		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer),
+		domainevent.PasswordResetRequested: workerHandler.NewPasswordResetHandler(smtpMailer),
+	}
+
+	// 6. AMQP Consumer
+	consumer, err := queue.NewConsumer(queue.ConsumerConfig{
+		URL:      cfg.RabbitMQURL,
+		Exchange: cfg.RabbitMQExchange,
+		Queue:    cfg.RabbitMQQueue,
+		Tag:      "worker",
+	}, handlers)
+	if err != nil {
+		return fmt.Errorf("failed to create AMQP consumer: %w", err)
+	}
+
+	// 7. Start consuming
+	if err := consumer.Consume(); err != nil {
+		consumer.Shutdown(context.Background())
+		return fmt.Errorf("failed to start consuming: %w", err)
+	}
+
+	logger.Log.WithFields(map[string]interface{}{
+		"service":  "worker",
+		"version":  Version,
+		"commit":   Commit,
+		"env":      cfg.AppEnv,
+		"queue":    cfg.RabbitMQQueue,
+		"exchange": cfg.RabbitMQExchange,
+	}).Info("Starting RabbitMQ consumer")
+
+	// 8. Graceful shutdown setup
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(shutdown)
+
+	// Wait for signal
+	sig := <-shutdown
+	logger.Log.Infof("Received termination signal (%s), initiating graceful shutdown...", sig)
+
+	// Shutdown consumer with timeout
+	ctxShut, cancelShut := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShut()
+
+	if err := consumer.Shutdown(ctxShut); err != nil {
+		logger.Log.Errorf("Consumer graceful shutdown failed: %v", err)
+	} else {
+		logger.Log.Info("Consumer stopped gracefully")
 	}
 
 	logger.Log.Info("Graceful shutdown completed. Exiting.")
