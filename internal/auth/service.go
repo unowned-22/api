@@ -4,14 +4,17 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/role"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
+	"github.com/unowned-22/api/internal/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -38,6 +41,7 @@ type authService struct {
 	refreshTokenRepo token.RefreshTokenRepository
 	roleRepo         role.RoleRepository
 	tokenManager     token.ManagerExtended
+	publisher        event.Publisher
 }
 
 // NewAuthService wires up an AuthService with its required dependencies.
@@ -46,12 +50,14 @@ func NewAuthService(
 	refreshTokenRepo token.RefreshTokenRepository,
 	roleRepo role.RoleRepository,
 	tokenManager token.ManagerExtended,
+	publisher event.Publisher,
 ) AuthService {
 	return &authService{
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		roleRepo:         roleRepo,
 		tokenManager:     tokenManager,
+		publisher:        publisher,
 	}
 }
 
@@ -80,7 +86,26 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 		CreatedAt: time.Now(),
 	}
 
-	return s.userRepo.Create(ctx, u)
+	if err := s.userRepo.Create(ctx, u); err != nil {
+		return err
+	}
+
+	// Publish user.registered event (fire-and-forget on error)
+	payload := map[string]interface{}{
+		"user_id": u.ID,
+		"email":   u.Email,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	if err := s.publisher.Publish(ctx, event.Event{
+		Name:    event.UserRegistered,
+		Payload: payloadBytes,
+	}); err != nil {
+		if logger.Log != nil {
+			logger.Log.WithError(err).Warn("failed to publish user.registered event")
+		}
+	}
+
+	return nil
 }
 
 // Login validates credentials and returns an access token (with role claim) and a refresh token.

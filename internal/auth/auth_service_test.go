@@ -6,11 +6,24 @@ import (
 	"testing"
 	"time"
 
+	domainevent "github.com/unowned-22/api/internal/domain/event"
 	domainRole "github.com/unowned-22/api/internal/domain/role"
 	domainToken "github.com/unowned-22/api/internal/domain/token"
 	domainUser "github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
 )
+
+// ── mock: EventPublisher ─────────────────────────────────────────────────────
+
+type mockEventPublisher struct{}
+
+func (m *mockEventPublisher) Publish(ctx context.Context, event domainevent.Event) error {
+	return nil
+}
+
+func (m *mockEventPublisher) Close() error {
+	return nil
+}
 
 // ── mock: UserRepository ─────────────────────────────────────────────────────
 
@@ -178,7 +191,8 @@ func TestAuthService(t *testing.T) {
 	refreshTokenRepo := newMockRefreshTokenRepo()
 	roleRepo := newMockRoleRepo()
 	tm := &mockTokenManager{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm)
+	publisher := &mockEventPublisher{}
+	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, publisher)
 
 	ctx := context.Background()
 
@@ -260,7 +274,7 @@ func TestAuthService(t *testing.T) {
 
 func TestRegisterAssignsDefaultRole(t *testing.T) {
 	userRepo := newMockUserRepo()
-	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{})
+	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{}, &mockEventPublisher{})
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {

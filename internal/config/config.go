@@ -27,6 +27,10 @@ type Config struct {
 	AppName      string `envconfig:"APP_NAME" default:"App"`
 	AppURL       string `envconfig:"APP_URL" default:"http://localhost:3222"`
 
+	RabbitMQURL      string `envconfig:"RABBITMQ_URL" default:"amqp://rbmq:rbmq@rabbitmq:5672/"`
+	RabbitMQExchange string `envconfig:"RABBITMQ_EXCHANGE" default:"app.events"`
+	RabbitMQQueue    string `envconfig:"RABBITMQ_QUEUE" default:"app.worker"`
+
 	DBHost    string `envconfig:"DB_HOST"`
 	DBPort    string `envconfig:"DB_PORT"`
 	DBUser    string `envconfig:"DB_USER"`
