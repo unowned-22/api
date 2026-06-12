@@ -286,6 +286,51 @@ curl -X GET http://localhost:8080/api/v1/admin/permissions \
       {
         "id": 1,
         "name": "admin.access",
+
+      ### 8. Password Reset
+
+      Initiate a password reset (silent response to prevent account enumeration):
+
+      ```bash
+      curl -X POST http://localhost:8080/api/v1/auth/forgot-password \
+        -H "Content-Type: application/json" \
+        -d '{"email": "user@example.com"}'
+      ```
+
+      Successful response (always 200):
+
+      ```json
+      {
+        "data": {
+          "message": "if the email exists, a reset link has been sent"
+        }
+      }
+      ```
+
+      Complete the reset using the token from the email:
+
+      ```bash
+      curl -X POST http://localhost:8080/api/v1/auth/reset-password \
+        -H "Content-Type: application/json" \
+        -d '{
+          "token": "<RESET_TOKEN_FROM_EMAIL>",
+          "new_password": "newSecurePassword123"
+        }'
+      ```
+
+      Successful response:
+
+      ```json
+      {
+        "data": {
+          "message": "password has been reset successfully"
+        }
+      }
+      ```
+
+      Notes:
+      - The `forgot-password` endpoint intentionally returns a 200 OK regardless of whether the email exists to avoid leaking valid accounts.
+      - Reset tokens expire (short-lived) and are marked used after a successful reset. All refresh tokens for the user are revoked on password change.
         "description": "Access administration endpoints",
         "created_at": "2026-06-12T09:53:01Z"
       }

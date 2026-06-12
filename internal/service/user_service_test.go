@@ -89,6 +89,15 @@ func (m *mockUserRepo) MarkEmailVerified(ctx context.Context, userID int64) erro
 	return nil
 }
 
+func (m *mockUserRepo) UpdatePassword(ctx context.Context, userID int64, hashedPassword string) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.Password = hashedPassword
+	return nil
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestUserService_GetProfile(t *testing.T) {

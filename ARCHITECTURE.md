@@ -269,6 +269,28 @@ Possible future replacements:
 * Keycloak
 * OpenID Connect
 
+## Password Reset Flow
+
+The application includes a secure password reset flow implemented according to the same Clean Architecture rules.
+
+- Persistence: a new table `password_reset_tokens` stores one-time reset tokens with fields: `id`, `user_id`, `token`, `expires_at`, `used_at`, `created_at`.
+- Domain: new domain package `internal/domain/passwordreset` defines `Token` and the `Repository` interface (Create, GetByToken, MarkUsed, DeleteByUserID).
+- Repository: implementations live in `internal/repository/postgres` and perform raw SQL against the `password_reset_tokens` table. Repositories translate DB errors into `internal/errs` values.
+- Service: `PasswordResetService` (in `internal/service`) is responsible for:
+  - creating a single active reset token per user (old tokens are deleted),
+  - generating cryptographically secure tokens,
+  - rendering and sending the reset email via the `domain/mailer` contract,
+  - validating tokens (expiry and used-state),
+  - updating the user's hashed password, marking the token used, and revoking all refresh tokens for the user.
+- Transport: HTTP handlers expose two endpoints:
+  - `POST /api/v1/auth/forgot-password` — accepts `{"email": "..."}` and always responds 200 with a generic message (prevents account enumeration).
+  - `POST /api/v1/auth/reset-password` — accepts `{"token": "...", "new_password": "..."}` and performs the reset.
+
+Security notes:
+- Reset tokens are short-lived and single-use; services must check `expires_at` and `used_at`.
+- On successful password reset, all refresh tokens are revoked using the `RefreshTokenRepository` contract to force re-authentication.
+- Email sending failures during token creation are logged but do not cause the API to reveal token state to callers.
+
 ---
 
 ## 4. Logging and Error Handling

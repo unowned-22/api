@@ -14,6 +14,7 @@ type UserRepository interface {
 	SetVerificationToken(ctx context.Context, userID int64, token string, expiresAt time.Time) error
 	GetByVerificationToken(ctx context.Context, token string) (*User, error)
 	MarkEmailVerified(ctx context.Context, userID int64) error
+	UpdatePassword(ctx context.Context, userID int64, hashedPassword string) error
 }
 
 // UserService defines the application-level contract for user operations.

@@ -103,6 +103,23 @@ func (r *UserRepository) SetVerificationToken(ctx context.Context, userID int64,
 	return nil
 }
 
+// UpdatePassword updates the user's password hash.
+func (r *UserRepository) UpdatePassword(ctx context.Context, userID int64, hashedPassword string) error {
+	query := `
+		UPDATE users
+		SET password = $1
+		WHERE id = $2
+	`
+	cmd, err := r.db.Exec(ctx, query, hashedPassword, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update user password in db: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to update password")
+	}
+	return nil
+}
+
 // GetByVerificationToken retrieves a user by verification token.
 func (r *UserRepository) GetByVerificationToken(ctx context.Context, token string) (*user.User, error) {
 	query := `
