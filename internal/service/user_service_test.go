@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	domain "github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
@@ -31,7 +30,6 @@ func (m *mockRepo) Create(ctx context.Context, u *domain.User) error {
 	}
 	m.seq++
 	u.ID = m.seq
-	// Simulate what the real repo returns: populate RoleName from the injected RoleID.
 	if u.RoleID == 2 {
 		u.RoleName = "user"
 	} else if u.RoleID == 1 {
@@ -59,233 +57,39 @@ func (m *mockRepo) GetByID(ctx context.Context, id int64) (*domain.User, error) 
 	return u, nil
 }
 
-// ── mock: RefreshTokenRepository ─────────────────────────────────────────────
-
-type mockRefreshTokenRepo struct {
-	tokens map[string]*domain.RefreshToken
-	seq    int64
-}
-
-func newMockRefreshTokenRepo() *mockRefreshTokenRepo {
-	return &mockRefreshTokenRepo{tokens: make(map[string]*domain.RefreshToken)}
-}
-
-func (m *mockRefreshTokenRepo) Create(ctx context.Context, t *domain.RefreshToken) error {
-	m.seq++
-	t.ID = m.seq
-	cp := *t
-	m.tokens[t.Token] = &cp
-	return nil
-}
-
-func (m *mockRefreshTokenRepo) GetByToken(ctx context.Context, token string) (*domain.RefreshToken, error) {
-	t, ok := m.tokens[token]
-	if !ok {
-		return nil, errs.ErrRefreshTokenNotFound
-	}
-	return t, nil
-}
-
-func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, token string) error {
-	t, ok := m.tokens[token]
-	if !ok {
-		return errs.ErrRefreshTokenNotFound
-	}
-	t.Revoked = true
-	return nil
-}
-
-func (m *mockRefreshTokenRepo) DeleteExpired(ctx context.Context) error {
-	for k, v := range m.tokens {
-		if v.ExpiresAt.Before(time.Now()) {
-			delete(m.tokens, k)
-		}
-	}
-	return nil
-}
-
-// ── mock: RoleRepository ─────────────────────────────────────────────────────
-
-type mockRoleRepo struct {
-	byName map[string]*domain.Role
-	byID   map[int64]*domain.Role
-}
-
-func newMockRoleRepo() *mockRoleRepo {
-	userRole := &domain.Role{ID: 2, Name: "user"}
-	adminRole := &domain.Role{ID: 1, Name: "admin"}
-	return &mockRoleRepo{
-		byName: map[string]*domain.Role{"user": userRole, "admin": adminRole},
-		byID:   map[int64]*domain.Role{2: userRole, 1: adminRole},
-	}
-}
-
-func (m *mockRoleRepo) GetByID(ctx context.Context, id int64) (*domain.Role, error) {
-	r, ok := m.byID[id]
-	if !ok {
-		return nil, errs.ErrRoleNotFound
-	}
-	return r, nil
-}
-
-func (m *mockRoleRepo) GetByName(ctx context.Context, name string) (*domain.Role, error) {
-	r, ok := m.byName[name]
-	if !ok {
-		return nil, errs.ErrRoleNotFound
-	}
-	return r, nil
-}
-
-func (m *mockRoleRepo) List(ctx context.Context) ([]*domain.Role, error) {
-	roles := make([]*domain.Role, 0, len(m.byName))
-	for _, r := range m.byName {
-		roles = append(roles, r)
-	}
-	return roles, nil
-}
-
-// ── mock: TokenManagerExtended ───────────────────────────────────────────────
-
-type mockTokenManager struct{}
-
-func (m *mockTokenManager) Generate(userID int64) (string, error) {
-	return "mock-token-for-user", nil
-}
-
-func (m *mockTokenManager) Parse(token string) (int64, error) {
-	if token == "mock-token-for-user" {
-		return 1, nil
-	}
-	return 0, errors.New("invalid token")
-}
-
-func (m *mockTokenManager) GenerateWithRole(userID int64, role string) (string, error) {
-	return "mock-token-for-user", nil
-}
-
-func (m *mockTokenManager) ParseWithRole(token string) (int64, string, error) {
-	if token == "mock-token-for-user" {
-		return 1, "user", nil
-	}
-	return 0, "", errors.New("invalid token")
-}
-
 // ── tests ─────────────────────────────────────────────────────────────────────
 
-func TestUserService(t *testing.T) {
+func TestUserService_GetProfile(t *testing.T) {
 	repo := newMockRepo()
-	refreshTokenRepo := newMockRefreshTokenRepo()
-	roleRepo := newMockRoleRepo()
-	tm := &mockTokenManager{}
-	srv := NewUserService(repo, refreshTokenRepo, roleRepo, tm)
+	srv := NewUserService(repo)
 
 	ctx := context.Background()
 
-	// 1. Register
-	err := srv.Register(ctx, "test@example.com", "password123")
+	// Seed user
+	user := &domain.User{
+		Email:    "test@example.com",
+		Password: "password123",
+		RoleID:   2,
+	}
+	if err := repo.Create(ctx, user); err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+
+	// Test Profile Success
+	fetchedUser, err := srv.GetProfile(ctx, user.ID)
 	if err != nil {
-		t.Fatalf("Register failed: %v", err)
+		t.Fatalf("GetProfile failed: %v", err)
+	}
+	if fetchedUser.Email != "test@example.com" {
+		t.Errorf("unexpected email: %s", fetchedUser.Email)
+	}
+	if fetchedUser.RoleName != "user" {
+		t.Errorf("expected role 'user', got '%s'", fetchedUser.RoleName)
 	}
 
-	// 2. Duplicate register
-	err = srv.Register(ctx, "test@example.com", "password123")
-	if !errors.Is(err, errs.ErrUserAlreadyExists) {
-		t.Errorf("expected ErrUserAlreadyExists, got %v", err)
-	}
-
-	// 3. Login success — token and refresh token returned
-	accessToken, refreshToken, err := srv.Login(ctx, "test@example.com", "password123")
-	if err != nil {
-		t.Fatalf("Login failed: %v", err)
-	}
-	if accessToken != "mock-token-for-user" {
-		t.Errorf("unexpected access token: %s", accessToken)
-	}
-	if refreshToken == "" {
-		t.Errorf("expected non-empty refresh token")
-	}
-
-	// 4. Login invalid password
-	_, _, err = srv.Login(ctx, "test@example.com", "wrongpassword")
-	if !errors.Is(err, errs.ErrInvalidCredentials) {
-		t.Errorf("expected ErrInvalidCredentials, got %v", err)
-	}
-
-	// 5. Login unknown user
-	_, _, err = srv.Login(ctx, "nobody@example.com", "password123")
-	if !errors.Is(err, errs.ErrInvalidCredentials) {
-		t.Errorf("expected ErrInvalidCredentials, got %v", err)
-	}
-
-	// 6. Profile
-	user, err := srv.Profile(ctx, 1)
-	if err != nil {
-		t.Fatalf("Profile failed: %v", err)
-	}
-	if user.Email != "test@example.com" {
-		t.Errorf("unexpected email: %s", user.Email)
-	}
-	if user.RoleName != "user" {
-		t.Errorf("expected role 'user', got '%s'", user.RoleName)
-	}
-
-	// 7. Refresh success
-	newAccessToken, err := srv.Refresh(ctx, refreshToken)
-	if err != nil {
-		t.Fatalf("Refresh failed: %v", err)
-	}
-	if newAccessToken != "mock-token-for-user" {
-		t.Errorf("unexpected refreshed access token: %s", newAccessToken)
-	}
-
-	// 8. Refresh with unknown token
-	_, err = srv.Refresh(ctx, "non-existent-token")
-	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
-		t.Errorf("expected ErrInvalidRefreshToken, got %v", err)
-	}
-
-	// 9. Logout
-	if err = srv.Logout(ctx, refreshToken); err != nil {
-		t.Fatalf("Logout failed: %v", err)
-	}
-
-	// 10. Refresh after logout (revoked)
-	_, err = srv.Refresh(ctx, refreshToken)
-	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
-		t.Errorf("expected ErrInvalidRefreshToken after logout, got %v", err)
-	}
-
-	// 11. Refresh expired token
-	expiredToken := &domain.RefreshToken{
-		UserID:    1,
-		Token:     "expired-token",
-		ExpiresAt: time.Now().Add(-1 * time.Hour),
-		Revoked:   false,
-	}
-	_ = refreshTokenRepo.Create(ctx, expiredToken)
-	_, err = srv.Refresh(ctx, "expired-token")
-	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
-		t.Errorf("expected ErrInvalidRefreshToken for expired token, got %v", err)
-	}
-}
-
-func TestRegisterAssignsDefaultRole(t *testing.T) {
-	repo := newMockRepo()
-	srv := NewUserService(repo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{})
-	ctx := context.Background()
-
-	if err := srv.Register(ctx, "newuser@example.com", "pass"); err != nil {
-		t.Fatalf("Register failed: %v", err)
-	}
-
-	user, err := repo.GetByEmail(ctx, "newuser@example.com")
-	if err != nil {
-		t.Fatalf("GetByEmail failed: %v", err)
-	}
-	if user.RoleID != 2 {
-		t.Errorf("expected RoleID=2 (user), got %d", user.RoleID)
-	}
-	if user.RoleName != "user" {
-		t.Errorf("expected RoleName='user', got '%s'", user.RoleName)
+	// Test Profile NotFound
+	_, err = srv.GetProfile(ctx, 999)
+	if !errors.Is(err, errs.ErrUserNotFound) {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
 	}
 }

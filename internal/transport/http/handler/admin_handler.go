@@ -36,7 +36,7 @@ func (h *AdminHandler) Permissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userService.Profile(r.Context(), userID)
+	user, err := h.userService.GetProfile(r.Context(), userID)
 	if err != nil {
 		response.SendError(w, err)
 		return

@@ -21,7 +21,7 @@ func RequirePermission(
 				return
 			}
 
-			user, err := userService.Profile(r.Context(), userID)
+			user, err := userService.GetProfile(r.Context(), userID)
 			if err != nil {
 				response.SendError(w, err)
 				return

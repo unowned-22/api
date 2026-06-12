@@ -165,11 +165,12 @@ func runServe() error {
 	tokenManager := auth.NewTokenManager(cfg.JWTSecret)
 
 	// 6. Services
-	userService := service.NewUserService(userRepo, refreshTokenRepo, roleRepo, tokenManager)
+	authService := auth.NewAuthService(userRepo, refreshTokenRepo, roleRepo, tokenManager)
+	userService := service.NewUserService(userRepo)
 	permissionService := service.NewPermissionService(permissionRepo)
 
 	// 7. Handlers
-	authHandler := handler.NewAuthHandler(userService)
+	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	adminHandler := handler.NewAdminHandler(userService, permissionService)
 
