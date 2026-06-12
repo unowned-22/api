@@ -172,6 +172,7 @@ func runServe() error {
 	authService := auth.NewAuthService(userRepo, refreshTokenRepo, roleRepo, tokenManager)
 	userService := service.NewUserService(userRepo)
 	permissionService := service.NewPermissionService(permissionRepo)
+	healthService := service.NewHealthService(pool)
 
 	// 7. Mailer
 	smtpMailer = mailer.New(mailer.Config{
@@ -186,9 +187,10 @@ func runServe() error {
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	adminHandler := handler.NewAdminHandler(userService, permissionService)
+	healthHandler := handler.NewHealthHandler(healthService)
 
-	// 8. Router
-	router := transportHttp.NewRouter(cfg, authHandler, userHandler, adminHandler, tokenManager, userService, permissionService)
+	// 9. Router
+	router := transportHttp.NewRouter(cfg, authHandler, userHandler, adminHandler, healthHandler, tokenManager, userService, permissionService)
 
 	// 9. HTTP Server
 	srv := &http.Server{
