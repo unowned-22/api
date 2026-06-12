@@ -31,3 +31,14 @@ type VerifyEmailRequest struct {
 type ResendVerificationRequest struct {
 	Email string `json:"email" validate:"required,email"`
 }
+
+// ForgotPasswordRequest is the HTTP request body for password reset initiation.
+type ForgotPasswordRequest struct {
+	Email string `json:"email" validate:"required,email"`
+}
+
+// ResetPasswordRequest is the HTTP request body for resetting a password.
+type ResetPasswordRequest struct {
+	Token       string `json:"token" validate:"required"`
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}

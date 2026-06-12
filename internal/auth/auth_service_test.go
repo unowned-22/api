@@ -113,6 +113,15 @@ func (m *mockUserRepo) MarkEmailVerified(ctx context.Context, userID int64) erro
 	return nil
 }
 
+func (m *mockUserRepo) UpdatePassword(ctx context.Context, userID int64, hashedPassword string) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.Password = hashedPassword
+	return nil
+}
+
 // ── mock: RefreshTokenRepository ─────────────────────────────────────────────
 
 type mockRefreshTokenRepo struct {
@@ -153,6 +162,15 @@ func (m *mockRefreshTokenRepo) DeleteExpired(ctx context.Context) error {
 	for k, v := range m.tokens {
 		if v.ExpiresAt.Before(time.Now()) {
 			delete(m.tokens, k)
+		}
+	}
+	return nil
+}
+
+func (m *mockRefreshTokenRepo) RevokeAllByUserID(ctx context.Context, userID int64) error {
+	for _, t := range m.tokens {
+		if t.UserID == userID {
+			t.Revoked = true
 		}
 	}
 	return nil

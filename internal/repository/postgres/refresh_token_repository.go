@@ -81,5 +81,19 @@ func (r *RefreshTokenRepository) DeleteExpired(ctx context.Context) error {
 	return nil
 }
 
+// RevokeAllByUserID revokes all refresh tokens for a given user.
+func (r *RefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID int64) error {
+	query := `
+		UPDATE refresh_tokens
+		SET revoked = TRUE
+		WHERE user_id = $1
+	`
+	_, err := r.db.Exec(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to revoke refresh tokens by user id in db: %w", err)
+	}
+	return nil
+}
+
 // Compile-time check that RefreshTokenRepository satisfies the domain contract.
 var _ token.RefreshTokenRepository = (*RefreshTokenRepository)(nil)

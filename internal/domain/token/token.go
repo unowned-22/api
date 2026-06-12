@@ -25,6 +25,7 @@ type RefreshTokenRepository interface {
 	GetByToken(ctx context.Context, token string) (*RefreshToken, error)
 	Revoke(ctx context.Context, token string) error
 	DeleteExpired(ctx context.Context) error
+	RevokeAllByUserID(ctx context.Context, userID int64) error
 }
 
 // Manager is the primary auth contract used by services and middleware.

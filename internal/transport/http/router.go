@@ -18,6 +18,7 @@ func NewRouter(
 	cfg *config.Config,
 	authHandler *handler.AuthHandler,
 	userHandler *handler.UserHandler,
+	passwordResetHandler *handler.PasswordResetHandler,
 	adminHandler *handler.AdminHandler,
 	healthHandler *handler.HealthHandler,
 	tokenManager token.Manager,
@@ -48,6 +49,8 @@ func NewRouter(
 			r.Post("/auth/login", authHandler.Login)
 			r.Post("/auth/verify-email", authHandler.VerifyEmail)
 			r.Post("/auth/resend-verification", authHandler.ResendVerification)
+			r.Post("/auth/forgot-password", passwordResetHandler.ForgotPassword)
+			r.Post("/auth/reset-password", passwordResetHandler.ResetPassword)
 			r.Post("/auth/refresh", authHandler.Refresh)
 			r.Post("/auth/logout", authHandler.Logout)
 		})

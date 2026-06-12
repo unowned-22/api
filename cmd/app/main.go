@@ -205,18 +205,21 @@ func runServe() error {
 
 	// 8. Services
 	authService := auth.NewAuthService(userRepo, refreshTokenRepo, roleRepo, tokenManager, smtpMailer, cfg.AppURL, cfg.AppName)
+	passwordResetRepo := postgresRepo.NewPasswordResetRepository(pool)
+	passwordResetService := service.NewPasswordResetService(userRepo, passwordResetRepo, refreshTokenRepo, smtpMailer, cfg.AppURL, cfg.AppName)
 	userService := service.NewUserService(userRepo)
 	permissionService := service.NewPermissionService(permissionRepo)
 	healthService := service.NewHealthService(pool)
 
 	// 9. Handlers
 	authHandler := handler.NewAuthHandler(authService)
+	passwordResetHandler := handler.NewPasswordResetHandler(passwordResetService)
 	userHandler := handler.NewUserHandler(userService)
 	adminHandler := handler.NewAdminHandler(userService, permissionService)
 	healthHandler := handler.NewHealthHandler(healthService)
 
 	// 10. Router
-	router := transportHttp.NewRouter(cfg, authHandler, userHandler, adminHandler, healthHandler, tokenManager, userService, permissionService)
+	router := transportHttp.NewRouter(cfg, authHandler, userHandler, passwordResetHandler, adminHandler, healthHandler, tokenManager, userService, permissionService)
 
 	// 11. HTTP Server
 	srv := &http.Server{
