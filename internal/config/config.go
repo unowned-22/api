@@ -14,6 +14,11 @@ type Config struct {
 	AppEnv             string `envconfig:"APP_ENV" default:"development"`
 	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS" default:"http://localhost:3222"`
 
+	RateLimitRPS       float64 `envconfig:"RATE_LIMIT_RPS" default:"10"`
+	RateLimitBurst     int     `envconfig:"RATE_LIMIT_BURST" default:"20"`
+	AuthRateLimitRPS   float64 `envconfig:"AUTH_RATE_LIMIT_RPS" default:"3"`
+	AuthRateLimitBurst int     `envconfig:"AUTH_RATE_LIMIT_BURST" default:"5"`
+
 	SMTPHost     string `envconfig:"SMTP_HOST" default:"localhost"`
 	SMTPPort     int    `envconfig:"SMTP_PORT" default:"1025"`
 	SMTPUsername string `envconfig:"SMTP_USERNAME" default:""`

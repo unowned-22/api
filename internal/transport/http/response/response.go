@@ -104,6 +104,18 @@ func SendUnauthorized(w http.ResponseWriter, message string) {
 	})
 }
 
+// SendTooManyRequests sends a 429 Too Many Requests error response
+func SendTooManyRequests(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusTooManyRequests)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error: ErrorDetail{
+			Code:    "RATE_LIMITED",
+			Message: message,
+		},
+	})
+}
+
 // SendForbidden sends a custom 403 Forbidden error response
 func SendForbidden(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
