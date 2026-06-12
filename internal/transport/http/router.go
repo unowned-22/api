@@ -18,6 +18,7 @@ func NewRouter(
 	authHandler *handler.AuthHandler,
 	userHandler *handler.UserHandler,
 	adminHandler *handler.AdminHandler,
+	healthHandler *handler.HealthHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
 	permissionService permission.PermissionService,
@@ -29,6 +30,10 @@ func NewRouter(
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recover)
+
+	// Health check endpoints (no auth required).
+	r.Get("/health/live", healthHandler.Live)
+	r.Get("/health/ready", healthHandler.Ready)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Public routes.
