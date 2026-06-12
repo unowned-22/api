@@ -14,6 +14,14 @@ type Config struct {
 	AppEnv             string `envconfig:"APP_ENV" default:"development"`
 	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS" default:"http://localhost:3222"`
 
+	SMTPHost     string `envconfig:"SMTP_HOST" default:"localhost"`
+	SMTPPort     int    `envconfig:"SMTP_PORT" default:"1025"`
+	SMTPUsername string `envconfig:"SMTP_USERNAME" default:""`
+	SMTPPassword string `envconfig:"SMTP_PASSWORD" default:""`
+	SMTPFrom     string `envconfig:"SMTP_FROM" default:"No Reply "`
+	AppName      string `envconfig:"APP_NAME" default:"App"`
+	AppURL       string `envconfig:"APP_URL" default:"http://localhost:3222"`
+
 	DBHost    string `envconfig:"DB_HOST"`
 	DBPort    string `envconfig:"DB_PORT"`
 	DBUser    string `envconfig:"DB_USER"`
