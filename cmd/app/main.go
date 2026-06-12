@@ -175,7 +175,7 @@ func runServe() error {
 	adminHandler := handler.NewAdminHandler(userService, permissionService)
 
 	// 8. Router
-	router := transportHttp.NewRouter(authHandler, userHandler, adminHandler, tokenManager, userService, permissionService)
+	router := transportHttp.NewRouter(cfg, authHandler, userHandler, adminHandler, tokenManager, userService, permissionService)
 
 	// 9. HTTP Server
 	srv := &http.Server{
