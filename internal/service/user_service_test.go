@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
@@ -55,6 +56,37 @@ func (m *mockUserRepo) GetByID(ctx context.Context, id int64) (*user.User, error
 		return nil, errs.ErrUserNotFound
 	}
 	return u, nil
+}
+
+func (m *mockUserRepo) SetVerificationToken(ctx context.Context, userID int64, token string, expiresAt time.Time) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.VerificationToken = &token
+	u.VerificationTokenExpiresAt = &expiresAt
+	return nil
+}
+
+func (m *mockUserRepo) GetByVerificationToken(ctx context.Context, token string) (*user.User, error) {
+	for _, u := range m.users {
+		if u.VerificationToken != nil && *u.VerificationToken == token {
+			return u, nil
+		}
+	}
+	return nil, errs.ErrVerificationTokenInvalid
+}
+
+func (m *mockUserRepo) MarkEmailVerified(ctx context.Context, userID int64) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+	u.VerificationToken = nil
+	u.VerificationTokenExpiresAt = nil
+	return nil
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────

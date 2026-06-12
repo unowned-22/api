@@ -7,6 +7,7 @@ import (
 	"time"
 
 	domainevent "github.com/unowned-22/api/internal/domain/event"
+	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 	domainRole "github.com/unowned-22/api/internal/domain/role"
 	domainToken "github.com/unowned-22/api/internal/domain/token"
 	domainUser "github.com/unowned-22/api/internal/domain/user"
@@ -23,6 +24,14 @@ func (m *mockEventPublisher) Publish(ctx context.Context, event domainevent.Even
 
 func (m *mockEventPublisher) Close() error {
 	return nil
+}
+
+type mockMailer struct {
+	sendErr error
+}
+
+func (m *mockMailer) Send(ctx context.Context, msg domainmailer.Message) error {
+	return m.sendErr
 }
 
 // ── mock: UserRepository ─────────────────────────────────────────────────────
@@ -71,6 +80,37 @@ func (m *mockUserRepo) GetByID(ctx context.Context, id int64) (*domainUser.User,
 		return nil, errs.ErrUserNotFound
 	}
 	return u, nil
+}
+
+func (m *mockUserRepo) SetVerificationToken(ctx context.Context, userID int64, token string, expiresAt time.Time) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.VerificationToken = &token
+	u.VerificationTokenExpiresAt = &expiresAt
+	return nil
+}
+
+func (m *mockUserRepo) GetByVerificationToken(ctx context.Context, token string) (*domainUser.User, error) {
+	for _, u := range m.users {
+		if u.VerificationToken != nil && *u.VerificationToken == token {
+			return u, nil
+		}
+	}
+	return nil, errs.ErrVerificationTokenInvalid
+}
+
+func (m *mockUserRepo) MarkEmailVerified(ctx context.Context, userID int64) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+	u.VerificationToken = nil
+	u.VerificationTokenExpiresAt = nil
+	return nil
 }
 
 // ── mock: RefreshTokenRepository ─────────────────────────────────────────────
@@ -191,8 +231,8 @@ func TestAuthService(t *testing.T) {
 	refreshTokenRepo := newMockRefreshTokenRepo()
 	roleRepo := newMockRoleRepo()
 	tm := &mockTokenManager{}
-	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, publisher)
+	mailer := &mockMailer{}
+	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, "http://localhost:3222", "App")
 
 	ctx := context.Background()
 
@@ -274,7 +314,8 @@ func TestAuthService(t *testing.T) {
 
 func TestRegisterAssignsDefaultRole(t *testing.T) {
 	userRepo := newMockUserRepo()
-	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{}, &mockEventPublisher{})
+	mailer := &mockMailer{}
+	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{}, mailer, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {

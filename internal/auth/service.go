@@ -4,16 +4,18 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	"github.com/unowned-22/api/internal/domain/event"
+	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 	"github.com/unowned-22/api/internal/domain/role"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
+	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	"github.com/unowned-22/api/internal/logger"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -31,6 +33,8 @@ type LoginRequest struct {
 // AuthService defines the application-level contract for authentication.
 type AuthService interface {
 	Register(ctx context.Context, req RegisterRequest) error
+	VerifyEmail(ctx context.Context, token string) error
+	ResendVerification(ctx context.Context, email string) error
 	Login(ctx context.Context, req LoginRequest) (string, string, error)
 	Refresh(ctx context.Context, refreshToken string) (string, error)
 	Logout(ctx context.Context, refreshToken string) error
@@ -41,7 +45,9 @@ type authService struct {
 	refreshTokenRepo token.RefreshTokenRepository
 	roleRepo         role.RoleRepository
 	tokenManager     token.ManagerExtended
-	publisher        event.Publisher
+	mailer           domainmailer.Mailer
+	appURL           string
+	appName          string
 }
 
 // NewAuthService wires up an AuthService with its required dependencies.
@@ -50,19 +56,24 @@ func NewAuthService(
 	refreshTokenRepo token.RefreshTokenRepository,
 	roleRepo role.RoleRepository,
 	tokenManager token.ManagerExtended,
-	publisher event.Publisher,
+	mailer domainmailer.Mailer,
+	appURL string,
+	appName string,
 ) AuthService {
 	return &authService{
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		roleRepo:         roleRepo,
 		tokenManager:     tokenManager,
-		publisher:        publisher,
+		mailer:           mailer,
+		appURL:           appURL,
+		appName:          appName,
 	}
 }
 
 // Register hashes the user's password, resolves the default "user" role,
-// and persists the new user to the repository.
+// persists the new user to the repository, stores a verification token,
+// and sends a verification email.
 func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 	if req.Email == "" || req.Password == "" {
 		return fmt.Errorf("email and password are required")
@@ -90,19 +101,75 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 		return err
 	}
 
-	// Publish user.registered event (fire-and-forget on error)
-	payload := map[string]interface{}{
-		"user_id": u.ID,
-		"email":   u.Email,
+	token, err := generateVerificationToken()
+	if err != nil {
+		return fmt.Errorf("failed to generate verification token: %w", err)
 	}
-	payloadBytes, _ := json.Marshal(payload)
-	if err := s.publisher.Publish(ctx, event.Event{
-		Name:    event.UserRegistered,
-		Payload: payloadBytes,
-	}); err != nil {
+	expiresAt := time.Now().Add(24 * time.Hour)
+	if err := s.userRepo.SetVerificationToken(ctx, u.ID, token, expiresAt); err != nil {
+		return fmt.Errorf("failed to persist verification token: %w", err)
+	}
+
+	if err := s.sendVerificationEmail(ctx, u.Email, token); err != nil {
 		if logger.Log != nil {
-			logger.Log.WithError(err).Warn("failed to publish user.registered event")
+			logger.Log.WithError(err).WithFields(map[string]interface{}{
+				"email":   u.Email,
+				"user_id": u.ID,
+			}).Warn("failed to send verification email")
 		}
+	}
+
+	return nil
+}
+
+// VerifyEmail validates a verification token and marks the user's email as verified.
+func (s *authService) VerifyEmail(ctx context.Context, token string) error {
+	if token == "" {
+		return errs.ErrVerificationTokenInvalid
+	}
+
+	u, err := s.userRepo.GetByVerificationToken(ctx, token)
+	if err != nil {
+		return err
+	}
+
+	if u.EmailVerifiedAt != nil {
+		return errs.ErrEmailAlreadyVerified
+	}
+
+	if u.VerificationTokenExpiresAt == nil || u.VerificationTokenExpiresAt.Before(time.Now()) {
+		return errs.ErrVerificationTokenInvalid
+	}
+
+	return s.userRepo.MarkEmailVerified(ctx, u.ID)
+}
+
+// ResendVerification generates a new verification token and sends it to the user's email.
+func (s *authService) ResendVerification(ctx context.Context, email string) error {
+	if email == "" {
+		return fmt.Errorf("email is required")
+	}
+
+	u, err := s.userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		return err
+	}
+
+	if u.EmailVerifiedAt != nil {
+		return errs.ErrEmailAlreadyVerified
+	}
+
+	token, err := generateVerificationToken()
+	if err != nil {
+		return fmt.Errorf("failed to generate verification token: %w", err)
+	}
+	expiresAt := time.Now().Add(24 * time.Hour)
+	if err := s.userRepo.SetVerificationToken(ctx, u.ID, token, expiresAt); err != nil {
+		return fmt.Errorf("failed to persist verification token: %w", err)
+	}
+
+	if err := s.sendVerificationEmail(ctx, u.Email, token); err != nil {
+		return err
 	}
 
 	return nil
@@ -209,4 +276,38 @@ func generateRefreshToken() (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// generateVerificationToken produces a cryptographically secure email verification token.
+func generateVerificationToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func (s *authService) sendVerificationEmail(ctx context.Context, email, token string) error {
+	verificationURL := strings.TrimRight(s.appURL, "/") + "/verify-email?token=" + token
+
+	htmlContent, textContent, err := mailer.RenderTemplate("verify_email", map[string]interface{}{
+		"AppName":         s.appName,
+		"VerificationURL": verificationURL,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to render verification email template: %w", err)
+	}
+
+	msg := domainmailer.Message{
+		To:      []string{email},
+		Subject: "Verify Your Email Address",
+		HTML:    htmlContent,
+		Text:    textContent,
+	}
+
+	if err := s.mailer.Send(ctx, msg); err != nil {
+		return fmt.Errorf("failed to send verification email: %w", err)
+	}
+
+	return nil
 }

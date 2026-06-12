@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -43,14 +44,16 @@ func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 // GetByEmail retrieves a user (with role name) by email address.
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at
+		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at,
+		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.email = $1
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, email).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt)
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt,
+			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrUserNotFound
@@ -63,14 +66,16 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 // GetByID retrieves a user (with role name) by primary key.
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at
+		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at,
+		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.id = $1
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, id).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt)
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt,
+			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrUserNotFound
@@ -78,6 +83,65 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 		return nil, fmt.Errorf("failed to get user by id from db: %w", err)
 	}
 	return &u, nil
+}
+
+// SetVerificationToken updates the user's verification token and expiry.
+func (r *UserRepository) SetVerificationToken(ctx context.Context, userID int64, token string, expiresAt time.Time) error {
+	query := `
+		UPDATE users
+		SET verification_token = $1,
+		    verification_token_expires_at = $2
+		WHERE id = $3
+	`
+	cmd, err := r.db.Exec(ctx, query, token, expiresAt, userID)
+	if err != nil {
+		return fmt.Errorf("failed to set verification token: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to set verification token")
+	}
+	return nil
+}
+
+// GetByVerificationToken retrieves a user by verification token.
+func (r *UserRepository) GetByVerificationToken(ctx context.Context, token string) (*user.User, error) {
+	query := `
+		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at,
+		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
+		FROM users u
+		JOIN roles r ON r.id = u.role_id
+		WHERE u.verification_token = $1
+	`
+	var u user.User
+	err := r.db.QueryRow(ctx, query, token).
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt,
+			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errs.ErrVerificationTokenInvalid
+		}
+		return nil, fmt.Errorf("failed to get user by verification token from db: %w", err)
+	}
+	return &u, nil
+}
+
+// MarkEmailVerified sets the email verified timestamp and clears the verification token.
+func (r *UserRepository) MarkEmailVerified(ctx context.Context, userID int64) error {
+	query := `
+		UPDATE users
+		SET email_verified_at = $1,
+		    verification_token = NULL,
+		    verification_token_expires_at = NULL
+		WHERE id = $2
+	`
+	cmd, err := r.db.Exec(ctx, query, time.Now(), userID)
+	if err != nil {
+		return fmt.Errorf("failed to mark email verified: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to mark email verified")
+	}
+	return nil
 }
 
 // Compile-time check that UserRepository satisfies the domain contract.
