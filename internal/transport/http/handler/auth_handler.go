@@ -2,11 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	domain "github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
+	"github.com/unowned-22/api/internal/validator"
 )
 
 type AuthHandler struct {
@@ -26,8 +28,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Email == "" || req.Password == "" {
-		response.SendBadRequest(w, "email and password are required")
+	if err := validator.Validate(&req); err != nil {
+		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
+			response.SendValidationError(w, toFieldErrors(ve.Fields))
+			return
+		}
+
+		response.SendBadRequest(w, "invalid request")
 		return
 	}
 
@@ -47,8 +54,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Email == "" || req.Password == "" {
-		response.SendBadRequest(w, "email and password are required")
+	if err := validator.Validate(&req); err != nil {
+		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
+			response.SendValidationError(w, toFieldErrors(ve.Fields))
+			return
+		}
+		response.SendBadRequest(w, "invalid request")
 		return
 	}
 
@@ -72,8 +83,12 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.RefreshToken == "" {
-		response.SendBadRequest(w, "refresh token is required")
+	if err := validator.Validate(&req); err != nil {
+		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
+			response.SendValidationError(w, toFieldErrors(ve.Fields))
+			return
+		}
+		response.SendBadRequest(w, "invalid request")
 		return
 	}
 
@@ -96,8 +111,12 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.RefreshToken == "" {
-		response.SendBadRequest(w, "refresh token is required")
+	if err := validator.Validate(&req); err != nil {
+		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
+			response.SendValidationError(w, toFieldErrors(ve.Fields))
+			return
+		}
+		response.SendBadRequest(w, "invalid request")
 		return
 	}
 
@@ -110,4 +129,17 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusOK, map[string]string{
 		"message": "logged out successfully",
 	})
+}
+
+// toFieldErrors converts validator field errors to response field errors,
+// keeping the validator package independent of the response package.
+func toFieldErrors(fields []validator.FieldError) []response.ValidationFieldError {
+	out := make([]response.ValidationFieldError, 0, len(fields))
+	for _, f := range fields {
+		out = append(out, response.ValidationFieldError{
+			Field:   f.Field,
+			Message: f.Message,
+		})
+	}
+	return out
 }

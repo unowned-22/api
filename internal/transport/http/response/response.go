@@ -115,3 +115,34 @@ func SendForbidden(w http.ResponseWriter, message string) {
 		},
 	})
 }
+
+// ValidationFieldError represents a single field that failed validation.
+type ValidationFieldError struct {
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+// ValidationErrorDetail extends ErrorDetail with per-field validation details.
+type ValidationErrorDetail struct {
+	Code    string                 `json:"code"`
+	Message string                 `json:"message"`
+	Details []ValidationFieldError `json:"details"`
+}
+
+// ValidationErrorResponse is the envelope for validation errors.
+type ValidationErrorResponse struct {
+	Error ValidationErrorDetail `json:"error"`
+}
+
+// SendValidationError sends a 422 Unprocessable Entity response with per-field validation details.
+func SendValidationError(w http.ResponseWriter, fields []ValidationFieldError) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnprocessableEntity)
+	_ = json.NewEncoder(w).Encode(ValidationErrorResponse{
+		Error: ValidationErrorDetail{
+			Code:    "VALIDATION_ERROR",
+			Message: "validation failed",
+			Details: fields,
+		},
+	})
+}
