@@ -10,8 +10,9 @@ import (
 )
 
 type Config struct {
-	AppPort string `envconfig:"APP_PORT" default:"8080"`
-	AppEnv  string `envconfig:"APP_ENV" default:"development"`
+	AppPort            string `envconfig:"APP_PORT" default:"8080"`
+	AppEnv             string `envconfig:"APP_ENV" default:"development"`
+	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS" default:"http://localhost:3222"`
 
 	DBHost    string `envconfig:"DB_HOST"`
 	DBPort    string `envconfig:"DB_PORT"`

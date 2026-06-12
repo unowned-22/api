@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/domain/permission"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
@@ -13,6 +14,7 @@ import (
 
 // NewRouter constructs the Chi router, registers middleware, and sets up all routes.
 func NewRouter(
+	cfg *config.Config,
 	authHandler *handler.AuthHandler,
 	userHandler *handler.UserHandler,
 	adminHandler *handler.AdminHandler,
@@ -23,6 +25,7 @@ func NewRouter(
 	r := chi.NewRouter()
 
 	// Global middleware stack.
+	r.Use(middleware.CORS(cfg))
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recover)
