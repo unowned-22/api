@@ -22,9 +22,18 @@ HTTP / CLI -> Service -> Repository -> PostgreSQL
 
 ### Domain Layer (`internal/domain/`)
 
-The Domain layer contains only business entities and interfaces (contracts).
+The Domain layer contains only business entities and interfaces (contracts). It is split into four focused packages — each owns exactly one concept:
 
-**STRICTLY FORBIDDEN** to import:
+| Package | Contents |
+|---|---|
+| `internal/domain/user` | `User` entity · `UserRepository` · `UserService` |
+| `internal/domain/role` | `Role` entity · `RoleRepository` |
+| `internal/domain/permission` | `Permission` entity · `PermissionRepository` · `PermissionService` |
+| `internal/domain/token` | `RefreshToken` entity · `RefreshTokenRepository` · `Manager` · `ManagerExtended` |
+
+Cross-domain references use plain scalar types (`int64`, `string`) instead of importing sibling packages. This keeps the dependency graph acyclic — no domain package imports another domain package.
+
+**STRICTLY FORBIDDEN** to import in any domain package:
 
 * Any database libraries (`pgx`, `sql`, `gorm`, etc.)
 * Routers and HTTP packages (`chi`, `http`, `gin`)
@@ -68,10 +77,10 @@ github.com/jackc/pgx/v5/pgxpool
 
 * **ORMs are STRICTLY PROHIBITED**:
 
-    * GORM
-    * Ent
-    * Bun
-    * Any other ORM
+  * GORM
+  * Ent
+  * Bun
+  * Any other ORM
 
 Only raw SQL with pgx is allowed.
 
@@ -191,8 +200,8 @@ Requirements:
 
 * Handle:
 
-    * `SIGINT`
-    * `SIGTERM`
+  * `SIGINT`
+  * `SIGTERM`
 
 * Shutdown timeout:
 
@@ -211,32 +220,45 @@ Shutdown sequence:
 
 ## 3. Authentication
 
-Authentication must be implemented through the `TokenManager` abstraction.
+Authentication must be implemented through the `token.Manager` abstraction defined in `internal/domain/token`.
 
 ### Domain Contract
 
-The Domain layer defines the interface:
+`internal/domain/token/token.go` defines two interfaces:
 
 ```go
-type TokenManager interface {
+// Manager is the primary contract — used by services and middleware.
+type Manager interface {
     Generate(userID int64) (string, error)
     Parse(token string) (int64, error)
 }
+
+// ManagerExtended embeds Manager and adds role-aware token support.
+// Used by AuthService and JWTAuth middleware.
+type ManagerExtended interface {
+    Manager
+    GenerateWithRole(userID int64, role string) (string, error)
+    ParseWithRole(token string) (int64, string, error)
+}
 ```
+
+The same file also defines `RefreshToken` and `RefreshTokenRepository` — keeping all token-related domain contracts in one place.
 
 ### Infrastructure Implementation
 
 JWT implementation belongs exclusively to the infrastructure layer.
 
-Example location:
+Location:
 
 ```text
 internal/auth/jwt.go
 ```
 
+`JWTManager` satisfies both `token.Manager` and `token.ManagerExtended`. Compile-time checks are enforced with `var _ token.Manager = (*JWTManager)(nil)`.
+
 Requirements:
 
-* Services must depend only on `TokenManager`.
+* Services must depend only on `token.Manager` or `token.ManagerExtended`.
 * Services must never import JWT packages directly.
 * JWT implementation must be replaceable without changing business logic.
 
@@ -311,9 +333,9 @@ Requirements:
 * Domain and service layers return domain errors.
 * Transport layer maps errors to:
 
-    * HTTP status codes
-    * API error codes
-    * Human-readable messages
+  * HTTP status codes
+  * API error codes
+  * Human-readable messages
 
 Error mapping must be centralized in:
 

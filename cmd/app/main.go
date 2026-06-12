@@ -127,7 +127,7 @@ func main() {
 	}
 }
 
-// runServe starts the REST API server with Graceful Shutdown
+// runServe starts the REST API server with graceful shutdown.
 func runServe() error {
 	// 1. Config
 	cfg, err := config.Load()
@@ -187,7 +187,7 @@ func runServe() error {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	// Graceful Shutdown setup
+	// Graceful shutdown setup.
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(shutdown)
@@ -223,7 +223,7 @@ func runServe() error {
 	ctxShut, cancelShut := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShut()
 
-	// 1. Stop receiving new requests and wait for active requests to complete
+	// 1. Stop accepting new requests; wait for active ones to finish.
 	if err := srv.Shutdown(ctxShut); err != nil {
 		logger.Log.Errorf("HTTP server graceful shutdown failed: %v", err)
 	} else {
@@ -236,12 +236,7 @@ func runServe() error {
 
 func getMigrator(cfg *config.Config) (*migrate.Migrate, error) {
 	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		cfg.DBUser,
-		cfg.DBPass,
-		cfg.DBHost,
-		cfg.DBPort,
-		cfg.DBName,
-		cfg.DBSSLMode,
+		cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBSSLMode,
 	)
 	m, err := migrate.New("file://migrations", connStr)
 	if err != nil {
@@ -255,7 +250,6 @@ func runMigrateUp() error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-
 	m, err := getMigrator(cfg)
 	if err != nil {
 		return err
@@ -269,7 +263,6 @@ func runMigrateUp() error {
 		}
 		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
-
 	fmt.Println("Migrations applied successfully!")
 	return nil
 }
@@ -278,12 +271,10 @@ func runMigrateDown(steps int) error {
 	if steps < 1 {
 		return fmt.Errorf("steps must be greater than zero")
 	}
-
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-
 	m, err := getMigrator(cfg)
 	if err != nil {
 		return err
@@ -297,7 +288,6 @@ func runMigrateDown(steps int) error {
 		}
 		return fmt.Errorf("failed to rollback migrations: %w", err)
 	}
-
 	fmt.Printf("Rolled back %d migration(s) successfully!\n", steps)
 	return nil
 }
@@ -306,12 +296,10 @@ func runMigrateReset(force bool) error {
 	if !force {
 		return fmt.Errorf("refuse execution: use --force to rollback all migrations")
 	}
-
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-
 	m, err := getMigrator(cfg)
 	if err != nil {
 		return err
@@ -325,7 +313,6 @@ func runMigrateReset(force bool) error {
 		}
 		return fmt.Errorf("failed to reset migrations: %w", err)
 	}
-
 	fmt.Println("All migrations rolled back successfully!")
 	return nil
 }
@@ -335,7 +322,6 @@ func runMigrateVersion() error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
-
 	m, err := getMigrator(cfg)
 	if err != nil {
 		return err
@@ -350,7 +336,6 @@ func runMigrateVersion() error {
 		}
 		return fmt.Errorf("failed to read migration version: %w", err)
 	}
-
 	fmt.Printf("Current version: %d (dirty: %t)\n", version, dirty)
 	return nil
 }

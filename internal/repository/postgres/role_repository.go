@@ -7,10 +7,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/role"
 	"github.com/unowned-22/api/internal/errs"
 )
 
+// RoleRepository is the PostgreSQL implementation of role.RoleRepository.
 type RoleRepository struct {
 	db *pgxpool.Pool
 }
@@ -21,35 +22,35 @@ func NewRoleRepository(db *pgxpool.Pool) *RoleRepository {
 }
 
 // GetByID retrieves a role by its primary key.
-func (r *RoleRepository) GetByID(ctx context.Context, id int64) (*domain.Role, error) {
+func (r *RoleRepository) GetByID(ctx context.Context, id int64) (*role.Role, error) {
 	query := `SELECT id, name, created_at FROM roles WHERE id = $1`
-	var role domain.Role
-	err := r.db.QueryRow(ctx, query, id).Scan(&role.ID, &role.Name, &role.CreatedAt)
+	var ro role.Role
+	err := r.db.QueryRow(ctx, query, id).Scan(&ro.ID, &ro.Name, &ro.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("failed to get role by id: %w", err)
 	}
-	return &role, nil
+	return &ro, nil
 }
 
 // GetByName retrieves a role by its unique name (e.g. "admin", "user").
-func (r *RoleRepository) GetByName(ctx context.Context, name string) (*domain.Role, error) {
+func (r *RoleRepository) GetByName(ctx context.Context, name string) (*role.Role, error) {
 	query := `SELECT id, name, created_at FROM roles WHERE name = $1`
-	var role domain.Role
-	err := r.db.QueryRow(ctx, query, name).Scan(&role.ID, &role.Name, &role.CreatedAt)
+	var ro role.Role
+	err := r.db.QueryRow(ctx, query, name).Scan(&ro.ID, &ro.Name, &ro.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrRoleNotFound
 		}
 		return nil, fmt.Errorf("failed to get role by name: %w", err)
 	}
-	return &role, nil
+	return &ro, nil
 }
 
 // List returns all roles defined in the system.
-func (r *RoleRepository) List(ctx context.Context) ([]*domain.Role, error) {
+func (r *RoleRepository) List(ctx context.Context) ([]*role.Role, error) {
 	query := `SELECT id, name, created_at FROM roles ORDER BY id`
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
@@ -57,13 +58,13 @@ func (r *RoleRepository) List(ctx context.Context) ([]*domain.Role, error) {
 	}
 	defer rows.Close()
 
-	var roles []*domain.Role
+	var roles []*role.Role
 	for rows.Next() {
-		var role domain.Role
-		if err := rows.Scan(&role.ID, &role.Name, &role.CreatedAt); err != nil {
+		var ro role.Role
+		if err := rows.Scan(&ro.ID, &ro.Name, &ro.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan role: %w", err)
 		}
-		roles = append(roles, &role)
+		roles = append(roles, &ro)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("rows error listing roles: %w", err)
@@ -71,5 +72,5 @@ func (r *RoleRepository) List(ctx context.Context) ([]*domain.Role, error) {
 	return roles, nil
 }
 
-// Ensure RoleRepository implements domain.RoleRepository.
-var _ domain.RoleRepository = (*RoleRepository)(nil)
+// Compile-time check that RoleRepository satisfies the domain contract.
+var _ role.RoleRepository = (*RoleRepository)(nil)

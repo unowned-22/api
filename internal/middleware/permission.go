@@ -4,13 +4,16 @@ import (
 	"net/http"
 
 	"github.com/unowned-22/api/internal/contextx"
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/permission"
+	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
+// RequirePermission enforces that the authenticated user's role carries the
+// named permission. Must be applied after JWTAuth.
 func RequirePermission(
-	permissionService domain.PermissionService,
-	userService domain.UserService,
+	permissionService permission.PermissionService,
+	userService user.UserService,
 	requiredPermission string,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -21,20 +24,20 @@ func RequirePermission(
 				return
 			}
 
-			user, err := userService.GetProfile(r.Context(), userID)
+			u, err := userService.GetProfile(r.Context(), userID)
 			if err != nil {
 				response.SendError(w, err)
 				return
 			}
 
-			permissions, err := permissionService.GetPermissionsByRole(r.Context(), user.RoleID)
+			permissions, err := permissionService.GetPermissionsByRole(r.Context(), u.RoleID)
 			if err != nil {
 				response.SendError(w, err)
 				return
 			}
 
-			for _, permission := range permissions {
-				if permission.Name == requiredPermission {
+			for _, p := range permissions {
+				if p.Name == requiredPermission {
 					next.ServeHTTP(w, r)
 					return
 				}

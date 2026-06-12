@@ -3,19 +3,23 @@ package service
 import (
 	"context"
 
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/permission"
 )
 
+// PermissionService implements domain/permission.PermissionService.
 type PermissionService struct {
-	repo domain.PermissionRepository
+	repo permission.PermissionRepository
 }
 
-func NewPermissionService(repo domain.PermissionRepository) *PermissionService {
+// NewPermissionService creates a new instance of PermissionService.
+func NewPermissionService(repo permission.PermissionRepository) *PermissionService {
 	return &PermissionService{repo: repo}
 }
 
-func (s *PermissionService) GetPermissionsByRole(ctx context.Context, roleID int64) ([]*domain.Permission, error) {
+// GetPermissionsByRole returns all permissions assigned to the given role.
+func (s *PermissionService) GetPermissionsByRole(ctx context.Context, roleID int64) ([]*permission.Permission, error) {
 	return s.repo.GetByRoleID(ctx, roleID)
 }
 
-var _ domain.PermissionService = (*PermissionService)(nil)
+// Compile-time check that PermissionService satisfies the domain contract.
+var _ permission.PermissionService = (*PermissionService)(nil)
