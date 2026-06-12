@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 
+	"github.com/unowned-22/api/internal/contextx"
 	domain "github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
@@ -14,7 +15,7 @@ func RequirePermission(
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, ok := GetUserID(r.Context())
+			userID, ok := contextx.UserID(r.Context())
 			if !ok {
 				response.SendUnauthorized(w, "unauthorized")
 				return
