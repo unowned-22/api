@@ -10,6 +10,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/middleware"
 	"github.com/unowned-22/api/internal/transport/http/handler"
+	"golang.org/x/time/rate"
 )
 
 // NewRouter constructs the Chi router, registers middleware, and sets up all routes.
@@ -36,11 +37,18 @@ func NewRouter(
 	r.Get("/health/ready", healthHandler.Ready)
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Public routes.
-		r.Post("/auth/register", authHandler.Register)
-		r.Post("/auth/login", authHandler.Login)
-		r.Post("/auth/refresh", authHandler.Refresh)
-		r.Post("/auth/logout", authHandler.Logout)
+		// Global rate limiter for /api/v1
+		r.Use(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst))
+
+		// Public routes with stricter auth rate limiter.
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RateLimit(rate.Limit(cfg.AuthRateLimitRPS), cfg.AuthRateLimitBurst))
+
+			r.Post("/auth/register", authHandler.Register)
+			r.Post("/auth/login", authHandler.Login)
+			r.Post("/auth/refresh", authHandler.Refresh)
+			r.Post("/auth/logout", authHandler.Logout)
+		})
 
 		// Authenticated routes.
 		r.Group(func(r chi.Router) {
