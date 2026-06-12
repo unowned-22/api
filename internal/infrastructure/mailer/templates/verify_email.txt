@@ -1,0 +1,5 @@
+Welcome to {{.AppName}}!
+
+Please verify your email by visiting the following link:
+
+{{.VerificationURL}}
