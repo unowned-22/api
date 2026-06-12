@@ -21,6 +21,8 @@ import (
 	"github.com/unowned-22/api/internal/auth"
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/database"
+	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
+	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	"github.com/unowned-22/api/internal/logger"
 	postgresRepo "github.com/unowned-22/api/internal/repository/postgres"
 	"github.com/unowned-22/api/internal/service"
@@ -35,6 +37,8 @@ var (
 
 	migrateDownSteps  int
 	migrateResetForce bool
+
+	smtpMailer domainmailer.Mailer
 )
 
 var rootCmd = &cobra.Command{
@@ -169,7 +173,16 @@ func runServe() error {
 	userService := service.NewUserService(userRepo)
 	permissionService := service.NewPermissionService(permissionRepo)
 
-	// 7. Handlers
+	// 7. Mailer
+	smtpMailer = mailer.New(mailer.Config{
+		Host:     cfg.SMTPHost,
+		Port:     cfg.SMTPPort,
+		Username: cfg.SMTPUsername,
+		Password: cfg.SMTPPassword,
+		From:     cfg.SMTPFrom,
+	})
+
+	// 8. Handlers
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	adminHandler := handler.NewAdminHandler(userService, permissionService)
