@@ -38,12 +38,12 @@ func NewUserService(
 
 // Register hashes the user's password, resolves the default "user" role,
 // and persists the new user to the repository.
-func (s *UserService) Register(ctx context.Context, req domain.RegisterRequest) error {
-	if req.Email == "" || req.Password == "" {
+func (s *UserService) Register(ctx context.Context, email, password string) error {
+	if email == "" || password == "" {
 		return fmt.Errorf("email and password are required")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -55,7 +55,7 @@ func (s *UserService) Register(ctx context.Context, req domain.RegisterRequest) 
 	}
 
 	user := &domain.User{
-		Email:     req.Email,
+		Email:     email,
 		Password:  string(hashedPassword),
 		RoleID:    role.ID,
 		CreatedAt: time.Now(),
@@ -65,12 +65,12 @@ func (s *UserService) Register(ctx context.Context, req domain.RegisterRequest) 
 }
 
 // Login validates credentials and returns an access token (with role claim) and a refresh token.
-func (s *UserService) Login(ctx context.Context, req domain.LoginRequest) (string, string, error) {
-	if req.Email == "" || req.Password == "" {
+func (s *UserService) Login(ctx context.Context, email, password string) (string, string, error) {
+	if email == "" || password == "" {
 		return "", "", errs.ErrInvalidCredentials
 	}
 
-	user, err := s.repo.GetByEmail(ctx, req.Email)
+	user, err := s.repo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, errs.ErrUserNotFound) {
 			return "", "", errs.ErrInvalidCredentials
@@ -78,7 +78,7 @@ func (s *UserService) Login(ctx context.Context, req domain.LoginRequest) (strin
 		return "", "", err
 	}
 
-	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		return "", "", errs.ErrInvalidCredentials
 	}
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/unowned-22/api/internal/contextx"
 	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
@@ -20,27 +21,12 @@ func NewAdminHandler(userService domain.UserService, permissionService domain.Pe
 	}
 }
 
-type AdminPingResponse struct {
-	Message string `json:"message"`
-}
-
 // Ping returns a success message indicating admin access is verified
 func (h *AdminHandler) Ping(w http.ResponseWriter, r *http.Request) {
-	resp := AdminPingResponse{
+	resp := dto.AdminPingResponse{
 		Message: "admin access granted",
 	}
 	response.SendSuccess(w, http.StatusOK, resp)
-}
-
-type PermissionResponse struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"created_at"`
-}
-
-type AdminPermissionsResponse struct {
-	Permissions []PermissionResponse `json:"permissions"`
 }
 
 func (h *AdminHandler) Permissions(w http.ResponseWriter, r *http.Request) {
@@ -62,11 +48,11 @@ func (h *AdminHandler) Permissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := AdminPermissionsResponse{
-		Permissions: make([]PermissionResponse, 0, len(permissions)),
+	resp := dto.AdminPermissionsResponse{
+		Permissions: make([]dto.PermissionResponse, 0, len(permissions)),
 	}
 	for _, permission := range permissions {
-		resp.Permissions = append(resp.Permissions, PermissionResponse{
+		resp.Permissions = append(resp.Permissions, dto.PermissionResponse{
 			ID:          permission.ID,
 			Name:        permission.Name,
 			Description: permission.Description,

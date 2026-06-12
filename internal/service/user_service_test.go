@@ -182,19 +182,19 @@ func TestUserService(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Register
-	err := srv.Register(ctx, domain.RegisterRequest{Email: "test@example.com", Password: "password123"})
+	err := srv.Register(ctx, "test@example.com", "password123")
 	if err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
 
 	// 2. Duplicate register
-	err = srv.Register(ctx, domain.RegisterRequest{Email: "test@example.com", Password: "password123"})
+	err = srv.Register(ctx, "test@example.com", "password123")
 	if !errors.Is(err, errs.ErrUserAlreadyExists) {
 		t.Errorf("expected ErrUserAlreadyExists, got %v", err)
 	}
 
 	// 3. Login success — token and refresh token returned
-	accessToken, refreshToken, err := srv.Login(ctx, domain.LoginRequest{Email: "test@example.com", Password: "password123"})
+	accessToken, refreshToken, err := srv.Login(ctx, "test@example.com", "password123")
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -206,13 +206,13 @@ func TestUserService(t *testing.T) {
 	}
 
 	// 4. Login invalid password
-	_, _, err = srv.Login(ctx, domain.LoginRequest{Email: "test@example.com", Password: "wrongpassword"})
+	_, _, err = srv.Login(ctx, "test@example.com", "wrongpassword")
 	if !errors.Is(err, errs.ErrInvalidCredentials) {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
 
 	// 5. Login unknown user
-	_, _, err = srv.Login(ctx, domain.LoginRequest{Email: "nobody@example.com", Password: "password123"})
+	_, _, err = srv.Login(ctx, "nobody@example.com", "password123")
 	if !errors.Is(err, errs.ErrInvalidCredentials) {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
@@ -274,7 +274,7 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 	srv := NewUserService(repo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{})
 	ctx := context.Background()
 
-	if err := srv.Register(ctx, domain.RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
+	if err := srv.Register(ctx, "newuser@example.com", "pass"); err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
 
