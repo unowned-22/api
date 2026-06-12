@@ -3,24 +3,23 @@ package service
 import (
 	"context"
 
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/user"
 )
 
+// UserService implements domain/user.UserService.
 type UserService struct {
-	repo domain.UserRepository
+	repo user.UserRepository
 }
 
 // NewUserService creates a new instance of UserService.
-func NewUserService(repo domain.UserRepository) *UserService {
-	return &UserService{
-		repo: repo,
-	}
+func NewUserService(repo user.UserRepository) *UserService {
+	return &UserService{repo: repo}
 }
 
 // GetProfile returns the full user record (including role) by ID.
-func (s *UserService) GetProfile(ctx context.Context, userID int64) (*domain.User, error) {
+func (s *UserService) GetProfile(ctx context.Context, userID int64) (*user.User, error) {
 	return s.repo.GetByID(ctx, userID)
 }
 
-// Ensure UserService satisfies the domain contract.
-var _ domain.UserService = (*UserService)(nil)
+// Compile-time check that UserService satisfies the domain contract.
+var _ user.UserService = (*UserService)(nil)

@@ -1,11 +1,11 @@
-package user
+package role
 
 import (
 	"context"
 	"time"
 )
 
-// Role represents a user role in the system (e.g. "admin", "user").
+// Role represents a named permission group (e.g. "admin", "user").
 type Role struct {
 	ID        int64
 	Name      string

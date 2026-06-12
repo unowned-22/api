@@ -8,10 +8,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
 )
 
+// UserRepository is the PostgreSQL implementation of user.UserRepository.
 type UserRepository struct {
 	db *pgxpool.Pool
 }
@@ -22,7 +23,7 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 }
 
 // Create inserts a new user record including its role_id.
-func (r *UserRepository) Create(ctx context.Context, u *domain.User) error {
+func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	query := `
 		INSERT INTO users (email, password, role_id, created_at)
 		VALUES ($1, $2, $3, $4)
@@ -40,14 +41,14 @@ func (r *UserRepository) Create(ctx context.Context, u *domain.User) error {
 }
 
 // GetByEmail retrieves a user (with role name) by email address.
-func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.User, error) {
 	query := `
 		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.email = $1
 	`
-	var u domain.User
+	var u user.User
 	err := r.db.QueryRow(ctx, query, email).
 		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt)
 	if err != nil {
@@ -60,14 +61,14 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 }
 
 // GetByID retrieves a user (with role name) by primary key.
-func (r *UserRepository) GetByID(ctx context.Context, id int64) (*domain.User, error) {
+func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, error) {
 	query := `
 		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.id = $1
 	`
-	var u domain.User
+	var u user.User
 	err := r.db.QueryRow(ctx, query, id).
 		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt)
 	if err != nil {
@@ -79,5 +80,5 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*domain.User, e
 	return &u, nil
 }
 
-// Ensure UserRepository implements domain.UserRepository.
-var _ domain.UserRepository = (*UserRepository)(nil)
+// Compile-time check that UserRepository satisfies the domain contract.
+var _ user.UserRepository = (*UserRepository)(nil)

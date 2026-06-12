@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"time"
 
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/role"
+	"github.com/unowned-22/api/internal/domain/token"
+	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -23,6 +25,7 @@ type LoginRequest struct {
 	Password string
 }
 
+// AuthService defines the application-level contract for authentication.
 type AuthService interface {
 	Register(ctx context.Context, req RegisterRequest) error
 	Login(ctx context.Context, req LoginRequest) (string, string, error)
@@ -31,20 +34,21 @@ type AuthService interface {
 }
 
 type authService struct {
-	repo             domain.UserRepository
-	refreshTokenRepo domain.RefreshTokenRepository
-	roleRepo         domain.RoleRepository
-	tokenManager     domain.TokenManagerExtended
+	userRepo         user.UserRepository
+	refreshTokenRepo token.RefreshTokenRepository
+	roleRepo         role.RoleRepository
+	tokenManager     token.ManagerExtended
 }
 
+// NewAuthService wires up an AuthService with its required dependencies.
 func NewAuthService(
-	repo domain.UserRepository,
-	refreshTokenRepo domain.RefreshTokenRepository,
-	roleRepo domain.RoleRepository,
-	tokenManager domain.TokenManagerExtended,
+	userRepo user.UserRepository,
+	refreshTokenRepo token.RefreshTokenRepository,
+	roleRepo role.RoleRepository,
+	tokenManager token.ManagerExtended,
 ) AuthService {
 	return &authService{
-		repo:             repo,
+		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		roleRepo:         roleRepo,
 		tokenManager:     tokenManager,
@@ -64,19 +68,19 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 	}
 
 	// Resolve role ID dynamically — no hardcoded IDs allowed.
-	role, err := s.roleRepo.GetByName(ctx, "user")
+	defaultRole, err := s.roleRepo.GetByName(ctx, "user")
 	if err != nil {
 		return fmt.Errorf("failed to resolve default role: %w", err)
 	}
 
-	user := &domain.User{
+	u := &user.User{
 		Email:     req.Email,
 		Password:  string(hashedPassword),
-		RoleID:    role.ID,
+		RoleID:    defaultRole.ID,
 		CreatedAt: time.Now(),
 	}
 
-	return s.repo.Create(ctx, user)
+	return s.userRepo.Create(ctx, u)
 }
 
 // Login validates credentials and returns an access token (with role claim) and a refresh token.
@@ -85,7 +89,7 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		return "", "", errs.ErrInvalidCredentials
 	}
 
-	user, err := s.repo.GetByEmail(ctx, req.Email)
+	u, err := s.userRepo.GetByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, errs.ErrUserNotFound) {
 			return "", "", errs.ErrInvalidCredentials
@@ -93,12 +97,12 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		return "", "", err
 	}
 
-	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)); err != nil {
 		return "", "", errs.ErrInvalidCredentials
 	}
 
 	// Embed role in the access token.
-	accessToken, err := s.tokenManager.GenerateWithRole(user.ID, user.RoleName)
+	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -108,15 +112,15 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		return "", "", fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	refreshToken := &domain.RefreshToken{
-		UserID:    user.ID,
+	rt := &token.RefreshToken{
+		UserID:    u.ID,
 		Token:     refreshTokenStr,
 		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
 		Revoked:   false,
 		CreatedAt: time.Now(),
 	}
 
-	if err = s.refreshTokenRepo.Create(ctx, refreshToken); err != nil {
+	if err = s.refreshTokenRepo.Create(ctx, rt); err != nil {
 		return "", "", fmt.Errorf("failed to save refresh token: %w", err)
 	}
 
@@ -129,7 +133,7 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (stri
 		return "", errs.ErrInvalidRefreshToken
 	}
 
-	token, err := s.refreshTokenRepo.GetByToken(ctx, refreshTokenStr)
+	rt, err := s.refreshTokenRepo.GetByToken(ctx, refreshTokenStr)
 	if err != nil {
 		if errors.Is(err, errs.ErrRefreshTokenNotFound) {
 			return "", errs.ErrInvalidRefreshToken
@@ -137,20 +141,20 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (stri
 		return "", err
 	}
 
-	if token.Revoked {
+	if rt.Revoked {
 		return "", errs.ErrInvalidRefreshToken
 	}
-	if token.ExpiresAt.Before(time.Now()) {
+	if rt.ExpiresAt.Before(time.Now()) {
 		return "", errs.ErrInvalidRefreshToken
 	}
 
 	// Look up user to get current role (role may have changed since last login).
-	user, err := s.repo.GetByID(ctx, token.UserID)
+	u, err := s.userRepo.GetByID(ctx, rt.UserID)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch user for refresh: %w", err)
 	}
 
-	accessToken, err := s.tokenManager.GenerateWithRole(user.ID, user.RoleName)
+	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate access token: %w", err)
 	}

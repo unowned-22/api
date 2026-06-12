@@ -6,26 +6,28 @@ import (
 	"testing"
 	"time"
 
-	domain "github.com/unowned-22/api/internal/domain/user"
+	domainRole "github.com/unowned-22/api/internal/domain/role"
+	domainToken "github.com/unowned-22/api/internal/domain/token"
+	domainUser "github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
 )
 
 // ── mock: UserRepository ─────────────────────────────────────────────────────
 
-type mockRepo struct {
-	users map[string]*domain.User
-	idMap map[int64]*domain.User
+type mockUserRepo struct {
+	users map[string]*domainUser.User
+	idMap map[int64]*domainUser.User
 	seq   int64
 }
 
-func newMockRepo() *mockRepo {
-	return &mockRepo{
-		users: make(map[string]*domain.User),
-		idMap: make(map[int64]*domain.User),
+func newMockUserRepo() *mockUserRepo {
+	return &mockUserRepo{
+		users: make(map[string]*domainUser.User),
+		idMap: make(map[int64]*domainUser.User),
 	}
 }
 
-func (m *mockRepo) Create(ctx context.Context, u *domain.User) error {
+func (m *mockUserRepo) Create(ctx context.Context, u *domainUser.User) error {
 	if _, ok := m.users[u.Email]; ok {
 		return errs.ErrUserAlreadyExists
 	}
@@ -42,7 +44,7 @@ func (m *mockRepo) Create(ctx context.Context, u *domain.User) error {
 	return nil
 }
 
-func (m *mockRepo) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+func (m *mockUserRepo) GetByEmail(ctx context.Context, email string) (*domainUser.User, error) {
 	u, ok := m.users[email]
 	if !ok {
 		return nil, errs.ErrUserNotFound
@@ -50,7 +52,7 @@ func (m *mockRepo) GetByEmail(ctx context.Context, email string) (*domain.User, 
 	return u, nil
 }
 
-func (m *mockRepo) GetByID(ctx context.Context, id int64) (*domain.User, error) {
+func (m *mockUserRepo) GetByID(ctx context.Context, id int64) (*domainUser.User, error) {
 	u, ok := m.idMap[id]
 	if !ok {
 		return nil, errs.ErrUserNotFound
@@ -61,15 +63,15 @@ func (m *mockRepo) GetByID(ctx context.Context, id int64) (*domain.User, error) 
 // ── mock: RefreshTokenRepository ─────────────────────────────────────────────
 
 type mockRefreshTokenRepo struct {
-	tokens map[string]*domain.RefreshToken
+	tokens map[string]*domainToken.RefreshToken
 	seq    int64
 }
 
 func newMockRefreshTokenRepo() *mockRefreshTokenRepo {
-	return &mockRefreshTokenRepo{tokens: make(map[string]*domain.RefreshToken)}
+	return &mockRefreshTokenRepo{tokens: make(map[string]*domainToken.RefreshToken)}
 }
 
-func (m *mockRefreshTokenRepo) Create(ctx context.Context, t *domain.RefreshToken) error {
+func (m *mockRefreshTokenRepo) Create(ctx context.Context, t *domainToken.RefreshToken) error {
 	m.seq++
 	t.ID = m.seq
 	cp := *t
@@ -77,16 +79,16 @@ func (m *mockRefreshTokenRepo) Create(ctx context.Context, t *domain.RefreshToke
 	return nil
 }
 
-func (m *mockRefreshTokenRepo) GetByToken(ctx context.Context, token string) (*domain.RefreshToken, error) {
-	t, ok := m.tokens[token]
+func (m *mockRefreshTokenRepo) GetByToken(ctx context.Context, tokenStr string) (*domainToken.RefreshToken, error) {
+	t, ok := m.tokens[tokenStr]
 	if !ok {
 		return nil, errs.ErrRefreshTokenNotFound
 	}
 	return t, nil
 }
 
-func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, token string) error {
-	t, ok := m.tokens[token]
+func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, tokenStr string) error {
+	t, ok := m.tokens[tokenStr]
 	if !ok {
 		return errs.ErrRefreshTokenNotFound
 	}
@@ -106,20 +108,20 @@ func (m *mockRefreshTokenRepo) DeleteExpired(ctx context.Context) error {
 // ── mock: RoleRepository ─────────────────────────────────────────────────────
 
 type mockRoleRepo struct {
-	byName map[string]*domain.Role
-	byID   map[int64]*domain.Role
+	byName map[string]*domainRole.Role
+	byID   map[int64]*domainRole.Role
 }
 
 func newMockRoleRepo() *mockRoleRepo {
-	userRole := &domain.Role{ID: 2, Name: "user"}
-	adminRole := &domain.Role{ID: 1, Name: "admin"}
+	userRole := &domainRole.Role{ID: 2, Name: "user"}
+	adminRole := &domainRole.Role{ID: 1, Name: "admin"}
 	return &mockRoleRepo{
-		byName: map[string]*domain.Role{"user": userRole, "admin": adminRole},
-		byID:   map[int64]*domain.Role{2: userRole, 1: adminRole},
+		byName: map[string]*domainRole.Role{"user": userRole, "admin": adminRole},
+		byID:   map[int64]*domainRole.Role{2: userRole, 1: adminRole},
 	}
 }
 
-func (m *mockRoleRepo) GetByID(ctx context.Context, id int64) (*domain.Role, error) {
+func (m *mockRoleRepo) GetByID(ctx context.Context, id int64) (*domainRole.Role, error) {
 	r, ok := m.byID[id]
 	if !ok {
 		return nil, errs.ErrRoleNotFound
@@ -127,7 +129,7 @@ func (m *mockRoleRepo) GetByID(ctx context.Context, id int64) (*domain.Role, err
 	return r, nil
 }
 
-func (m *mockRoleRepo) GetByName(ctx context.Context, name string) (*domain.Role, error) {
+func (m *mockRoleRepo) GetByName(ctx context.Context, name string) (*domainRole.Role, error) {
 	r, ok := m.byName[name]
 	if !ok {
 		return nil, errs.ErrRoleNotFound
@@ -135,15 +137,15 @@ func (m *mockRoleRepo) GetByName(ctx context.Context, name string) (*domain.Role
 	return r, nil
 }
 
-func (m *mockRoleRepo) List(ctx context.Context) ([]*domain.Role, error) {
-	roles := make([]*domain.Role, 0, len(m.byName))
+func (m *mockRoleRepo) List(ctx context.Context) ([]*domainRole.Role, error) {
+	roles := make([]*domainRole.Role, 0, len(m.byName))
 	for _, r := range m.byName {
 		roles = append(roles, r)
 	}
 	return roles, nil
 }
 
-// ── mock: TokenManagerExtended ───────────────────────────────────────────────
+// ── mock: token.ManagerExtended ──────────────────────────────────────────────
 
 type mockTokenManager struct{}
 
@@ -151,8 +153,8 @@ func (m *mockTokenManager) Generate(userID int64) (string, error) {
 	return "mock-token-for-user", nil
 }
 
-func (m *mockTokenManager) Parse(token string) (int64, error) {
-	if token == "mock-token-for-user" {
+func (m *mockTokenManager) Parse(tokenStr string) (int64, error) {
+	if tokenStr == "mock-token-for-user" {
 		return 1, nil
 	}
 	return 0, errors.New("invalid token")
@@ -162,8 +164,8 @@ func (m *mockTokenManager) GenerateWithRole(userID int64, role string) (string, 
 	return "mock-token-for-user", nil
 }
 
-func (m *mockTokenManager) ParseWithRole(token string) (int64, string, error) {
-	if token == "mock-token-for-user" {
+func (m *mockTokenManager) ParseWithRole(tokenStr string) (int64, string, error) {
+	if tokenStr == "mock-token-for-user" {
 		return 1, "user", nil
 	}
 	return 0, "", errors.New("invalid token")
@@ -172,11 +174,11 @@ func (m *mockTokenManager) ParseWithRole(token string) (int64, string, error) {
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestAuthService(t *testing.T) {
-	repo := newMockRepo()
+	userRepo := newMockUserRepo()
 	refreshTokenRepo := newMockRefreshTokenRepo()
 	roleRepo := newMockRoleRepo()
 	tm := &mockTokenManager{}
-	srv := NewAuthService(repo, refreshTokenRepo, roleRepo, tm)
+	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm)
 
 	ctx := context.Background()
 
@@ -243,7 +245,7 @@ func TestAuthService(t *testing.T) {
 	}
 
 	// 10. Refresh expired token
-	expiredToken := &domain.RefreshToken{
+	expiredToken := &domainToken.RefreshToken{
 		UserID:    1,
 		Token:     "expired-token",
 		ExpiresAt: time.Now().Add(-1 * time.Hour),
@@ -257,22 +259,22 @@ func TestAuthService(t *testing.T) {
 }
 
 func TestRegisterAssignsDefaultRole(t *testing.T) {
-	repo := newMockRepo()
-	srv := NewAuthService(repo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{})
+	userRepo := newMockUserRepo()
+	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{})
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
 
-	user, err := repo.GetByEmail(ctx, "newuser@example.com")
+	u, err := userRepo.GetByEmail(ctx, "newuser@example.com")
 	if err != nil {
 		t.Fatalf("GetByEmail failed: %v", err)
 	}
-	if user.RoleID != 2 {
-		t.Errorf("expected RoleID=2 (user), got %d", user.RoleID)
+	if u.RoleID != 2 {
+		t.Errorf("expected RoleID=2 (user), got %d", u.RoleID)
 	}
-	if user.RoleName != "user" {
-		t.Errorf("expected RoleName='user', got '%s'", user.RoleName)
+	if u.RoleName != "user" {
+		t.Errorf("expected RoleName='user', got '%s'", u.RoleName)
 	}
 }

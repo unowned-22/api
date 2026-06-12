@@ -4,47 +4,49 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/permission"
+	"github.com/unowned-22/api/internal/domain/token"
+	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/middleware"
 	"github.com/unowned-22/api/internal/transport/http/handler"
 )
 
-// NewRouter constructs the Chi router, registers middlewares, and sets up routes
+// NewRouter constructs the Chi router, registers middleware, and sets up all routes.
 func NewRouter(
 	authHandler *handler.AuthHandler,
 	userHandler *handler.UserHandler,
 	adminHandler *handler.AdminHandler,
-	tokenManager domain.TokenManager,
-	userService domain.UserService,
-	permissionService domain.PermissionService,
+	tokenManager token.Manager,
+	userService user.UserService,
+	permissionService permission.PermissionService,
 ) http.Handler {
 	r := chi.NewRouter()
 
-	// Register global middleware stack
+	// Global middleware stack.
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recover)
 
-	// Register routes under version prefix
 	r.Route("/api/v1", func(r chi.Router) {
-		// Public routes
+		// Public routes.
 		r.Post("/auth/register", authHandler.Register)
 		r.Post("/auth/login", authHandler.Login)
 		r.Post("/auth/refresh", authHandler.Refresh)
 		r.Post("/auth/logout", authHandler.Logout)
 
-		// Protected routes
+		// Authenticated routes.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth(tokenManager))
 
 			r.Get("/users/me", userHandler.Me)
 
-			// Admin only routes
+			// Role-gated: admin only.
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireRole("admin"))
 				r.Get("/admin/ping", adminHandler.Ping)
 			})
 
+			// Permission-gated: requires admin.access.
 			r.With(middleware.RequirePermission(permissionService, userService, "admin.access")).
 				Get("/admin/permissions", adminHandler.Permissions)
 		})

@@ -6,9 +6,12 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/token"
 )
 
+// JWTManager is the JWT-based implementation of token.Manager and
+// token.ManagerExtended.  It lives in the infrastructure layer so that
+// the domain never depends on the JWT library.
 type JWTManager struct {
 	secret string
 }
@@ -19,13 +22,13 @@ func NewJWTManager(secret string) *JWTManager {
 }
 
 // Generate creates a JWT access token containing only the user ID.
-// Satisfies the base TokenManager interface; kept for backward compatibility.
+// Satisfies token.Manager; kept for backward compatibility.
 func (m *JWTManager) Generate(userID int64) (string, error) {
 	return m.GenerateWithRole(userID, "")
 }
 
 // GenerateWithRole creates a JWT access token that embeds user ID and role.
-// Satisfies the TokenManagerExtended interface.
+// Satisfies token.ManagerExtended.
 func (m *JWTManager) GenerateWithRole(userID int64, role string) (string, error) {
 	claims := jwt.MapClaims{
 		"sub": strconv.FormatInt(userID, 10),
@@ -35,8 +38,8 @@ func (m *JWTManager) GenerateWithRole(userID int64, role string) (string, error)
 		claims["role"] = role
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(m.secret))
+	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := t.SignedString([]byte(m.secret))
 	if err != nil {
 		return "", fmt.Errorf("failed to sign token: %w", err)
 	}
@@ -44,16 +47,16 @@ func (m *JWTManager) GenerateWithRole(userID int64, role string) (string, error)
 }
 
 // Parse validates the JWT and returns the user ID.
-// Satisfies the base TokenManager interface.
+// Satisfies token.Manager.
 func (m *JWTManager) Parse(tokenString string) (int64, error) {
 	userID, _, err := m.ParseWithRole(tokenString)
 	return userID, err
 }
 
 // ParseWithRole validates the JWT and returns both user ID and role claim.
-// Satisfies the TokenManagerExtended interface.
+// Satisfies token.ManagerExtended.
 func (m *JWTManager) ParseWithRole(tokenString string) (int64, string, error) {
-	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+	t, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
@@ -63,8 +66,8 @@ func (m *JWTManager) ParseWithRole(tokenString string) (int64, string, error) {
 		return 0, "", fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok || !token.Valid {
+	claims, ok := t.Claims.(jwt.MapClaims)
+	if !ok || !t.Valid {
 		return 0, "", fmt.Errorf("invalid token claims")
 	}
 
@@ -84,5 +87,5 @@ func (m *JWTManager) ParseWithRole(tokenString string) (int64, string, error) {
 }
 
 // Compile-time interface compliance checks.
-var _ domain.TokenManager = (*JWTManager)(nil)
-var _ domain.TokenManagerExtended = (*JWTManager)(nil)
+var _ token.Manager = (*JWTManager)(nil)
+var _ token.ManagerExtended = (*JWTManager)(nil)

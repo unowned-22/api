@@ -4,31 +4,34 @@ import (
 	"net/http"
 
 	"github.com/unowned-22/api/internal/contextx"
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/permission"
+	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
+// AdminHandler handles admin-scoped HTTP routes.
 type AdminHandler struct {
-	userService       domain.UserService
-	permissionService domain.PermissionService
+	userService       user.UserService
+	permissionService permission.PermissionService
 }
 
-func NewAdminHandler(userService domain.UserService, permissionService domain.PermissionService) *AdminHandler {
+// NewAdminHandler creates a new AdminHandler.
+func NewAdminHandler(userService user.UserService, permissionService permission.PermissionService) *AdminHandler {
 	return &AdminHandler{
 		userService:       userService,
 		permissionService: permissionService,
 	}
 }
 
-// Ping returns a success message indicating admin access is verified
+// Ping returns a success message confirming admin access.
 func (h *AdminHandler) Ping(w http.ResponseWriter, r *http.Request) {
-	resp := dto.AdminPingResponse{
+	response.SendSuccess(w, http.StatusOK, dto.AdminPingResponse{
 		Message: "admin access granted",
-	}
-	response.SendSuccess(w, http.StatusOK, resp)
+	})
 }
 
+// Permissions lists all permissions held by the authenticated user's role.
 func (h *AdminHandler) Permissions(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -36,27 +39,27 @@ func (h *AdminHandler) Permissions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userService.GetProfile(r.Context(), userID)
+	u, err := h.userService.GetProfile(r.Context(), userID)
 	if err != nil {
 		response.SendError(w, err)
 		return
 	}
 
-	permissions, err := h.permissionService.GetPermissionsByRole(r.Context(), user.RoleID)
+	perms, err := h.permissionService.GetPermissionsByRole(r.Context(), u.RoleID)
 	if err != nil {
 		response.SendError(w, err)
 		return
 	}
 
 	resp := dto.AdminPermissionsResponse{
-		Permissions: make([]dto.PermissionResponse, 0, len(permissions)),
+		Permissions: make([]dto.PermissionResponse, 0, len(perms)),
 	}
-	for _, permission := range permissions {
+	for _, p := range perms {
 		resp.Permissions = append(resp.Permissions, dto.PermissionResponse{
-			ID:          permission.ID,
-			Name:        permission.Name,
-			Description: permission.Description,
-			CreatedAt:   permission.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ID:          p.ID,
+			Name:        p.Name,
+			Description: p.Description,
+			CreatedAt:   p.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		})
 	}
 

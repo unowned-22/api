@@ -4,21 +4,22 @@ import (
 	"net/http"
 
 	"github.com/unowned-22/api/internal/contextx"
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
+// UserHandler handles user-scoped HTTP routes.
 type UserHandler struct {
-	userService domain.UserService
+	userService user.UserService
 }
 
-// NewUserHandler creates a new instance of UserHandler
-func NewUserHandler(userService domain.UserService) *UserHandler {
+// NewUserHandler creates a new UserHandler.
+func NewUserHandler(userService user.UserService) *UserHandler {
 	return &UserHandler{userService: userService}
 }
 
-// Me retrieves profile details of the currently logged-in user
+// Me returns the profile of the currently authenticated user.
 func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -26,18 +27,16 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userService.GetProfile(r.Context(), userID)
+	u, err := h.userService.GetProfile(r.Context(), userID)
 	if err != nil {
 		response.SendError(w, err)
 		return
 	}
 
-	resp := dto.UserResponse{
-		ID:        user.ID,
-		Email:     user.Email,
-		Role:      user.RoleName,
-		CreatedAt: user.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	}
-
-	response.SendSuccess(w, http.StatusOK, resp)
+	response.SendSuccess(w, http.StatusOK, dto.UserResponse{
+		ID:        u.ID,
+		Email:     u.Email,
+		Role:      u.RoleName,
+		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
 }
