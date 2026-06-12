@@ -11,12 +11,13 @@ import (
 
 // NewPostgresPool creates and configures a pgx connection pool
 func NewPostgresPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		cfg.DBUser,
 		cfg.DBPass,
 		cfg.DBHost,
 		cfg.DBPort,
 		cfg.DBName,
+		cfg.DBSSLMode,
 	)
 
 	poolConfig, err := pgxpool.ParseConfig(connStr)

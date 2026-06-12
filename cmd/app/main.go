@@ -32,6 +32,9 @@ var (
 	Version   = "dev"
 	Commit    = "unknown"
 	BuildDate = "unknown"
+
+	migrateDownSteps  int
+	migrateResetForce bool
 )
 
 var rootCmd = &cobra.Command{
@@ -42,8 +45,8 @@ var rootCmd = &cobra.Command{
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start HTTP REST API server",
-	Run: func(cmd *cobra.Command, args []string) {
-		runServe()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runServe()
 	},
 }
 
@@ -74,7 +77,15 @@ var migrateDownCmd = &cobra.Command{
 	Use:   "down",
 	Short: "Rollback database migrations",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runMigrateDown()
+		return runMigrateDown(migrateDownSteps)
+	},
+}
+
+var migrateResetCmd = &cobra.Command{
+	Use:   "reset",
+	Short: "Rollback all database migrations",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runMigrateReset(migrateResetForce)
 	},
 }
 
@@ -96,8 +107,12 @@ var migrateCreateCmd = &cobra.Command{
 }
 
 func init() {
+	migrateDownCmd.Flags().IntVar(&migrateDownSteps, "steps", 1, "number of migrations to roll back")
+	migrateResetCmd.Flags().BoolVar(&migrateResetForce, "force", false, "confirm full migration rollback")
+
 	migrateCmd.AddCommand(migrateUpCmd)
 	migrateCmd.AddCommand(migrateDownCmd)
+	migrateCmd.AddCommand(migrateResetCmd)
 	migrateCmd.AddCommand(migrateVersionCmd)
 	migrateCmd.AddCommand(migrateCreateCmd)
 
@@ -113,16 +128,17 @@ func main() {
 }
 
 // runServe starts the REST API server with Graceful Shutdown
-func runServe() {
+func runServe() error {
 	// 1. Config
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// 2. Logger
-	logger.Init()
+	if err := logger.Init(); err != nil {
+		return fmt.Errorf("failed to initialize logger: %w", err)
+	}
 	logger.Log.Info("Logger successfully initialized")
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -131,9 +147,12 @@ func runServe() {
 	// 3. PostgreSQL
 	pool, err := database.NewPostgresPool(ctx, cfg)
 	if err != nil {
-		logger.Log.Fatalf("failed to connect to database: %v", err)
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	defer pool.Close()
+	defer func() {
+		pool.Close()
+		logger.Log.Info("PostgreSQL connection pool closed successfully")
+	}()
 	logger.Log.Info("PostgreSQL connection pool established")
 
 	// 4. Repositories
@@ -159,24 +178,46 @@ func runServe() {
 
 	// 9. HTTP Server
 	srv := &http.Server{
-		Addr:    ":" + cfg.AppPort,
-		Handler: router,
+		Addr:              ":" + cfg.AppPort,
+		Handler:           router,
+		ReadTimeout:       10 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 
 	// Graceful Shutdown setup
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(shutdown)
 
+	logger.Log.WithFields(map[string]interface{}{
+		"service": "api",
+		"version": Version,
+		"commit":  Commit,
+		"env":     cfg.AppEnv,
+		"port":    cfg.AppPort,
+		"db_host": cfg.DBHost,
+	}).Info("Starting application")
+
+	errCh := make(chan error, 1)
 	go func() {
 		logger.Log.Infof("Starting server on port %s", cfg.AppPort)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Log.Fatalf("failed to start HTTP server: %v", err)
+			errCh <- fmt.Errorf("failed to start HTTP server: %w", err)
 		}
 	}()
 
-	// Wait for termination signal
-	sig := <-shutdown
-	logger.Log.Infof("Received termination signal (%s), initiating graceful shutdown...", sig)
+	select {
+	case sig := <-shutdown:
+		logger.Log.Infof("Received termination signal (%s), initiating graceful shutdown...", sig)
+	case err := <-errCh:
+		logger.Log.Error(err)
+		cancel()
+		return err
+	}
+
+	cancel()
 
 	ctxShut, cancelShut := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelShut()
@@ -188,20 +229,18 @@ func runServe() {
 		logger.Log.Info("HTTP server stopped accepting new requests")
 	}
 
-	// 2. Close PostgreSQL connection pool (handled by defer but we can call it explicitly or log it here)
-	pool.Close()
-	logger.Log.Info("PostgreSQL connection pool closed successfully")
-
 	logger.Log.Info("Graceful shutdown completed. Exiting.")
+	return nil
 }
 
 func getMigrator(cfg *config.Config) (*migrate.Migrate, error) {
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
 		cfg.DBUser,
 		cfg.DBPass,
 		cfg.DBHost,
 		cfg.DBPort,
 		cfg.DBName,
+		cfg.DBSSLMode,
 	)
 	m, err := migrate.New("file://migrations", connStr)
 	if err != nil {
@@ -234,7 +273,39 @@ func runMigrateUp() error {
 	return nil
 }
 
-func runMigrateDown() error {
+func runMigrateDown(steps int) error {
+	if steps < 1 {
+		return fmt.Errorf("steps must be greater than zero")
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	m, err := getMigrator(cfg)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+
+	if err := m.Steps(-steps); err != nil {
+		if errors.Is(err, migrate.ErrNoChange) {
+			fmt.Println("No migrations to rollback.")
+			return nil
+		}
+		return fmt.Errorf("failed to rollback migrations: %w", err)
+	}
+
+	fmt.Printf("Rolled back %d migration(s) successfully!\n", steps)
+	return nil
+}
+
+func runMigrateReset(force bool) error {
+	if !force {
+		return fmt.Errorf("refuse execution: use --force to rollback all migrations")
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -251,10 +322,10 @@ func runMigrateDown() error {
 			fmt.Println("No migrations to rollback.")
 			return nil
 		}
-		return fmt.Errorf("failed to rollback migrations: %w", err)
+		return fmt.Errorf("failed to reset migrations: %w", err)
 	}
 
-	fmt.Println("Migrations rolled back successfully!")
+	fmt.Println("All migrations rolled back successfully!")
 	return nil
 }
 
@@ -319,6 +390,9 @@ func runMigrateCreate(name string) error {
 		return fmt.Errorf("failed to create up migration: %w", err)
 	}
 	if err := os.WriteFile(downFile, []byte(""), 0644); err != nil {
+		if removeErr := os.Remove(upFile); removeErr != nil {
+			return fmt.Errorf("failed to create down migration: %w; additionally failed to remove up migration: %v", err, removeErr)
+		}
 		return fmt.Errorf("failed to create down migration: %w", err)
 	}
 
