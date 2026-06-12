@@ -24,7 +24,7 @@ Initial permissions:
 
 ## Requirements
 
-* Go 1.25+
+* Go 1.26+
 * PostgreSQL
 
 ---

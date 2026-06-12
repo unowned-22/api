@@ -1,0 +1,117 @@
+package response
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+
+	"github.com/unowned-22/api/internal/errs"
+	"github.com/unowned-22/api/internal/logger"
+)
+
+type SuccessResponse struct {
+	Data interface{} `json:"data"`
+}
+
+type ErrorDetail struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type ErrorResponse struct {
+	Error ErrorDetail `json:"error"`
+}
+
+// SendSuccess sends a JSON response with status 2xx and data wrapper
+func SendSuccess(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(SuccessResponse{Data: data})
+}
+
+// SendError maps application errors to standard HTTP response formats and writes to ResponseWriter
+func SendError(w http.ResponseWriter, err error) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var status int
+	var code string
+	var message string
+
+	if errors.Is(err, errs.ErrUserNotFound) {
+		status = http.StatusNotFound
+		code = "USER_NOT_FOUND"
+		message = "user not found"
+	} else if errors.Is(err, errs.ErrUserAlreadyExists) {
+		status = http.StatusConflict
+		code = "USER_ALREADY_EXISTS"
+		message = "user already exists"
+	} else if errors.Is(err, errs.ErrInvalidCredentials) {
+		status = http.StatusUnauthorized
+		code = "INVALID_CREDENTIALS"
+		message = "invalid email or password"
+	} else if errors.Is(err, errs.ErrInvalidRefreshToken) || errors.Is(err, errs.ErrRefreshTokenNotFound) {
+		status = http.StatusUnauthorized
+		code = "INVALID_REFRESH_TOKEN"
+		message = "refresh token is invalid"
+	} else if errors.Is(err, errs.ErrRoleNotFound) {
+		status = http.StatusInternalServerError
+		code = "INTERNAL_SERVER_ERROR"
+		message = "internal server error"
+	} else if errors.Is(err, errs.ErrForbidden) {
+		status = http.StatusForbidden
+		code = "FORBIDDEN"
+		message = "you do not have permission to access this resource"
+	} else {
+		// Log the actual internal error so we don't lose context
+		if logger.Log != nil {
+			logger.Log.WithError(err).Error("Internal server error encountered")
+		}
+		status = http.StatusInternalServerError
+		code = "INTERNAL_SERVER_ERROR"
+		message = "internal server error"
+	}
+
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error: ErrorDetail{
+			Code:    code,
+			Message: message,
+		},
+	})
+}
+
+// SendBadRequest sends a custom 400 Bad Request error response
+func SendBadRequest(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error: ErrorDetail{
+			Code:    "BAD_REQUEST",
+			Message: message,
+		},
+	})
+}
+
+// SendUnauthorized sends a custom 401 Unauthorized error response
+func SendUnauthorized(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error: ErrorDetail{
+			Code:    "UNAUTHORIZED",
+			Message: message,
+		},
+	})
+}
+
+// SendForbidden sends a custom 403 Forbidden error response
+func SendForbidden(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error: ErrorDetail{
+			Code:    "FORBIDDEN",
+			Message: message,
+		},
+	})
+}

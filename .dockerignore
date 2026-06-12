@@ -1,0 +1,15 @@
+.git
+.gitignore
+
+bin
+dist
+
+coverage.out
+coverage.html
+
+.env
+
+.idea
+.vscode
+
+tmp

@@ -1,0 +1,4 @@
+DROP INDEX IF EXISTS idx_users_role_id;
+ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_users_role;
+ALTER TABLE users DROP COLUMN IF EXISTS role_id;
+DROP TABLE IF EXISTS roles;
