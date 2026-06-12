@@ -5,19 +5,19 @@ import (
 	"errors"
 	"net/http"
 
-	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/auth"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 	"github.com/unowned-22/api/internal/validator"
 )
 
 type AuthHandler struct {
-	userService domain.UserService
+	authService auth.AuthService
 }
 
 // NewAuthHandler creates a new instance of AuthHandler
-func NewAuthHandler(userService domain.UserService) *AuthHandler {
-	return &AuthHandler{userService: userService}
+func NewAuthHandler(authService auth.AuthService) *AuthHandler {
+	return &AuthHandler{authService: authService}
 }
 
 // Register processes user registration requests
@@ -33,12 +33,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			response.SendValidationError(w, toFieldErrors(ve.Fields))
 			return
 		}
-
 		response.SendBadRequest(w, "invalid request")
 		return
 	}
 
-	if err := h.userService.Register(r.Context(), req.Email, req.Password); err != nil {
+	authReq := auth.RegisterRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	}
+
+	if err := h.authService.Register(r.Context(), authReq); err != nil {
 		response.SendError(w, err)
 		return
 	}
@@ -63,7 +67,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
+	authReq := auth.LoginRequest{
+		Email:    req.Email,
+		Password: req.Password,
+	}
+
+	accessToken, refreshToken, err := h.authService.Login(r.Context(), authReq)
 	if err != nil {
 		response.SendError(w, err)
 		return
@@ -92,7 +101,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := h.userService.Refresh(r.Context(), req.RefreshToken)
+	accessToken, err := h.authService.Refresh(r.Context(), req.RefreshToken)
 	if err != nil {
 		response.SendError(w, err)
 		return
@@ -120,7 +129,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.userService.Logout(r.Context(), req.RefreshToken)
+	err := h.authService.Logout(r.Context(), req.RefreshToken)
 	if err != nil {
 		response.SendError(w, err)
 		return
