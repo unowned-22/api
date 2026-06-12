@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
@@ -19,7 +20,7 @@ func NewAuthHandler(userService domain.UserService) *AuthHandler {
 
 // Register processes user registration requests
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var req domain.RegisterRequest
+	var req dto.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -30,7 +31,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.userService.Register(r.Context(), req); err != nil {
+	if err := h.userService.Register(r.Context(), req.Email, req.Password); err != nil {
 		response.SendError(w, err)
 		return
 	}
@@ -38,14 +39,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusCreated, map[string]string{"message": "user registered successfully"})
 }
 
-type LoginResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-}
-
 // Login processes user authentication requests and returns access and refresh tokens
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var req domain.LoginRequest
+	var req dto.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -56,29 +52,21 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.userService.Login(r.Context(), req)
+	accessToken, refreshToken, err := h.userService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		response.SendError(w, err)
 		return
 	}
 
-	response.SendSuccess(w, http.StatusOK, LoginResponse{
+	response.SendSuccess(w, http.StatusOK, dto.AuthResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	})
 }
 
-type RefreshRequest struct {
-	RefreshToken string `json:"refresh_token"`
-}
-
-type RefreshResponse struct {
-	AccessToken string `json:"access_token"`
-}
-
 // Refresh issues a new access token using a valid refresh token
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
-	var req RefreshRequest
+	var req dto.RefreshRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -95,18 +83,14 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.SendSuccess(w, http.StatusOK, RefreshResponse{
+	response.SendSuccess(w, http.StatusOK, dto.AuthResponse{
 		AccessToken: accessToken,
 	})
 }
 
-type LogoutRequest struct {
-	RefreshToken string `json:"refresh_token"`
-}
-
 // Logout revokes the given refresh token
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	var req LogoutRequest
+	var req dto.LogoutRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.SendBadRequest(w, "invalid request body")
 		return

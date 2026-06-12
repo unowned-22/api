@@ -5,6 +5,7 @@ import (
 
 	"github.com/unowned-22/api/internal/contextx"
 	domain "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
@@ -15,13 +16,6 @@ type UserHandler struct {
 // NewUserHandler creates a new instance of UserHandler
 func NewUserHandler(userService domain.UserService) *UserHandler {
 	return &UserHandler{userService: userService}
-}
-
-type UserResponse struct {
-	ID        int64  `json:"id"`
-	Email     string `json:"email"`
-	Role      string `json:"role"`
-	CreatedAt string `json:"created_at"`
 }
 
 // Me retrieves profile details of the currently logged-in user
@@ -38,7 +32,7 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := UserResponse{
+	resp := dto.UserResponse{
 		ID:        user.ID,
 		Email:     user.Email,
 		Role:      user.RoleName,
