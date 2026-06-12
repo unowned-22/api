@@ -46,7 +46,7 @@ Requirements:
 * Must remain independent of PostgreSQL implementation details.
 * Passwords must only be stored and processed as hashes using:
 
-```go id="pxrk1w"
+```go
 golang.org/x/crypto/bcrypt
 ```
 
@@ -62,7 +62,7 @@ Requirements:
 
 * Must use:
 
-```go id="5zkr8u"
+```go
 github.com/jackc/pgx/v5/pgxpool
 ```
 
@@ -101,13 +101,13 @@ Requirements:
 
 * Routing must be implemented using:
 
-```go id="e1u6jf"
+```go
 github.com/go-chi/chi/v5
 ```
 
 * Direct usage of:
 
-```go id="sd4hqi"
+```go
 http.Error(...)
 ```
 
@@ -117,7 +117,7 @@ All responses must be returned through the centralized response package and foll
 
 Success response:
 
-```json id="jv73bz"
+```json
 {
   "data": {}
 }
@@ -125,7 +125,7 @@ Success response:
 
 Error response:
 
-```json id="0pdb6j"
+```json
 {
   "error": {
     "code": "ERR_CODE",
@@ -142,7 +142,7 @@ Business logic inside handlers is strictly prohibited.
 
 Application entry point and bootstrap layer based on:
 
-```go id="6iwv4u"
+```go
 github.com/spf13/cobra
 ```
 
@@ -196,7 +196,7 @@ Requirements:
 
 * Shutdown timeout:
 
-```go id="xj6t2e"
+```go
 5 * time.Second
 ```
 
@@ -217,7 +217,7 @@ Authentication must be implemented through the `TokenManager` abstraction.
 
 The Domain layer defines the interface:
 
-```go id="0g1eij"
+```go
 type TokenManager interface {
     Generate(userID int64) (string, error)
     Parse(token string) (int64, error)
@@ -264,7 +264,7 @@ Requirements:
 
 Example:
 
-```json id="gt6p6i"
+```json
 {
   "level": "info",
   "method": "POST",
@@ -298,7 +298,7 @@ internal/errs/errors.go
 
 Example:
 
-```go id="4y8f5t"
+```go
 var (
     ErrUserNotFound       = errors.New("user not found")
     ErrInvalidCredentials = errors.New("invalid credentials")

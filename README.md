@@ -37,11 +37,13 @@ Create a `.env` file in the project root directory (default values are already i
 
 ```env
 APP_PORT=8080
+APP_ENV=development
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=postgres
 DB_NAME=unnamed_db
+DB_SSL_MODE=disable
 JWT_SECRET=super-secret-key-change-me-in-production
 ```
 
@@ -87,10 +89,21 @@ The application supports the following CLI commands:
 ./app migrate up
 ```
 
-### Roll back all migrations
+### Roll back migrations
+
+By default this rolls back one migration. Use `--steps` to roll back more than one migration.
 
 ```bash
 ./app migrate down
+./app migrate down --steps 3
+```
+
+### Roll back all migrations
+
+Full rollback requires explicit confirmation.
+
+```bash
+./app migrate reset --force
 ```
 
 ### Show current migration version

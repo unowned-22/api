@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -9,7 +10,7 @@ import (
 // Log is the singleton logger instance
 var Log *logrus.Logger
 
-func Init() {
+func Init() error {
 	Log = logrus.New()
 
 	// Configure JSON Formatter as required
@@ -27,7 +28,8 @@ func Init() {
 
 	level, err := logrus.ParseLevel(levelStr)
 	if err != nil {
-		level = logrus.InfoLevel
+		return fmt.Errorf("invalid LOG_LEVEL %q: %w", levelStr, err)
 	}
 	Log.SetLevel(level)
+	return nil
 }
