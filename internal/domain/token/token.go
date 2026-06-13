@@ -2,6 +2,8 @@ package token
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 )
 
@@ -21,7 +23,7 @@ const (
 type RefreshToken struct {
 	ID        int64
 	UserID    int64
-	Token     string
+	TokenHash string
 	ExpiresAt time.Time
 	Status    RefreshTokenStatus
 	CreatedAt time.Time
@@ -32,6 +34,12 @@ func (t *RefreshToken) EffectiveStatus() RefreshTokenStatus {
 		return RefreshTokenStatusExpired
 	}
 	return t.Status
+}
+
+// HashRefreshToken returns a SHA-256 hex string for the provided refresh token.
+func HashRefreshToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
 }
 
 // RefreshTokenRepository defines the persistence contract for refresh tokens.

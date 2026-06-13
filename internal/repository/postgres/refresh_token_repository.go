@@ -24,11 +24,11 @@ func NewRefreshTokenRepository(db *pgxpool.Pool) *RefreshTokenRepository {
 // CreateRefreshToken inserts a new refresh token into the database.
 func (r *RefreshTokenRepository) CreateRefreshToken(ctx context.Context, t *token.RefreshToken) error {
 	query := `
-		INSERT INTO refresh_tokens (user_id, token, expires_at, status, created_at)
+		INSERT INTO refresh_tokens (user_id, token_hash, expires_at, status, created_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
 	`
-	err := r.db.QueryRow(ctx, query, t.UserID, t.Token, t.ExpiresAt, t.Status, t.CreatedAt).Scan(&t.ID)
+	err := r.db.QueryRow(ctx, query, t.UserID, t.TokenHash, t.ExpiresAt, t.Status, t.CreatedAt).Scan(&t.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create refresh token in db: %w", err)
 	}
@@ -37,14 +37,15 @@ func (r *RefreshTokenRepository) CreateRefreshToken(ctx context.Context, t *toke
 
 // GetByToken retrieves a refresh token by its token string value.
 func (r *RefreshTokenRepository) GetByToken(ctx context.Context, tokenStr string) (*token.RefreshToken, error) {
+	hash := token.HashRefreshToken(tokenStr)
 	query := `
-		SELECT id, user_id, token, expires_at, status, created_at
+		SELECT id, user_id, token_hash, expires_at, status, created_at
 		FROM refresh_tokens
-		WHERE token = $1
+		WHERE token_hash = $1
 	`
 	var t token.RefreshToken
-	err := r.db.QueryRow(ctx, query, tokenStr).
-		Scan(&t.ID, &t.UserID, &t.Token, &t.ExpiresAt, &t.Status, &t.CreatedAt)
+	err := r.db.QueryRow(ctx, query, hash).
+		Scan(&t.ID, &t.UserID, &t.TokenHash, &t.ExpiresAt, &t.Status, &t.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrRefreshTokenNotFound
@@ -56,12 +57,13 @@ func (r *RefreshTokenRepository) GetByToken(ctx context.Context, tokenStr string
 
 // RevokeRefreshToken marks a refresh token as revoked.
 func (r *RefreshTokenRepository) RevokeRefreshToken(ctx context.Context, tokenStr string) error {
+	hash := token.HashRefreshToken(tokenStr)
 	query := `
 		UPDATE refresh_tokens
 		SET status = $1
-		WHERE token = $2
+		WHERE token_hash = $2
 	`
-	res, err := r.db.Exec(ctx, query, token.RefreshTokenStatusRevoked, tokenStr)
+	res, err := r.db.Exec(ctx, query, token.RefreshTokenStatusRevoked, hash)
 	if err != nil {
 		return fmt.Errorf("failed to revoke refresh token in db: %w", err)
 	}

@@ -137,12 +137,13 @@ func (m *mockRefreshTokenRepo) CreateRefreshToken(ctx context.Context, t *domain
 	m.seq++
 	t.ID = m.seq
 	cp := *t
-	m.tokens[t.Token] = &cp
+	m.tokens[t.TokenHash] = &cp
 	return nil
 }
 
 func (m *mockRefreshTokenRepo) GetByToken(ctx context.Context, tokenStr string) (*domainToken.RefreshToken, error) {
-	t, ok := m.tokens[tokenStr]
+	hash := domainToken.HashRefreshToken(tokenStr)
+	t, ok := m.tokens[hash]
 	if !ok {
 		return nil, errs.ErrRefreshTokenNotFound
 	}
@@ -150,7 +151,8 @@ func (m *mockRefreshTokenRepo) GetByToken(ctx context.Context, tokenStr string) 
 }
 
 func (m *mockRefreshTokenRepo) RevokeRefreshToken(ctx context.Context, tokenStr string) error {
-	t, ok := m.tokens[tokenStr]
+	hash := domainToken.HashRefreshToken(tokenStr)
+	t, ok := m.tokens[hash]
 	if !ok {
 		return errs.ErrRefreshTokenNotFound
 	}
@@ -261,6 +263,14 @@ func TestAuthService(t *testing.T) {
 		t.Fatalf("Register failed: %v", err)
 	}
 
+	// Force verify email for the mock user so login succeeds.
+	u, err := userRepo.GetByEmail(ctx, "test@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail failed: %v", err)
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+
 	// 2. Duplicate register
 	err = srv.Register(ctx, RegisterRequest{Email: "test@example.com", Password: "password123"})
 	if !errors.Is(err, errs.ErrUserAlreadyExists) {
@@ -327,14 +337,15 @@ func TestAuthService(t *testing.T) {
 	}
 
 	// 11. Refresh expired token
+	expiredTokenValue := "expired-token"
 	expiredToken := &domainToken.RefreshToken{
 		UserID:    1,
-		Token:     "expired-token",
+		TokenHash: domainToken.HashRefreshToken(expiredTokenValue),
 		ExpiresAt: time.Now().Add(-1 * time.Hour),
 		Status:    domainToken.RefreshTokenStatusActive,
 	}
 	_ = refreshTokenRepo.CreateRefreshToken(ctx, expiredToken)
-	_, _, err = srv.Refresh(ctx, "expired-token")
+	_, _, err = srv.Refresh(ctx, expiredTokenValue)
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken for expired token, got %v", err)
 	}
@@ -360,5 +371,48 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 	}
 	if u.RoleName != "user" {
 		t.Errorf("expected RoleName='user', got '%s'", u.RoleName)
+	}
+}
+
+func TestLoginStoresRefreshTokenHashOnly(t *testing.T) {
+	userRepo := newMockUserRepo()
+	refreshTokenRepo := newMockRefreshTokenRepo()
+	roleRepo := newMockRoleRepo()
+	tm := &mockTokenManager{}
+	mailer := &mockMailer{}
+	publisher := &mockEventPublisher{}
+	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, publisher, "http://localhost:3222", "App")
+	ctx := context.Background()
+
+	if err := srv.Register(ctx, RegisterRequest{Email: "security@example.com", Password: "password123"}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	// Force verify email for the mock user so login succeeds.
+	u, err := userRepo.GetByEmail(ctx, "security@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail failed: %v", err)
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+
+	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "security@example.com", Password: "password123"})
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	if refreshToken == "" {
+		t.Fatal("expected refresh token")
+	}
+
+	hash := domainToken.HashRefreshToken(refreshToken)
+	if _, ok := refreshTokenRepo.tokens[hash]; !ok {
+		t.Fatalf("expected token hash stored in repository")
+	}
+
+	for key := range refreshTokenRepo.tokens {
+		if key == refreshToken {
+			t.Fatal("plain refresh token must not be stored")
+		}
 	}
 }
