@@ -334,6 +334,48 @@ components:
           items:
             $ref: '#/components/schemas/SystemSetting'
 
+    # ── User Settings ─────────────────────────────────────────────────────────
+    UserSettings:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          format: int64
+          example: 1
+        storage_quota_bytes:
+          type: integer
+          format: int64
+          example: 1073741824
+        storage_used_bytes:
+          type: integer
+          format: int64
+          example: 12345678
+        bucket_name:
+          type: string
+          example: user-1-bucket
+        theme:
+          type: object
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-13T12:00:00Z"
+
+    UpdateThemeRequest:
+      type: object
+      required: [theme]
+      properties:
+        theme:
+          type: object
+
+    AdminUpdateQuotaRequest:
+      type: object
+      required: [storage_quota_bytes]
+      properties:
+        storage_quota_bytes:
+          type: integer
+          format: int64
+          example: 2147483648
+
     UpdateSystemSettingRequest:
       type: object
       required: [key, value]
@@ -688,6 +730,129 @@ paths:
                   message: password changed successfully
         "400": { $ref: '#/components/responses/400BadRequest' }
         "401": { $ref: '#/components/responses/401Unauthorized' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/users/me/settings:
+    get:
+      tags: [users]
+      summary: Get current user's settings
+      description: Returns storage and UI settings for the authenticated user.
+      operationId: usersGetMySettings
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UserSettings'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    patch:
+      tags: [users]
+      summary: Update current user's settings (theme)
+      description: Allows the authenticated user to update their UI `theme` object.
+      operationId: usersUpdateMySettings
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateThemeRequest'
+      responses:
+        "200":
+          description: Theme updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/admin/users/{id}/settings:
+    get:
+      tags: [admin]
+      summary: Get a user's settings (admin)
+      description: Returns storage and UI settings for a specific user. Admin access required.
+      operationId: adminGetUserSettings
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: User settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UserSettings'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    patch:
+      tags: [admin]
+      summary: Update a user's settings (admin)
+      description: Admins can update a user's storage quota and bucket name.
+      operationId: adminUpdateUserSettings
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                storage_quota_bytes:
+                  type: integer
+                  format: int64
+                bucket_name:
+                  type: string
+      responses:
+        "200":
+          description: User settings updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
         "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
 

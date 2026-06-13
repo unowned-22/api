@@ -6,6 +6,7 @@ import (
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/domain/systemsettings"
 	"github.com/unowned-22/api/internal/domain/token"
+	"github.com/unowned-22/api/internal/domain/usersettings"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	outboxpub "github.com/unowned-22/api/internal/infrastructure/outbox"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
@@ -19,6 +20,7 @@ type Services struct {
 	Permission     *service.PermissionService
 	Health         *service.HealthService
 	SystemSettings systemsettings.Service
+	UserSettings   usersettings.Service
 }
 
 // InitServices constructs application services from repositories and infra.
@@ -43,6 +45,7 @@ func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, t
 	permissionSvc := service.NewPermissionService(repos.Permission)
 	healthSvc := service.NewHealthService(pool)
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)
+	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)
 
 	return &Services{
 		Auth:           authSvc,
@@ -51,5 +54,6 @@ func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, t
 		Permission:     permissionSvc,
 		Health:         healthSvc,
 		SystemSettings: systemSettingsSvc,
+		UserSettings:   userSettingsSvc,
 	}
 }

@@ -1,5 +1,7 @@
 package dto
 
+import "encoding/json"
+
 // RegisterRequest is the HTTP request body for user registration.
 type RegisterRequest struct {
 	Email    string `json:"email"     validate:"required,email"`
@@ -59,4 +61,14 @@ type UpdateProfileRequest struct {
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" validate:"required"`
 	NewPassword     string `json:"new_password" validate:"required,min=8"`
+}
+
+// UpdateThemeRequest is used by users to update their theme.
+type UpdateThemeRequest struct {
+	Theme json.RawMessage `json:"theme" validate:"required"`
+}
+
+// AdminUpdateQuotaRequest is used by admins to set a user's storage quota.
+type AdminUpdateQuotaRequest struct {
+	StorageQuotaBytes int64 `json:"storage_quota_bytes" validate:"required"`
 }
