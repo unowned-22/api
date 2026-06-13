@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/unowned-22/api/internal/pagination"
@@ -9,6 +11,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
+	"github.com/unowned-22/api/internal/validator"
 )
 
 // UserHandler handles user-scoped HTTP routes.
@@ -29,6 +32,52 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	u, err := h.userService.GetProfile(r.Context(), userID)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.UserResponse{
+		ID:        u.ID,
+		Email:     u.Email,
+		FullName:  u.FullName,
+		Username:  u.Username,
+		Phone:     u.Phone,
+		Role:      u.RoleName,
+		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+
+// UpdateProfile updates the profile of the currently authenticated user.
+func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	var req dto.UpdateProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.SendBadRequest(w, "invalid request body")
+		return
+	}
+
+	if err := validator.Validate(&req); err != nil {
+		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
+			response.SendValidationError(w, toFieldErrors(ve.Fields))
+			return
+		}
+		response.SendBadRequest(w, "invalid request")
+		return
+	}
+
+	if err := h.userService.UpdateProfile(r.Context(), userID, req.FullName, req.Username, req.Phone); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	// Return updated profile
 	u, err := h.userService.GetProfile(r.Context(), userID)
 	if err != nil {
 		response.SendError(w, r, err)

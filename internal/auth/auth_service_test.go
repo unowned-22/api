@@ -132,6 +132,23 @@ func (m *mockUserRepo) SetDeactivatedAt(ctx context.Context, userID int64, t *ti
 	return nil
 }
 
+func (m *mockUserRepo) UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	// ensure username uniqueness
+	for _, other := range m.idMap {
+		if other.ID != userID && other.Username == username {
+			return errs.ErrUsernameAlreadyExists
+		}
+	}
+	u.FullName = fullName
+	u.Username = username
+	u.Phone = phone
+	return nil
+}
+
 func (m *mockUserRepo) List(ctx context.Context, offset int, limit int) ([]*domainUser.User, error) {
 	var out []*domainUser.User
 	for _, u := range m.idMap {

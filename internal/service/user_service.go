@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 
+	"github.com/unowned-22/api/internal/validator"
+
 	"github.com/unowned-22/api/internal/domain/user"
 )
 
@@ -39,6 +41,19 @@ func (s *UserService) ListUsers(ctx context.Context, page int, limit int) ([]*us
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+// UpdateProfile validates and updates the user's profile fields.
+func (s *UserService) UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error {
+	if err := validator.Validate(struct {
+		FullName string `validate:"required,min=2,max=100"`
+		Username string `validate:"required,min=3,max=30,username"`
+		Phone    string `validate:"omitempty,phone"`
+	}{FullName: fullName, Username: username, Phone: phone}); err != nil {
+		return err
+	}
+
+	return s.repo.UpdateProfile(ctx, userID, fullName, username, phone)
 }
 
 // Compile-time check that UserService satisfies the domain contract.
