@@ -38,6 +38,15 @@ func NewRouter(
 	r.Get("/health/live", healthHandler.Live)
 	r.Get("/health/ready", healthHandler.Ready)
 
+	// ── Swagger UI (development only) ─────────────────────────────────────────
+	if handler.SwaggerAvailableInEnv(cfg.AppEnv) {
+		swaggerHandler := handler.NewSwaggerHandler()
+
+		r.Get("/swagger", swaggerHandler.Redirect)
+		r.Get("/swagger/index.html", swaggerHandler.Index)
+		r.Get("/swagger/openapi.yaml", swaggerHandler.Spec)
+	}
+
 	r.Route("/api/v1", func(r chi.Router) {
 		// Global rate limiter for /api/v1
 		r.Use(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst))

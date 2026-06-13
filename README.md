@@ -73,6 +73,28 @@ Run the server:
 
 ---
 
+## API Documentation (Swagger UI)
+
+When `APP_ENV` is set to `development`, the interactive Swagger UI is available at:
+
+```
+http://localhost:8080/swagger/index.html
+```
+
+The raw OpenAPI 3.0 spec is served at:
+
+```
+http://localhost:8080/swagger/openapi.yaml
+```
+
+The spec is embedded into the binary from `internal/docs/openapi.yaml` — no separate build step required.
+
+> **Note for contributors:** every new or changed endpoint must be reflected in `internal/docs/openapi.yaml` in the same PR. See `AGENTS.md` § 5 for the full checklist.
+
+Swagger UI is **not** available when `APP_ENV=production`.
+
+---
+
 ## CLI Usage
 
 The application supports the following CLI commands:
