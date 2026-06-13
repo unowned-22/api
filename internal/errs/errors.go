@@ -6,6 +6,7 @@ var (
 	ErrUserNotFound              = errors.New("user not found")
 	ErrInvalidCredentials        = errors.New("invalid credentials")
 	ErrUserAlreadyExists         = errors.New("user already exists")
+	ErrUsernameAlreadyExists     = errors.New("username already exists")
 	ErrInvalidRefreshToken       = errors.New("refresh token is invalid")
 	ErrRefreshTokenNotFound      = errors.New("refresh token not found")
 	ErrRoleNotFound              = errors.New("role not found")

@@ -25,6 +25,9 @@ import (
 type RegisterRequest struct {
 	Email    string
 	Password string
+	FullName string
+	Username string
+	Phone    string
 }
 
 type LoginRequest struct {
@@ -99,6 +102,9 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 		Email:     req.Email,
 		Password:  string(hashedPassword),
 		RoleID:    defaultRole.ID,
+		FullName:  req.FullName,
+		Username:  req.Username,
+		Phone:     req.Phone,
 		CreatedAt: time.Now(),
 	}
 
@@ -106,19 +112,19 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 		return err
 	}
 
-	token, err := generateVerificationToken()
+	verificationToken, err := generateVerificationToken()
 	if err != nil {
 		return fmt.Errorf("failed to generate verification token: %w", err)
 	}
 	expiresAt := time.Now().Add(24 * time.Hour)
-	if err := s.userRepo.SetVerificationToken(ctx, u.ID, token, expiresAt); err != nil {
+	if err := s.userRepo.SetVerificationToken(ctx, u.ID, verificationToken, expiresAt); err != nil {
 		return fmt.Errorf("failed to persist verification token: %w", err)
 	}
 
 	payload, err := json.Marshal(map[string]interface{}{
 		"user_id": u.ID,
 		"email":   u.Email,
-		"token":   token,
+		"token":   verificationToken,
 	})
 	if err != nil {
 		logger.Log.WithError(err).Warn("failed to marshal user.registered event")
@@ -174,16 +180,16 @@ func (s *authService) ResendVerification(ctx context.Context, email string) erro
 		return errs.ErrEmailAlreadyVerified
 	}
 
-	token, err := generateVerificationToken()
+	verificationToken, err := generateVerificationToken()
 	if err != nil {
 		return fmt.Errorf("failed to generate verification token: %w", err)
 	}
 	expiresAt := time.Now().Add(24 * time.Hour)
-	if err := s.userRepo.SetVerificationToken(ctx, u.ID, token, expiresAt); err != nil {
+	if err := s.userRepo.SetVerificationToken(ctx, u.ID, verificationToken, expiresAt); err != nil {
 		return fmt.Errorf("failed to persist verification token: %w", err)
 	}
 
-	if err := s.sendVerificationEmail(ctx, u.Email, token); err != nil {
+	if err := s.sendVerificationEmail(ctx, u.Email, verificationToken); err != nil {
 		return err
 	}
 

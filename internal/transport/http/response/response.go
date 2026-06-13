@@ -45,6 +45,10 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusConflict
 		code = "USER_ALREADY_EXISTS"
 		message = "user already exists"
+	} else if errors.Is(err, errs.ErrUsernameAlreadyExists) {
+		status = http.StatusConflict
+		code = "USERNAME_ALREADY_EXISTS"
+		message = "this username is already taken"
 	} else if errors.Is(err, errs.ErrInvalidCredentials) {
 		status = http.StatusUnauthorized
 		code = "INVALID_CREDENTIALS"

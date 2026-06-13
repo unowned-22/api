@@ -2,6 +2,7 @@ package validator
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -29,8 +30,28 @@ func (e *ValidationErrors) Error() string {
 // validate is the package-level validator instance, created once.
 var validate *validator.Validate
 
+var (
+	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+	phoneRegex    = regexp.MustCompile(`^\+`)
+)
+
 func init() {
 	validate = validator.New(validator.WithRequiredStructEnabled())
+
+	// username: only Latin letters, digits, dot, dash, underscore
+	_ = validate.RegisterValidation("username", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		return usernameRegex.MatchString(val)
+	})
+
+	// phone: if present, must start with '+'
+	_ = validate.RegisterValidation("phone", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if val == "" {
+			return true
+		}
+		return phoneRegex.MatchString(val)
+	})
 }
 
 // Validate runs structural validation on v and returns a *ValidationErrors on failure.
@@ -81,6 +102,10 @@ func messageForTag(fe validator.FieldError) string {
 		return "must be a valid URL"
 	case "uuid":
 		return "must be a valid UUID"
+	case "username":
+		return "must contain only letters, digits, dots, dashes, or underscores"
+	case "phone":
+		return "must start with +"
 	default:
 		return fmt.Sprintf("failed on '%s' validation", fe.Tag())
 	}

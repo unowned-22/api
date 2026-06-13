@@ -11,6 +11,9 @@ type User struct {
 	Password                   string
 	RoleID                     int64  // FK to roles.id
 	RoleName                   string // denormalised for read convenience
+	FullName                   string
+	Username                   string
+	Phone                      string
 	CreatedAt                  time.Time
 	EmailVerifiedAt            *time.Time
 	VerificationToken          *string

@@ -77,8 +77,5 @@ migrate-up: ## Apply migrations
 migrate-down: ## Rollback one migration
 	go run $(CMD_DIR) migrate down --steps 1
 
-migrate-version: ## Show migration version
-	go run $(CMD_DIR) migrate version
-
 migrate-create: ## Create migration
 	go run $(CMD_DIR) migrate create $(name)

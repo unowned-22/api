@@ -23,17 +23,22 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 	return &UserRepository{db: db}
 }
 
-// Create inserts a new user record including its role_id.
+// Create inserts a new user record including its role_id and profile fields.
 func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	query := `
-		INSERT INTO users (email, password, role_id, created_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO users (email, password, role_id, full_name, username, phone, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
 	`
-	err := r.db.QueryRow(ctx, query, u.Email, u.Password, u.RoleID, u.CreatedAt).Scan(&u.ID)
+	err := r.db.QueryRow(ctx, query,
+		u.Email, u.Password, u.RoleID, u.FullName, u.Username, u.Phone, u.CreatedAt,
+	).Scan(&u.ID)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if pgErr.ConstraintName == "users_username_key" {
+				return errs.ErrUsernameAlreadyExists
+			}
 			return errs.ErrUserAlreadyExists
 		}
 		return fmt.Errorf("failed to create user in db: %w", err)
@@ -44,7 +49,9 @@ func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 // GetByEmail retrieves a user (with role name) by email address.
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at,
+		SELECT u.id, u.email, u.password, u.role_id, r.name,
+		       u.full_name, u.username, COALESCE(u.phone, ''),
+		       u.created_at,
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
@@ -52,7 +59,9 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, email).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt,
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
+			&u.FullName, &u.Username, &u.Phone,
+			&u.CreatedAt,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -66,7 +75,9 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 // GetByID retrieves a user (with role name) by primary key.
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at,
+		SELECT u.id, u.email, u.password, u.role_id, r.name,
+		       u.full_name, u.username, COALESCE(u.phone, ''),
+		       u.created_at,
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
@@ -74,7 +85,9 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, id).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt,
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
+			&u.FullName, &u.Username, &u.Phone,
+			&u.CreatedAt,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -123,7 +136,9 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID int64, hashe
 // GetByVerificationToken retrieves a user by verification token.
 func (r *UserRepository) GetByVerificationToken(ctx context.Context, token string) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.created_at,
+		SELECT u.id, u.email, u.password, u.role_id, r.name,
+		       u.full_name, u.username, COALESCE(u.phone, ''),
+		       u.created_at,
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
@@ -131,7 +146,9 @@ func (r *UserRepository) GetByVerificationToken(ctx context.Context, token strin
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, token).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.CreatedAt,
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
+			&u.FullName, &u.Username, &u.Phone,
+			&u.CreatedAt,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
