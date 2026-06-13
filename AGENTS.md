@@ -344,6 +344,32 @@ The system detects reuse of revoked refresh tokens (an indicator of stolen token
 
 Consumers handling audit events should persist `audit.refresh_token_reuse_detected` entries to `audit_logs` for security investigation.
 
+## Transactional Outbox Pattern
+
+The application uses a Transactional Outbox to reliably publish domain events to external brokers (RabbitMQ) while keeping domain state changes and event persistence atomic.
+
+- Persist events into `outbox_events` within the same DB transaction as domain changes.
+- A background worker reads `pending` events (using `FOR UPDATE SKIP LOCKED`), marks them `processing`, republishes to the broker, and then marks them `processed` or `failed`.
+- Supported statuses: `pending`, `processing`, `processed`, `failed`.
+- Use an `OutboxPublisher` adapter in `internal/infrastructure/outbox` to write events into the outbox instead of publishing directly to AMQP from services.
+- The worker lives in `internal/worker/outbox` and republishes using the existing AMQP publisher (`internal/infrastructure/queue`).
+- Implement an in‑proc bridge (`internal/infrastructure/outbox/bridge.go`) that lets the in‑process event bus write events to outbox for durability.
+- Use `retry_count` and a configurable retry policy; consider adding `next_attempt_at` for backoff in the future.
+- For strong guarantees across services consider implementing an Outbox drain/dispatcher with idempotence keys and an explicit deduplication strategy.
+
+Location:
+
+- Outbox domain contract: `internal/domain/outbox`
+- Postgres repo: `internal/repository/postgres/outbox`
+- Worker: `internal/worker/outbox`
+- Outbox publisher adapter: `internal/infrastructure/outbox`
+
+Usage guidance:
+
+- Services should write events via the `event.Publisher` abstraction which can be backed by the OutboxPublisher during normal operation.
+- The worker republishes to RabbitMQ so existing downstream consumers continue to work without changes.
+
+
 ## Rate Limiting
 
 The application protects critical authentication endpoints against brute-force and credential stuffing attacks using endpoint-specific rate limiting implemented in the middleware layer.
