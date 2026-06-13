@@ -148,8 +148,7 @@ func (r *UserRepository) UpdateProfile(ctx context.Context, userID int64, fullNa
 
 	cmd, err := r.db.Exec(ctx, query, fullName, username, phone, userID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 			if pgErr.ConstraintName == "users_username_key" {
 				return errs.ErrUsernameAlreadyExists
 			}

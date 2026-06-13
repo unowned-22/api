@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/database"
 	domainevent "github.com/unowned-22/api/internal/domain/event"
@@ -25,6 +26,7 @@ type Worker struct {
 	BuildDate string
 
 	cfg      *config.Config
+	pool     *pgxpool.Pool
 	consumer *queue.AMQPConsumer
 }
 
@@ -43,7 +45,12 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	_ = pool
+	// close pool if any subsequent initialisation step fails
+	defer func() {
+		if err != nil {
+			pool.Close()
+		}
+	}()
 
 	smtpMailer := mailer.New(mailer.Config{
 		Host:     cfg.SMTPHost,
@@ -104,12 +111,15 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 		Commit:    commit,
 		BuildDate: buildDate,
 		cfg:       cfg,
+		pool:      pool,
 		consumer:  consumer,
 	}
 	return w, nil
 }
 
 func (w *Worker) Run() error {
+	defer w.pool.Close()
+
 	if err := w.consumer.Consume(); err != nil {
 		w.consumer.Shutdown(context.Background())
 		return fmt.Errorf("failed to start consuming: %w", err)
