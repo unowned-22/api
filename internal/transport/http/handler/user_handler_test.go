@@ -30,6 +30,16 @@ func (m *mockUserService) GetProfile(_ context.Context, userID int64) (*user.Use
 	return m.users[0], nil
 }
 
+func (m *mockUserService) UpdateProfile(_ context.Context, userID int64, fullName, username, phone string) error {
+	if len(m.users) == 0 {
+		return nil
+	}
+	m.users[0].FullName = fullName
+	m.users[0].Username = username
+	m.users[0].Phone = phone
+	return nil
+}
+
 func TestUserHandler_List(t *testing.T) {
 	// prepare handler with mock service
 	svc := &mockUserService{

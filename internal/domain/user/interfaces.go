@@ -20,6 +20,7 @@ type UserRepository interface {
 	MarkEmailVerified(ctx context.Context, userID int64) error
 	UpdatePassword(ctx context.Context, userID int64, hashedPassword string) error
 	SetDeactivatedAt(ctx context.Context, userID int64, t *time.Time) error
+	UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error
 }
 
 // UserService defines the application-level contract for user operations.
@@ -27,4 +28,5 @@ type UserService interface {
 	GetProfile(ctx context.Context, userID int64) (*User, error)
 	// ListUsers returns paginated users and the total count.
 	ListUsers(ctx context.Context, page int, limit int) ([]*User, int64, error)
+	UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error
 }

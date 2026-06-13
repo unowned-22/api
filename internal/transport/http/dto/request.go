@@ -47,3 +47,10 @@ type PresignedUploadRequest struct {
 	Filename    string `json:"filename"     validate:"required"`
 	ContentType string `json:"content_type" validate:"required"`
 }
+
+// UpdateProfileRequest is the HTTP request body for updating the current user's profile.
+type UpdateProfileRequest struct {
+	FullName string `json:"full_name" validate:"required,min=2,max=100"`
+	Username string `json:"username"  validate:"required,min=3,max=30,username"`
+	Phone    string `json:"phone"     validate:"omitempty,phone"`
+}

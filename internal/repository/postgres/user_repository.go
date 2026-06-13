@@ -133,6 +133,33 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID int64, hashe
 	return nil
 }
 
+// UpdateProfile updates user's profile fields: full_name, username, phone.
+func (r *UserRepository) UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error {
+	query := `
+		UPDATE users
+		SET full_name = $1,
+			username = $2,
+			phone = $3,
+			updated_at = NOW()
+		WHERE id = $4
+	`
+
+	cmd, err := r.db.Exec(ctx, query, fullName, username, phone, userID)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if pgErr.ConstraintName == "users_username_key" {
+				return errs.ErrUsernameAlreadyExists
+			}
+		}
+		return fmt.Errorf("failed to update user profile: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to update profile")
+	}
+	return nil
+}
+
 // GetByVerificationToken retrieves a user by verification token.
 func (r *UserRepository) GetByVerificationToken(ctx context.Context, token string) (*user.User, error) {
 	query := `
