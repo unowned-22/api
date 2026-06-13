@@ -136,6 +136,8 @@ func NewRouter(
 			r.Use(middleware.JWTAuth(tokenManager))
 
 			r.Get("/users/me", userHandler.Me)
+			// List users (requires users.read permission)
+			r.With(middleware.RequirePermission(permissionService, userService, "users.read")).Get("/users", userHandler.List)
 			r.Get("/auth/sessions", authHandler.ListSessions)
 			r.Delete("/auth/sessions/{id}", authHandler.RevokeSession)
 			r.Post("/auth/logout-all", authHandler.LogoutAll)

@@ -195,5 +195,50 @@ func (r *UserRepository) SetDeactivatedAt(ctx context.Context, userID int64, t *
 	return nil
 }
 
+// List returns a page of users ordered by created_at desc.
+func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*user.User, error) {
+	query := `
+		SELECT u.id, u.email, u.password, u.role_id, r.name,
+			   u.full_name, u.username, COALESCE(u.phone, ''),
+			   u.created_at,
+			   u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
+		FROM users u
+		JOIN roles r ON r.id = u.role_id
+		ORDER BY u.created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+	rows, err := r.db.Query(ctx, query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users: %w", err)
+	}
+	defer rows.Close()
+
+	var out []*user.User
+	for rows.Next() {
+		var u user.User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
+			&u.FullName, &u.Username, &u.Phone,
+			&u.CreatedAt,
+			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan user row: %w", err)
+		}
+		out = append(out, &u)
+	}
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("row iteration error: %w", rows.Err())
+	}
+	return out, nil
+}
+
+// Count returns total number of users.
+func (r *UserRepository) Count(ctx context.Context) (int64, error) {
+	query := `SELECT COUNT(*) FROM users`
+	var cnt int64
+	if err := r.db.QueryRow(ctx, query).Scan(&cnt); err != nil {
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	return cnt, nil
+}
+
 // Compile-time check that UserRepository satisfies the domain contract.
 var _ user.UserRepository = (*UserRepository)(nil)
