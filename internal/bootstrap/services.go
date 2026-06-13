@@ -6,6 +6,7 @@ import (
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
+	outboxpub "github.com/unowned-22/api/internal/infrastructure/outbox"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
 	"github.com/unowned-22/api/internal/service"
 )
@@ -20,6 +21,8 @@ type Services struct {
 
 // InitServices constructs application services from repositories and infra.
 func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, tokenManager token.ManagerExtended, smtp *mailer.SMTPMailer, publisher *queue.AMQPPublisher) *Services {
+	// create an outbox-backed publisher that persists events into the outbox table
+	outboxPublisher := outboxpub.New(repos.Outbox)
 	authSvc := auth.NewAuthService(
 		repos.User,
 		repos.RefreshToken,
@@ -27,13 +30,13 @@ func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, t
 		repos.Role,
 		tokenManager,
 		smtp,
-		publisher,
+		outboxPublisher,
 		cfg.RefreshTokenTTL,
 		cfg.AppURL,
 		cfg.AppName,
 	)
 
-	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, publisher, cfg.AppURL, cfg.AppName)
+	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)
 	userSvc := service.NewUserService(repos.User)
 	permissionSvc := service.NewPermissionService(repos.Permission)
 	healthSvc := service.NewHealthService(pool)

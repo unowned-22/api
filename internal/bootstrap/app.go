@@ -14,6 +14,7 @@ import (
 	"github.com/unowned-22/api/internal/infrastructure/queue"
 	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/middleware"
+	outboxworker "github.com/unowned-22/api/internal/worker/outbox"
 )
 
 type App struct {
@@ -34,6 +35,7 @@ type App struct {
 	loginLimiter, registerLimiter, forgotLimiter, resendLimiter *middleware.AuthRateLimiter
 	publisher                                                   *queue.AMQPPublisher
 	pool                                                        *pgxpool.Pool
+	outboxCancel                                                context.CancelFunc
 }
 
 // NewApp initializes application dependencies and returns an App ready to Run.
@@ -82,6 +84,14 @@ func NewApp() (*App, error) {
 		resendLimiter:   resendLimiter,
 		publisher:       publisher,
 		pool:            pool,
+	}
+
+	// Start outbox worker to republish persisted events to the broker.
+	if app.Repositories != nil && app.publisher != nil {
+		ctxWorker, cancelWorker := context.WithCancel(context.Background())
+		worker := outboxworker.NewWorker(app.Repositories.Outbox, app.publisher, outboxworker.RetryPolicy{MaxRetries: 5, Interval: 1 * time.Second}, 50)
+		go worker.Start(ctxWorker)
+		app.outboxCancel = cancelWorker
 	}
 
 	return app, nil
@@ -139,6 +149,10 @@ func (a *App) Run() error {
 
 	if a.publisher != nil {
 		a.publisher.Close()
+	}
+
+	if a.outboxCancel != nil {
+		a.outboxCancel()
 	}
 
 	if a.pool != nil {
