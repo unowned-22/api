@@ -358,6 +358,57 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string, userA
 	}
 
 	if rt.EffectiveStatus() != token.RefreshTokenStatusActive {
+		// If the token expired, treat as invalid
+		if rt.EffectiveStatus() == token.RefreshTokenStatusExpired {
+			return "", "", errs.ErrInvalidRefreshToken
+		}
+
+		// If the token was revoked, this may indicate reuse of an old token (token theft)
+		if rt.Status == token.RefreshTokenStatusRevoked {
+			// Attempt to fetch user info for notification
+			var userEmail string
+			if u, err := s.userRepo.GetByID(ctx, rt.UserID); err == nil {
+				userEmail = u.Email
+			}
+
+			// Revoke all sessions and refresh tokens for the user proactively
+			if err := s.userSessionRepo.RevokeAllByUserID(ctx, rt.UserID); err != nil {
+				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to revoke all user sessions during refresh-token-reuse handling")
+			}
+			if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, rt.UserID); err != nil {
+				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to revoke all refresh tokens during refresh-token-reuse handling")
+			}
+
+			// Publish audit event for reuse detection
+			go func() {
+				payload, _ := json.Marshal(map[string]interface{}{
+					"user_id":    rt.UserID,
+					"ip_address": ipAddress,
+					"user_agent": userAgent,
+					"token_hash": rt.TokenHash,
+				})
+				if err := s.publisher.Publish(context.Background(), event.Event{Name: event.RefreshTokenReuseDetected, Payload: payload}); err != nil {
+					logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.refresh_token_reuse_detected")
+				}
+			}()
+
+			// Optionally notify user by email
+			if userEmail != "" {
+				go func() {
+					msg := domainmailer.Message{
+						To:      []string{userEmail},
+						Subject: "Security alert: possible account compromise",
+						Text:    "We detected the reuse of a previously revoked refresh token for your account. All sessions have been revoked. If this wasn't you, please reset your password immediately.",
+					}
+					if err := s.mailer.Send(context.Background(), msg); err != nil {
+						logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to send refresh-token-reuse notification email")
+					}
+				}()
+			}
+
+			return "", "", errs.ErrInvalidRefreshToken
+		}
+
 		return "", "", errs.ErrInvalidRefreshToken
 	}
 

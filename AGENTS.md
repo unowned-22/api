@@ -311,6 +311,17 @@ Security notes:
 - Email sending failures during token creation are logged but do not cause the API to reveal token state to callers.
  - Administrators may also deactivate accounts (set `deactivated_at`); deactivated accounts must be denied login and token refresh and all sessions/tokens must be revoked.
 
+### Refresh token reuse detection
+
+The system detects reuse of revoked refresh tokens (an indicator of stolen tokens). When detected, services must:
+
+- Immediately revoke all user sessions (`UserSessionRepository.RevokeAllByUserID`).
+- Revoke all refresh tokens for the user (`RefreshTokenRepository.RevokeAllByUserID`).
+- Publish an audit event named `audit.refresh_token_reuse_detected` containing `user_id`, `ip_address`, `user_agent`, and `token_hash`.
+- Optionally send a notification email to the affected user.
+
+Consumers handling audit events should persist `audit.refresh_token_reuse_detected` entries to `audit_logs` for security investigation.
+
 ## Rate Limiting
 
 The application protects critical authentication endpoints against brute-force and credential stuffing attacks using endpoint-specific rate limiting implemented in the middleware layer.

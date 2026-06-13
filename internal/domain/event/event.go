@@ -22,6 +22,7 @@ const (
 	SessionRevoked              Name = "audit.session_revoked"
 	AccountDeactivated          Name = "audit.account_deactivated"
 	AccountActivated            Name = "audit.account_activated"
+	RefreshTokenReuseDetected   Name = "audit.refresh_token_reuse_detected"
 )
 
 // Event is a unit of publication.
