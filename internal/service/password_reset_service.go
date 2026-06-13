@@ -13,6 +13,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/passwordreset"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/usersession"
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	"github.com/unowned-22/api/internal/logger"
@@ -29,6 +30,7 @@ type passwordResetService struct {
 	userRepo          user.UserRepository
 	passwordResetRepo passwordreset.Repository
 	refreshTokenRepo  token.RefreshTokenRepository
+	userSessionRepo   usersession.UserSessionRepository
 	mailer            domainmailer.Mailer
 	appURL            string
 	appName           string
@@ -38,6 +40,7 @@ func NewPasswordResetService(
 	userRepo user.UserRepository,
 	passwordResetRepo passwordreset.Repository,
 	refreshTokenRepo token.RefreshTokenRepository,
+	userSessionRepo usersession.UserSessionRepository,
 	mailer domainmailer.Mailer,
 	appURL string,
 	appName string,
@@ -46,6 +49,7 @@ func NewPasswordResetService(
 		userRepo:          userRepo,
 		passwordResetRepo: passwordResetRepo,
 		refreshTokenRepo:  refreshTokenRepo,
+		userSessionRepo:   userSessionRepo,
 		mailer:            mailer,
 		appURL:            appURL,
 		appName:           appName,
@@ -133,7 +137,7 @@ func (s *passwordResetService) ResetPassword(ctx context.Context, token, newPass
 		return err
 	}
 
-	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, resetToken.UserID); err != nil {
+	if err := s.userSessionRepo.RevokeAllByUserID(ctx, resetToken.UserID); err != nil {
 		return err
 	}
 

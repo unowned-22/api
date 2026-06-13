@@ -273,7 +273,59 @@ curl -X POST http://localhost:8080/api/v1/auth/logout \
 
 ---
 
-### 5. Get User Profile (Protected Route)
+### 5. List Active Sessions (Protected Route)
+
+Use the JWT access token in the `Authorization` header:
+
+```bash
+curl -X GET http://localhost:8080/api/v1/auth/sessions \
+  -H "Authorization: Bearer <PASTE_YOUR_ACCESS_TOKEN_HERE>"
+```
+
+#### Successful Response
+
+```json
+{
+  "data": {
+    "sessions": [
+      {
+        "id": 42,
+        "user_id": 1,
+        "device_name": "Chrome on macOS",
+        "user_agent": "Mozilla/5.0",
+        "ip_address": "203.0.113.10",
+        "created_at": "2026-06-13T10:15:30Z",
+        "last_used_at": "2026-06-13T11:20:00Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 6. Revoke Session (Protected Route)
+
+Revoke a session and its associated refresh token. Users can revoke their own sessions; administrators can revoke any session.
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/auth/sessions/42 \
+  -H "Authorization: Bearer <PASTE_YOUR_ACCESS_TOKEN_HERE>"
+```
+
+#### Successful Response
+
+```json
+{
+  "data": {
+    "message": "session revoked successfully"
+  }
+}
+```
+
+---
+
+### 7. Get User Profile (Protected Route)
 
 Use the JWT access token in the `Authorization` header:
 
@@ -300,7 +352,7 @@ curl -X GET http://localhost:8080/api/v1/users/me \
 
 ---
 
-### 6. Admin Ping (Admin Protected Route)
+### 8. Admin Ping (Admin Protected Route)
 
 Use an access token for a user with the `admin` role:
 
@@ -321,7 +373,7 @@ curl -X GET http://localhost:8080/api/v1/admin/ping \
 
 ---
 
-### 7. List Admin Permissions (Permission Protected Route)
+### 9. List Admin Permissions (Permission Protected Route)
 
 Use an access token for a user whose role has the `admin.access` permission:
 
@@ -349,7 +401,7 @@ curl -X GET http://localhost:8080/api/v1/admin/permissions \
 
 ---
 
-### 8. Password Reset
+### 10. Password Reset
 
 Initiate a password reset (silent response to prevent account enumeration):
 

@@ -177,6 +177,7 @@ func runServe() error {
 	// 4. Repositories
 	userRepo := postgresRepo.NewUserRepository(pool)
 	refreshTokenRepo := postgresRepo.NewRefreshTokenRepository(pool)
+	userSessionRepo := postgresRepo.NewUserSessionRepository(pool)
 	roleRepo := postgresRepo.NewRoleRepository(pool)
 	permissionRepo := postgresRepo.NewPermissionRepository(pool)
 
@@ -222,6 +223,7 @@ func runServe() error {
 	authService := auth.NewAuthService(
 		userRepo,
 		refreshTokenRepo,
+		userSessionRepo,
 		roleRepo,
 		tokenManager,
 		smtpMailer,
@@ -231,7 +233,7 @@ func runServe() error {
 		cfg.AppName,
 	)
 	passwordResetRepo := postgresRepo.NewPasswordResetRepository(pool)
-	passwordResetService := service.NewPasswordResetService(userRepo, passwordResetRepo, refreshTokenRepo, smtpMailer, cfg.AppURL, cfg.AppName)
+	passwordResetService := service.NewPasswordResetService(userRepo, passwordResetRepo, refreshTokenRepo, userSessionRepo, smtpMailer, cfg.AppURL, cfg.AppName)
 	userService := service.NewUserService(userRepo)
 	permissionService := service.NewPermissionService(permissionRepo)
 	healthService := service.NewHealthService(pool)
