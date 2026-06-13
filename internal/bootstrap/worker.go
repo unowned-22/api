@@ -13,6 +13,7 @@ import (
 	domainevent "github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
+	infrastorage "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
 	postgresRepo "github.com/unowned-22/api/internal/repository/postgres"
 	workerHandler "github.com/unowned-22/api/internal/worker/handler"
@@ -53,9 +54,23 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 	})
 
 	auditRepo := postgresRepo.NewAuditRepository(pool)
+	systemSettingsRepo := postgresRepo.NewSystemSettingsRepository(pool)
+	userSettingsRepo := postgresRepo.NewUserSettingsRepository(pool)
+
+	// initialize MinIO storage
+	minioStorage, err := infrastorage.NewMinIOStorage(infrastorage.Config{
+		Endpoint:        cfg.MinIOEndpoint,
+		AccessKeyID:     cfg.MinIOAccessKey,
+		SecretAccessKey: cfg.MinIOSecretKey,
+		UseSSL:          cfg.MinIOUseSSL,
+		Region:          cfg.MinIORegion,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize MinIO storage: %w", err)
+	}
 
 	handlers := map[domainevent.Name]domainevent.Handler{
-		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName),
+		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName, minioStorage, systemSettingsRepo, userSettingsRepo),
 		domainevent.PasswordResetRequested: workerHandler.NewPasswordResetHandler(smtpMailer),
 		// Audit handlers
 		domainevent.LoginSuccess:                workerHandler.NewAuditHandler(auditRepo, domainevent.LoginSuccess),

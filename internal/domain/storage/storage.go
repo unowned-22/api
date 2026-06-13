@@ -30,3 +30,11 @@ type UploadRequest struct {
 	Size        int64
 	ContentType string
 }
+
+// Storage defines a higher-level storage contract used by services and workers.
+type Storage interface {
+	CreateBucket(ctx context.Context, bucketName string) error
+	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, contentType string) (string, error)
+	DeleteObject(ctx context.Context, bucketName, objectName string) error
+	PresignURL(ctx context.Context, bucketName, objectName string, expiry time.Duration) (string, error)
+}

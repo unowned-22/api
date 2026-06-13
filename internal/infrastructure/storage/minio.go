@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"time"
 
@@ -25,6 +26,7 @@ type MinIOStorage struct {
 }
 
 var _ domainstorage.ObjectStorage = (*MinIOStorage)(nil)
+var _ domainstorage.Storage = (*MinIOStorage)(nil)
 
 func NewMinIOStorage(cfg Config) (*MinIOStorage, error) {
 	client, err := minio.New(cfg.Endpoint, &minio.Options{
@@ -101,4 +103,53 @@ func (s *MinIOStorage) PresignedPutURL(ctx context.Context, bucket, key string, 
 		return "", fmt.Errorf("failed to generate presigned put URL: %w", err)
 	}
 	return url.String(), nil
+}
+
+// ApplyBucketPolicy attempts to set a bucket policy using the MinIO client.
+// If the underlying SDK exposes SetBucketPolicy, this will apply the policy; otherwise it's a no-op.
+func (s *MinIOStorage) ApplyBucketPolicy(ctx context.Context, bucket, policy string) error {
+	if s.client == nil {
+		return fmt.Errorf("minio client not initialized")
+	}
+	// minio.Client provides SetBucketPolicy in supported versions.
+	// Attempt to call it; if it fails, return the error so callers can decide to retry.
+	if err := s.client.SetBucketPolicy(ctx, bucket, policy); err != nil {
+		return fmt.Errorf("failed to set bucket policy: %w", err)
+	}
+	return nil
+}
+
+// CreateBucket creates a bucket (no-op if already exists).
+func (s *MinIOStorage) CreateBucket(ctx context.Context, bucketName string) error {
+	return s.ensureBucketExists(ctx, bucketName)
+}
+
+// PutObject uploads an object and returns its URL.
+func (s *MinIOStorage) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, contentType string) (string, error) {
+	req := domainstorage.UploadRequest{
+		Bucket:      bucketName,
+		Key:         objectName,
+		Body:        reader,
+		Size:        size,
+		ContentType: contentType,
+	}
+	if err := s.Upload(ctx, req); err != nil {
+		return "", err
+	}
+	// Return presigned GET URL with short expiry
+	url, err := s.GetURL(ctx, bucketName, objectName, 15*time.Minute)
+	if err != nil {
+		return "", err
+	}
+	return url, nil
+}
+
+// DeleteObject removes an object from a bucket.
+func (s *MinIOStorage) DeleteObject(ctx context.Context, bucketName, objectName string) error {
+	return s.Delete(ctx, bucketName, objectName)
+}
+
+// PresignURL returns a presigned GET URL for the object.
+func (s *MinIOStorage) PresignURL(ctx context.Context, bucketName, objectName string, expiry time.Duration) (string, error) {
+	return s.GetURL(ctx, bucketName, objectName, expiry)
 }
