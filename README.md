@@ -45,6 +45,10 @@ DB_PASSWORD=postgres
 DB_NAME=unnamed_db
 DB_SSL_MODE=disable
 JWT_SECRET=super-secret-key-change-me-in-production
+JWT_ISSUER=api-service
+JWT_AUDIENCE=client-app
+ACCESS_TOKEN_TTL=15m
+REFRESH_TOKEN_TTL=720h
 ```
 
 ### 2. Build the Application

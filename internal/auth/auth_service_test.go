@@ -253,7 +253,7 @@ func TestAuthService(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, publisher, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 
 	ctx := context.Background()
 
@@ -355,7 +355,7 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 	userRepo := newMockUserRepo()
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
@@ -381,7 +381,7 @@ func TestLoginStoresRefreshTokenHashOnly(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, publisher, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "security@example.com", Password: "password123"}); err != nil {

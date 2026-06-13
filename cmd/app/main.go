@@ -206,7 +206,7 @@ func runServe() error {
 	}()
 
 	// 6. TokenManager
-	tokenManager := auth.NewTokenManager(cfg.JWTSecret)
+	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.AccessTokenTTL)
 
 	// 7. Mailer
 	smtpMailer = mailer.New(mailer.Config{
@@ -225,6 +225,7 @@ func runServe() error {
 		tokenManager,
 		smtpMailer,
 		publisher,
+		cfg.RefreshTokenTTL,
 		cfg.AppURL,
 		cfg.AppName,
 	)

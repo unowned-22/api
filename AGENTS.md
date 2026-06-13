@@ -276,6 +276,7 @@ internal/auth/jwt.go
 
 Requirements:
 
+* JWTManager must emit and validate standard registered claims: `iss`, `aud`, `sub`, `jti`, `iat`, `nbf`, and `exp`.
 * Services must depend only on `token.Manager` or `token.ManagerExtended`.
 * Services must never import JWT packages directly.
 * JWT implementation must be replaceable without changing business logic.
