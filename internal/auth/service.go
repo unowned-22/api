@@ -300,19 +300,6 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		return "", "", fmt.Errorf("failed to save refresh token: %w", err)
 	}
 
-	// Publish login_success audit event asynchronously
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{
-			"user_id":    u.ID,
-			"ip_address": ipAddress,
-			"user_agent": userAgent,
-			"device":     deviceName,
-		})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.LoginSuccess, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.login_success")
-		}
-	}()
-
 	deviceName := req.DeviceName
 	if deviceName == "" {
 		deviceName = "Unknown Device"
@@ -325,6 +312,19 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 	if ipAddress == "" {
 		ipAddress = "Unknown"
 	}
+
+	// Publish login_success audit event asynchronously
+	go func() {
+		payload, _ := json.Marshal(map[string]interface{}{
+			"user_id":    u.ID,
+			"ip_address": ipAddress,
+			"user_agent": userAgent,
+			"device":     deviceName,
+		})
+		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.LoginSuccess, Payload: payload}); err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.login_success")
+		}
+	}()
 
 	session := &usersession.UserSession{
 		UserID:         u.ID,
