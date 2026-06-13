@@ -52,6 +52,7 @@ type AuthService interface {
 	ReactivateUser(ctx context.Context, userID int64) error
 	ListSessions(ctx context.Context, userID int64) ([]*usersession.UserSession, error)
 	RevokeSession(ctx context.Context, sessionID int64, userID int64, userRole string) error
+	ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error
 }
 
 type authService struct {
@@ -341,6 +342,42 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 	}
 
 	return accessToken, refreshTokenStr, nil
+}
+
+// ChangePassword updates the user's password after verifying the current password.
+func (s *authService) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error {
+	u, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(currentPassword)); err != nil {
+		return errs.ErrInvalidCredentials
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash new password: %w", err)
+	}
+
+	if err := s.userRepo.UpdatePassword(ctx, userID, string(hashed)); err != nil {
+		return err
+	}
+
+	// Revoke all refresh tokens to force re-login on all devices
+	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, userID); err != nil {
+		return fmt.Errorf("failed to revoke refresh tokens: %w", err)
+	}
+
+	// Publish audit event asynchronously
+	go func() {
+		payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
+		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.PasswordChanged, Payload: payload}); err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.password_changed")
+		}
+	}()
+
+	return nil
 }
 
 // Refresh validates a refresh token and issues a new access token (with role).

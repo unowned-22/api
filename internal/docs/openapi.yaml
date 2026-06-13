@@ -127,6 +127,18 @@ components:
           type: string
           example: "+79991234567"
 
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+          minLength: 1
+        new_password:
+          type: string
+          minLength: 8
+          example: newSecurePassword123
+
     LoginRequest:
       type: object
       required: [email, password]
@@ -611,6 +623,38 @@ paths:
                   phone: "+79991234567"
                   role: user
                   created_at: "2026-06-12T09:53:01Z"
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/users/me/password:
+    put:
+      tags: [users]
+      summary: Change current user's password
+      description: Change password for the authenticated user.
+      operationId: usersChangePassword
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: password changed successfully
         "400": { $ref: '#/components/responses/400BadRequest' }
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }

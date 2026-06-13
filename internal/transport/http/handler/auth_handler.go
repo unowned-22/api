@@ -237,6 +237,37 @@ func (h *AuthHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusOK, dto.SessionListResponse{Sessions: sessionDTOs})
 }
 
+// ChangePassword allows the authenticated user to change their password.
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	var req dto.ChangePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.SendBadRequest(w, "invalid request body")
+		return
+	}
+
+	if err := validator.Validate(&req); err != nil {
+		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
+			response.SendValidationError(w, toFieldErrors(ve.Fields))
+			return
+		}
+		response.SendBadRequest(w, "invalid request")
+		return
+	}
+
+	if err := h.authService.ChangePassword(r.Context(), userID, req.CurrentPassword, req.NewPassword); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "password changed successfully"})
+}
+
 // RevokeSession revokes a user session by its ID
 func (h *AuthHandler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
