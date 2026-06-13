@@ -20,7 +20,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	authHandler := handler.NewAuthHandler(svcs.Auth)
 	passwordResetHandler := handler.NewPasswordResetHandler(svcs.PasswordReset)
 	userHandler := handler.NewUserHandler(svcs.User)
-	adminHandler := handler.NewAdminHandler(svcs.User, svcs.Permission, svcs.Auth)
+	adminHandler := handler.NewAdminHandler(svcs.User, svcs.Permission, svcs.Auth, svcs.SystemSettings)
 	healthHandler := handler.NewHealthHandler(svcs.Health)
 	uploadHandler := handler.NewUploadHandler(storage, cfg.MinIOBucket)
 

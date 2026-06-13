@@ -313,6 +313,37 @@ components:
           format: date-time
           example: "2026-06-12T09:53:01Z"
 
+    SystemSetting:
+      type: object
+      properties:
+        key:
+          type: string
+          example: theme
+        value:
+          type: object
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-12T09:53:01Z"
+
+    SystemSettingsList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SystemSetting'
+
+    UpdateSystemSettingRequest:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+          enum: [default_storage_quota_bytes, default_bucket_policy, theme]
+        value:
+          type: object
+
     # ── Admin ───────────────────────────────────────────────────────────────────
     Permission:
       type: object
@@ -1241,6 +1272,57 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "403": { $ref: '#/components/responses/403Forbidden' }
         "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/admin/settings:
+    get:
+      tags: [admin]
+      summary: List system settings
+      description: Returns all system settings. Requires role=admin.
+      operationId: adminGetSettings
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: System settings list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemSettingsList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    patch:
+      tags: [admin]
+      summary: Update a system setting
+      description: Upsert a single system setting. Requires role=admin.
+      operationId: adminUpdateSetting
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSystemSettingRequest'
+      responses:
+        "200":
+          description: Setting updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: setting updated
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
 
   # ── Uploads ─────────────────────────────────────────────────────────────────

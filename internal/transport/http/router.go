@@ -133,6 +133,8 @@ func NewRouter(
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireRole("admin"))
 				r.Get("/admin/ping", adminHandler.Ping)
+				r.Get("/admin/settings", adminHandler.GetSettings)
+				r.Patch("/admin/settings", adminHandler.UpdateSetting)
 				r.Post("/admin/users/{id}/deactivate", adminHandler.DeactivateUser)
 				r.Post("/admin/users/{id}/reactivate", adminHandler.ReactivateUser)
 			})
