@@ -46,6 +46,8 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 		FullName:  u.FullName,
 		Username:  u.Username,
 		Phone:     u.Phone,
+		AvatarURL: u.AvatarURL,
+		CoverURL:  u.CoverURL,
 		Role:      u.RoleName,
 		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
@@ -92,6 +94,8 @@ func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		FullName:  u.FullName,
 		Username:  u.Username,
 		Phone:     u.Phone,
+		AvatarURL: u.AvatarURL,
+		CoverURL:  u.CoverURL,
 		Role:      u.RoleName,
 		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
@@ -115,6 +119,8 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 			FullName:  u.FullName,
 			Username:  u.Username,
 			Phone:     u.Phone,
+			AvatarURL: u.AvatarURL,
+			CoverURL:  u.CoverURL,
 			Role:      u.RoleName,
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		})

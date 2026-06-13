@@ -59,7 +59,7 @@ func NewApp() (*App, error) {
 	repos := InitRepositories(pool)
 
 	// Services
-	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher)
+	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage)
 
 	// Handlers
 	handlers := InitHandlers(cfg, svcs, minioStorage)

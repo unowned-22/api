@@ -1,9 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"path"
 	"time"
@@ -11,22 +14,25 @@ import (
 	"github.com/google/uuid"
 	"github.com/unowned-22/api/internal/contextx"
 	domainstorage "github.com/unowned-22/api/internal/domain/storage"
+	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 	"github.com/unowned-22/api/internal/validator"
 )
 
 type UploadHandler struct {
-	storage   domainstorage.ObjectStorage
-	bucket    string
-	expiresIn time.Duration
+	storage     domainstorage.ObjectStorage
+	bucket      string
+	expiresIn   time.Duration
+	userService user.UserService
 }
 
-func NewUploadHandler(storage domainstorage.ObjectStorage, bucket string) *UploadHandler {
+func NewUploadHandler(storage domainstorage.ObjectStorage, bucket string, userService user.UserService) *UploadHandler {
 	return &UploadHandler{
-		storage:   storage,
-		bucket:    bucket,
-		expiresIn: 15 * time.Minute,
+		storage:     storage,
+		bucket:      bucket,
+		expiresIn:   15 * time.Minute,
+		userService: userService,
 	}
 }
 
@@ -80,4 +86,89 @@ func (h *UploadHandler) toFieldErrors(fields []validator.FieldError) []response.
 		})
 	}
 	return out
+}
+
+// UploadAvatar handles POST /users/me/avatar
+func (h *UploadHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	// enforce max body size 11MB
+	r.Body = http.MaxBytesReader(w, r.Body, 11*1024*1024)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		response.SendBadRequest(w, "invalid multipart request")
+		return
+	}
+
+	var part *multipart.Part
+	for p, pErr := mr.NextPart(); pErr == nil; p, pErr = mr.NextPart() {
+		if p.FormName() == "file" {
+			part = p
+			break
+		}
+	}
+	if part == nil {
+		response.SendBadRequest(w, "file part is required")
+		return
+	}
+	contentType := part.Header.Get("Content-Type")
+	data, err := io.ReadAll(part)
+	if err != nil {
+		response.SendBadRequest(w, "failed to read file")
+		return
+	}
+
+	url, err := h.userService.UploadAvatar(r.Context(), userID, bytes.NewReader(data), int64(len(data)), contentType)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, map[string]string{"avatar_url": url})
+}
+
+// UploadCover handles POST /users/me/cover
+func (h *UploadHandler) UploadCover(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 11*1024*1024)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		response.SendBadRequest(w, "invalid multipart request")
+		return
+	}
+
+	var part *multipart.Part
+	for p, pErr := mr.NextPart(); pErr == nil; p, pErr = mr.NextPart() {
+		if p.FormName() == "file" {
+			part = p
+			break
+		}
+	}
+	if part == nil {
+		response.SendBadRequest(w, "file part is required")
+		return
+	}
+	contentType := part.Header.Get("Content-Type")
+	data, err := io.ReadAll(part)
+	if err != nil {
+		response.SendBadRequest(w, "failed to read file")
+		return
+	}
+
+	url, err := h.userService.UploadCover(r.Context(), userID, bytes.NewReader(data), int64(len(data)), contentType)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, map[string]string{"cover_url": url})
 }

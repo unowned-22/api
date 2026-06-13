@@ -376,6 +376,14 @@ components:
           format: int64
           example: 2147483648
 
+    UploadURLResponse:
+      type: object
+      properties:
+        avatar_url:
+          type: string
+        cover_url:
+          type: string
+
     UpdateSystemSettingRequest:
       type: object
       required: [key, value]
@@ -777,6 +785,72 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/MessageData'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/users/me/avatar:
+    post:
+      tags: [users]
+      summary: Upload avatar image for current user
+      description: Uploads an avatar image. Expect multipart/form-data with field `file`.
+      operationId: usersUploadAvatar
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Avatar uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UploadURLResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/users/me/cover:
+    post:
+      tags: [users]
+      summary: Upload cover image for current user
+      description: Uploads a cover image. Expect multipart/form-data with field `file`.
+      operationId: usersUploadCover
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Cover uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UploadURLResponse'
         "400": { $ref: '#/components/responses/400BadRequest' }
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
