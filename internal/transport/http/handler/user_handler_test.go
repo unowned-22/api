@@ -40,6 +40,14 @@ func (m *mockUserService) UpdateProfile(_ context.Context, userID int64, fullNam
 	return nil
 }
 
+func (m *mockUserService) UploadAvatar(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
+	return "", nil
+}
+
+func (m *mockUserService) UploadCover(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
+	return "", nil
+}
+
 func TestUserHandler_List(t *testing.T) {
 	// prepare handler with mock service
 	svc := &mockUserService{

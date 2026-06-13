@@ -51,7 +51,8 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 	query := `
 		SELECT u.id, u.email, u.password, u.role_id, r.name,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
-		       u.created_at,
+	       u.created_at,
+	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
@@ -61,7 +62,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 	err := r.db.QueryRow(ctx, query, email).
 		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
 			&u.FullName, &u.Username, &u.Phone,
-			&u.CreatedAt,
+			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -77,7 +78,8 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 	query := `
 		SELECT u.id, u.email, u.password, u.role_id, r.name,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
-		       u.created_at,
+	       u.created_at,
+	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
@@ -87,7 +89,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 	err := r.db.QueryRow(ctx, query, id).
 		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
 			&u.FullName, &u.Username, &u.Phone,
-			&u.CreatedAt,
+			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -228,6 +230,7 @@ func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*us
 		SELECT u.id, u.email, u.password, u.role_id, r.name,
 			   u.full_name, u.username, COALESCE(u.phone, ''),
 			   u.created_at,
+			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
 			   u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
@@ -245,7 +248,7 @@ func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*us
 		var u user.User
 		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
 			&u.FullName, &u.Username, &u.Phone,
-			&u.CreatedAt,
+			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan user row: %w", err)
 		}
@@ -269,3 +272,29 @@ func (r *UserRepository) Count(ctx context.Context) (int64, error) {
 
 // Compile-time check that UserRepository satisfies the domain contract.
 var _ user.UserRepository = (*UserRepository)(nil)
+
+// UpdateAvatar sets the avatar URL for a user.
+func (r *UserRepository) UpdateAvatar(ctx context.Context, userID int64, avatarURL string) error {
+	query := `UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2`
+	cmd, err := r.db.Exec(ctx, query, avatarURL, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update avatar_url: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to update avatar")
+	}
+	return nil
+}
+
+// UpdateCover sets the cover URL for a user.
+func (r *UserRepository) UpdateCover(ctx context.Context, userID int64, coverURL string) error {
+	query := `UPDATE users SET cover_url = $1, updated_at = NOW() WHERE id = $2`
+	cmd, err := r.db.Exec(ctx, query, coverURL, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update cover_url: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to update cover")
+	}
+	return nil
+}

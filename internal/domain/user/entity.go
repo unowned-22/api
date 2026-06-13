@@ -14,6 +14,8 @@ type User struct {
 	FullName                   string
 	Username                   string
 	Phone                      string
+	AvatarURL                  string
+	CoverURL                   string
 	CreatedAt                  time.Time
 	EmailVerifiedAt            *time.Time
 	VerificationToken          *string

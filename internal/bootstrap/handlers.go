@@ -22,7 +22,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	userHandler := handler.NewUserHandler(svcs.User, svcs.UserSettings)
 	adminHandler := handler.NewAdminHandler(svcs.User, svcs.Permission, svcs.Auth, svcs.SystemSettings, svcs.UserSettings)
 	healthHandler := handler.NewHealthHandler(svcs.Health)
-	uploadHandler := handler.NewUploadHandler(storage, cfg.MinIOBucket)
+	uploadHandler := handler.NewUploadHandler(storage, cfg.MinIOBucket, svcs.User)
 
 	return &Handlers{
 		Auth:          authHandler,

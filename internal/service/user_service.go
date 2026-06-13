@@ -1,21 +1,30 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
+	"path"
 
 	"github.com/unowned-22/api/internal/validator"
 
+	domainstorage "github.com/unowned-22/api/internal/domain/storage"
 	"github.com/unowned-22/api/internal/domain/user"
+	domainusersettings "github.com/unowned-22/api/internal/domain/usersettings"
 )
 
 // UserService implements domain/user.UserService.
 type UserService struct {
-	repo user.UserRepository
+	repo             user.UserRepository
+	storage          domainstorage.Storage
+	userSettingsRepo domainusersettings.Repository
 }
 
 // NewUserService creates a new instance of UserService.
-func NewUserService(repo user.UserRepository) *UserService {
-	return &UserService{repo: repo}
+func NewUserService(repo user.UserRepository, storage domainstorage.Storage, userSettingsRepo domainusersettings.Repository) *UserService {
+	return &UserService{repo: repo, storage: storage, userSettingsRepo: userSettingsRepo}
 }
 
 // GetProfile returns the full user record (including role) by ID.
@@ -54,6 +63,98 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, fullName,
 	}
 
 	return s.repo.UpdateProfile(ctx, userID, fullName, username, phone)
+}
+
+func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
+	// validate content type
+	allowed := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+	ext, ok := allowed[contentType]
+	if !ok {
+		return "", fmt.Errorf("unsupported content type: %s", contentType)
+	}
+	if size > 5*1024*1024 {
+		return "", fmt.Errorf("avatar exceeds maximum allowed size")
+	}
+
+	// get user settings to find bucket
+	us, err := s.userSettingsRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if us == nil || us.BucketName == "" {
+		return "", errors.New("user bucket not configured")
+	}
+
+	key := path.Join("avatars", "avatar."+ext)
+
+	// Ensure we have an io.Reader we can reuse: read into buffer
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, file); err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+	if int64(buf.Len()) != size {
+		// size mismatch is not fatal; prefer actual size
+		size = int64(buf.Len())
+	}
+
+	url, err := s.storage.PutObject(ctx, us.BucketName, key, bytes.NewReader(buf.Bytes()), size, contentType)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.repo.UpdateAvatar(ctx, userID, url); err != nil {
+		return "", err
+	}
+
+	if err := s.userSettingsRepo.IncrementUsedBytes(ctx, userID, size); err != nil {
+		return "", err
+	}
+
+	return url, nil
+}
+
+func (s *UserService) UploadCover(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
+	allowed := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+	ext, ok := allowed[contentType]
+	if !ok {
+		return "", fmt.Errorf("unsupported content type: %s", contentType)
+	}
+	if size > 10*1024*1024 {
+		return "", fmt.Errorf("cover exceeds maximum allowed size")
+	}
+
+	us, err := s.userSettingsRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if us == nil || us.BucketName == "" {
+		return "", errors.New("user bucket not configured")
+	}
+
+	key := path.Join("covers", "cover."+ext)
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, file); err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+	if int64(buf.Len()) != size {
+		size = int64(buf.Len())
+	}
+
+	url, err := s.storage.PutObject(ctx, us.BucketName, key, bytes.NewReader(buf.Bytes()), size, contentType)
+	if err != nil {
+		return "", err
+	}
+
+	if err := s.repo.UpdateCover(ctx, userID, url); err != nil {
+		return "", err
+	}
+
+	if err := s.userSettingsRepo.IncrementUsedBytes(ctx, userID, size); err != nil {
+		return "", err
+	}
+
+	return url, nil
 }
 
 // Compile-time check that UserService satisfies the domain contract.

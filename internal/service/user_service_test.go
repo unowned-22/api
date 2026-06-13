@@ -124,6 +124,24 @@ func (m *mockUserRepo) UpdateProfile(ctx context.Context, userID int64, fullName
 	return nil
 }
 
+func (m *mockUserRepo) UpdateAvatar(ctx context.Context, userID int64, avatarURL string) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.AvatarURL = avatarURL
+	return nil
+}
+
+func (m *mockUserRepo) UpdateCover(ctx context.Context, userID int64, coverURL string) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.CoverURL = coverURL
+	return nil
+}
+
 func (m *mockUserRepo) List(ctx context.Context, offset int, limit int) ([]*user.User, error) {
 	var out []*user.User
 	for _, u := range m.idMap {
@@ -147,7 +165,7 @@ func (m *mockUserRepo) Count(ctx context.Context) (int64, error) {
 
 func TestUserService_GetProfile(t *testing.T) {
 	repo := newMockUserRepo()
-	srv := NewUserService(repo)
+	srv := NewUserService(repo, nil, nil)
 
 	ctx := context.Background()
 

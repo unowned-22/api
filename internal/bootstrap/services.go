@@ -4,6 +4,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/auth"
 	"github.com/unowned-22/api/internal/config"
+	domainstorage "github.com/unowned-22/api/internal/domain/storage"
 	"github.com/unowned-22/api/internal/domain/systemsettings"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/usersettings"
@@ -24,7 +25,7 @@ type Services struct {
 }
 
 // InitServices constructs application services from repositories and infra.
-func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, tokenManager token.ManagerExtended, smtp *mailer.SMTPMailer, publisher *queue.AMQPPublisher) *Services {
+func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, tokenManager token.ManagerExtended, smtp *mailer.SMTPMailer, publisher *queue.AMQPPublisher, storage domainstorage.Storage) *Services {
 	// create an outbox-backed publisher that persists events into the outbox table
 	outboxPublisher := outboxpub.New(repos.Outbox)
 	authSvc := auth.NewAuthService(
@@ -41,7 +42,7 @@ func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, t
 	)
 
 	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)
-	userSvc := service.NewUserService(repos.User)
+	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings)
 	permissionSvc := service.NewPermissionService(repos.Permission)
 	healthSvc := service.NewHealthService(pool)
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)

@@ -15,6 +15,8 @@ type UserResponse struct {
 	FullName  string `json:"full_name"`
 	Username  string `json:"username"`
 	Phone     string `json:"phone"`
+	AvatarURL string `json:"avatar_url"`
+	CoverURL  string `json:"cover_url"`
 	Role      string `json:"role"`
 	CreatedAt string `json:"created_at"`
 }
