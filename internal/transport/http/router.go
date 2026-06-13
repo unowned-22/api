@@ -121,6 +121,7 @@ func NewRouter(
 
 			r.Get("/users/me", userHandler.Me)
 			r.Patch("/users/me", userHandler.UpdateProfile)
+			r.Put("/users/me/password", authHandler.ChangePassword)
 			// List users (requires users.read permission)
 			r.With(middleware.RequirePermission(permissionService, userService, "users.read")).Get("/users", userHandler.List)
 			r.Get("/auth/sessions", authHandler.ListSessions)

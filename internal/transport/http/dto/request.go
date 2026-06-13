@@ -54,3 +54,9 @@ type UpdateProfileRequest struct {
 	Username string `json:"username"  validate:"required,min=3,max=30,username"`
 	Phone    string `json:"phone"     validate:"omitempty,phone"`
 }
+
+// ChangePasswordRequest is the HTTP request body for changing the current user's password.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password" validate:"required,min=8"`
+}
