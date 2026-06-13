@@ -47,6 +47,7 @@ type AuthService interface {
 	Login(ctx context.Context, req LoginRequest) (string, string, error)
 	Refresh(ctx context.Context, refreshToken string, userAgent string, ipAddress string) (string, string, error)
 	Logout(ctx context.Context, refreshToken string) error
+	LogoutAll(ctx context.Context, userID int64) error
 	ListSessions(ctx context.Context, userID int64) ([]*usersession.UserSession, error)
 	RevokeSession(ctx context.Context, sessionID int64, userID int64, userRole string) error
 }
@@ -396,6 +397,11 @@ func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error 
 		}
 	}
 	return nil
+}
+
+// LogoutAll revokes all sessions and refresh tokens for the given user.
+func (s *authService) LogoutAll(ctx context.Context, userID int64) error {
+	return s.userSessionRepo.RevokeAllByUserID(ctx, userID)
 }
 
 func (s *authService) ListSessions(ctx context.Context, userID int64) ([]*usersession.UserSession, error) {
