@@ -11,6 +11,7 @@ import (
 	domainRole "github.com/unowned-22/api/internal/domain/role"
 	domainToken "github.com/unowned-22/api/internal/domain/token"
 	domainUser "github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/usersession"
 	"github.com/unowned-22/api/internal/errs"
 )
 
@@ -178,6 +179,88 @@ func (m *mockRefreshTokenRepo) RevokeAllByUserID(ctx context.Context, userID int
 	return nil
 }
 
+// ── mock: UserSessionRepository ──────────────────────────────────────────────
+
+type mockUserSessionRepo struct {
+	sessions         map[int64]*usersession.UserSession
+	byRefreshTokenID map[int64]*usersession.UserSession
+	seq              int64
+}
+
+func newMockUserSessionRepo() *mockUserSessionRepo {
+	return &mockUserSessionRepo{
+		sessions:         make(map[int64]*usersession.UserSession),
+		byRefreshTokenID: make(map[int64]*usersession.UserSession),
+	}
+}
+
+func (m *mockUserSessionRepo) Create(ctx context.Context, session *usersession.UserSession) error {
+	m.seq++
+	session.ID = m.seq
+	cp := *session
+	m.sessions[session.ID] = &cp
+	m.byRefreshTokenID[session.RefreshTokenID] = &cp
+	return nil
+}
+
+func (m *mockUserSessionRepo) GetByID(ctx context.Context, id int64) (*usersession.UserSession, error) {
+	session, ok := m.sessions[id]
+	if !ok {
+		return nil, errs.ErrSessionNotFound
+	}
+	return session, nil
+}
+
+func (m *mockUserSessionRepo) GetByRefreshTokenID(ctx context.Context, refreshTokenID int64) (*usersession.UserSession, error) {
+	session, ok := m.byRefreshTokenID[refreshTokenID]
+	if !ok {
+		return nil, errs.ErrSessionNotFound
+	}
+	return session, nil
+}
+
+func (m *mockUserSessionRepo) ListActiveByUserID(ctx context.Context, userID int64) ([]*usersession.UserSession, error) {
+	var sessions []*usersession.UserSession
+	for _, session := range m.sessions {
+		if session.UserID == userID && session.RevokedAt == nil {
+			sessions = append(sessions, session)
+		}
+	}
+	return sessions, nil
+}
+
+func (m *mockUserSessionRepo) Update(ctx context.Context, session *usersession.UserSession) error {
+	existing, ok := m.sessions[session.ID]
+	if !ok {
+		return errs.ErrSessionNotFound
+	}
+	delete(m.byRefreshTokenID, existing.RefreshTokenID)
+	cp := *session
+	m.sessions[session.ID] = &cp
+	m.byRefreshTokenID[session.RefreshTokenID] = &cp
+	return nil
+}
+
+func (m *mockUserSessionRepo) Revoke(ctx context.Context, id int64) error {
+	session, ok := m.sessions[id]
+	if !ok {
+		return errs.ErrSessionNotFound
+	}
+	now := time.Now()
+	session.RevokedAt = &now
+	return nil
+}
+
+func (m *mockUserSessionRepo) RevokeAllByUserID(ctx context.Context, userID int64) error {
+	now := time.Now()
+	for _, session := range m.sessions {
+		if session.UserID == userID && session.RevokedAt == nil {
+			session.RevokedAt = &now
+		}
+	}
+	return nil
+}
+
 // ── mock: RoleRepository ─────────────────────────────────────────────────────
 
 type mockRoleRepo struct {
@@ -253,7 +336,8 @@ func TestAuthService(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	sessionRepo := newMockUserSessionRepo()
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 
 	ctx := context.Background()
 
@@ -288,6 +372,15 @@ func TestAuthService(t *testing.T) {
 	if refreshToken == "" {
 		t.Errorf("expected non-empty refresh token")
 	}
+	sessions, err := srv.ListSessions(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ListSessions failed: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected one active session, got %d", len(sessions))
+	}
+	loginSession := sessions[0]
+	originalLastUsedAt := loginSession.LastUsedAt
 
 	// 4. Login invalid password
 	_, _, err = srv.Login(ctx, LoginRequest{Email: "test@example.com", Password: "wrongpassword"})
@@ -302,7 +395,7 @@ func TestAuthService(t *testing.T) {
 	}
 
 	// 6. Refresh success returns a new access token and a rotated refresh token.
-	newAccessToken, newRefreshToken, err := srv.Refresh(ctx, refreshToken)
+	newAccessToken, newRefreshToken, err := srv.Refresh(ctx, refreshToken, "new-agent", "127.0.0.2")
 	if err != nil {
 		t.Fatalf("Refresh failed: %v", err)
 	}
@@ -312,15 +405,35 @@ func TestAuthService(t *testing.T) {
 	if newRefreshToken == "" || newRefreshToken == refreshToken {
 		t.Errorf("expected a new refresh token")
 	}
+	newRT, err := refreshTokenRepo.GetByToken(ctx, newRefreshToken)
+	if err != nil {
+		t.Fatalf("GetByToken for rotated token failed: %v", err)
+	}
+	updatedSession, err := sessionRepo.GetByRefreshTokenID(ctx, newRT.ID)
+	if err != nil {
+		t.Fatalf("GetByRefreshTokenID for rotated session failed: %v", err)
+	}
+	if updatedSession.ID != loginSession.ID {
+		t.Errorf("expected refresh to keep session id %d, got %d", loginSession.ID, updatedSession.ID)
+	}
+	if !updatedSession.LastUsedAt.After(originalLastUsedAt) {
+		t.Errorf("expected last_used_at to be updated during refresh")
+	}
+	if updatedSession.UserAgent != "new-agent" {
+		t.Errorf("expected user agent to update, got %q", updatedSession.UserAgent)
+	}
+	if updatedSession.IPAddress != "127.0.0.2" {
+		t.Errorf("expected ip address to update, got %q", updatedSession.IPAddress)
+	}
 
 	// 7. Reusing the old refresh token must fail.
-	_, _, err = srv.Refresh(ctx, refreshToken)
+	_, _, err = srv.Refresh(ctx, refreshToken, "", "")
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken for reused token, got %v", err)
 	}
 
 	// 8. Refresh with unknown token
-	_, _, err = srv.Refresh(ctx, "non-existent-token")
+	_, _, err = srv.Refresh(ctx, "non-existent-token", "", "")
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken, got %v", err)
 	}
@@ -331,7 +444,7 @@ func TestAuthService(t *testing.T) {
 	}
 
 	// 10. Refresh after logout (revoked)
-	_, _, err = srv.Refresh(ctx, newRefreshToken)
+	_, _, err = srv.Refresh(ctx, newRefreshToken, "", "")
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken after logout, got %v", err)
 	}
@@ -345,9 +458,55 @@ func TestAuthService(t *testing.T) {
 		Status:    domainToken.RefreshTokenStatusActive,
 	}
 	_ = refreshTokenRepo.CreateRefreshToken(ctx, expiredToken)
-	_, _, err = srv.Refresh(ctx, expiredTokenValue)
+	_, _, err = srv.Refresh(ctx, expiredTokenValue, "", "")
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken for expired token, got %v", err)
+	}
+}
+
+func TestRevokeSessionPreventsRefresh(t *testing.T) {
+	userRepo := newMockUserRepo()
+	refreshTokenRepo := newMockRefreshTokenRepo()
+	sessionRepo := newMockUserSessionRepo()
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, newMockRoleRepo(), &mockTokenManager{}, &mockMailer{}, &mockEventPublisher{}, 720*time.Hour, "http://localhost:3222", "App")
+	ctx := context.Background()
+
+	if err := srv.Register(ctx, RegisterRequest{Email: "sessions@example.com", Password: "password123"}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+	u, err := userRepo.GetByEmail(ctx, "sessions@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail failed: %v", err)
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+
+	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "sessions@example.com", Password: "password123", DeviceName: "Test Device"})
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+	sessions, err := srv.ListSessions(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ListSessions failed: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected one active session, got %d", len(sessions))
+	}
+
+	if err := srv.RevokeSession(ctx, sessions[0].ID, u.ID, "user"); err != nil {
+		t.Fatalf("RevokeSession failed: %v", err)
+	}
+	_, _, err = srv.Refresh(ctx, refreshToken, "", "")
+	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
+		t.Errorf("expected ErrInvalidRefreshToken after session revoke, got %v", err)
+	}
+
+	activeSessions, err := srv.ListSessions(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ListSessions after revoke failed: %v", err)
+	}
+	if len(activeSessions) != 0 {
+		t.Fatalf("expected no active sessions after revoke, got %d", len(activeSessions))
 	}
 }
 
@@ -355,7 +514,7 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 	userRepo := newMockUserRepo()
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
@@ -381,7 +540,7 @@ func TestLoginStoresRefreshTokenHashOnly(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, newMockUserSessionRepo(), roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "security@example.com", Password: "password123"}); err != nil {

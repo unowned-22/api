@@ -136,6 +136,8 @@ func NewRouter(
 			r.Use(middleware.JWTAuth(tokenManager))
 
 			r.Get("/users/me", userHandler.Me)
+			r.Get("/auth/sessions", authHandler.ListSessions)
+			r.Delete("/auth/sessions/{id}", authHandler.RevokeSession)
 			r.Post("/uploads/presign", uploadHandler.Presign)
 
 			// Role-gated: admin only.

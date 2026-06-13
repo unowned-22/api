@@ -11,8 +11,9 @@ type RegisterRequest struct {
 
 // LoginRequest is the HTTP request body for user authentication.
 type LoginRequest struct {
-	Email    string `json:"email"    validate:"required,email"`
-	Password string `json:"password" validate:"required"`
+	Email      string `json:"email"       validate:"required,email"`
+	Password   string `json:"password"    validate:"required"`
+	DeviceName string `json:"device_name" validate:"omitempty,max=255"`
 }
 
 // RefreshRequest is the HTTP request body for token refresh.

@@ -16,6 +16,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/role"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/usersession"
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	"github.com/unowned-22/api/internal/logger"
@@ -31,8 +32,11 @@ type RegisterRequest struct {
 }
 
 type LoginRequest struct {
-	Email    string
-	Password string
+	Email      string
+	Password   string
+	DeviceName string
+	UserAgent  string
+	IPAddress  string
 }
 
 // AuthService defines the application-level contract for authentication.
@@ -41,13 +45,16 @@ type AuthService interface {
 	VerifyEmail(ctx context.Context, token string) error
 	ResendVerification(ctx context.Context, email string) error
 	Login(ctx context.Context, req LoginRequest) (string, string, error)
-	Refresh(ctx context.Context, refreshToken string) (string, string, error)
+	Refresh(ctx context.Context, refreshToken string, userAgent string, ipAddress string) (string, string, error)
 	Logout(ctx context.Context, refreshToken string) error
+	ListSessions(ctx context.Context, userID int64) ([]*usersession.UserSession, error)
+	RevokeSession(ctx context.Context, sessionID int64, userID int64, userRole string) error
 }
 
 type authService struct {
 	userRepo         user.UserRepository
 	refreshTokenRepo token.RefreshTokenRepository
+	userSessionRepo  usersession.UserSessionRepository
 	roleRepo         role.RoleRepository
 	tokenManager     token.ManagerExtended
 	mailer           domainmailer.Mailer
@@ -61,6 +68,7 @@ type authService struct {
 func NewAuthService(
 	userRepo user.UserRepository,
 	refreshTokenRepo token.RefreshTokenRepository,
+	userSessionRepo usersession.UserSessionRepository,
 	roleRepo role.RoleRepository,
 	tokenManager token.ManagerExtended,
 	mailer domainmailer.Mailer,
@@ -72,6 +80,7 @@ func NewAuthService(
 	return &authService{
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
+		userSessionRepo:  userSessionRepo,
 		roleRepo:         roleRepo,
 		tokenManager:     tokenManager,
 		mailer:           mailer,
@@ -244,11 +253,38 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		return "", "", fmt.Errorf("failed to save refresh token: %w", err)
 	}
 
+	deviceName := req.DeviceName
+	if deviceName == "" {
+		deviceName = "Unknown Device"
+	}
+	userAgent := req.UserAgent
+	if userAgent == "" {
+		userAgent = "Unknown"
+	}
+	ipAddress := req.IPAddress
+	if ipAddress == "" {
+		ipAddress = "Unknown"
+	}
+
+	session := &usersession.UserSession{
+		UserID:         u.ID,
+		RefreshTokenID: rt.ID,
+		DeviceName:     deviceName,
+		UserAgent:      userAgent,
+		IPAddress:      ipAddress,
+		CreatedAt:      time.Now(),
+		LastUsedAt:     time.Now(),
+	}
+
+	if err = s.userSessionRepo.Create(ctx, session); err != nil {
+		return "", "", fmt.Errorf("failed to create user session: %w", err)
+	}
+
 	return accessToken, refreshTokenStr, nil
 }
 
 // Refresh validates a refresh token and issues a new access token (with role).
-func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (string, string, error) {
+func (s *authService) Refresh(ctx context.Context, refreshTokenStr string, userAgent string, ipAddress string) (string, string, error) {
 	if refreshTokenStr == "" {
 		return "", "", errs.ErrInvalidRefreshToken
 	}
@@ -262,6 +298,19 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (stri
 	}
 
 	if rt.EffectiveStatus() != token.RefreshTokenStatusActive {
+		return "", "", errs.ErrInvalidRefreshToken
+	}
+
+	// Retrieve session associated with this refresh token and verify it is not revoked.
+	session, err := s.userSessionRepo.GetByRefreshTokenID(ctx, rt.ID)
+	if err != nil {
+		if errors.Is(err, errs.ErrSessionNotFound) {
+			return "", "", errs.ErrInvalidRefreshToken
+		}
+		return "", "", err
+	}
+
+	if session.RevokedAt != nil {
 		return "", "", errs.ErrInvalidRefreshToken
 	}
 
@@ -301,6 +350,20 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (stri
 		return "", "", fmt.Errorf("failed to save refresh token: %w", err)
 	}
 
+	// Update the session with the new refresh token ID and update last_used_at, user_agent, and ip_address.
+	if userAgent != "" {
+		session.UserAgent = userAgent
+	}
+	if ipAddress != "" {
+		session.IPAddress = ipAddress
+	}
+	session.RefreshTokenID = newRT.ID
+	session.LastUsedAt = time.Now()
+
+	if err := s.userSessionRepo.Update(ctx, session); err != nil {
+		return "", "", fmt.Errorf("failed to update user session: %w", err)
+	}
+
 	return accessToken, newRefreshTokenStr, nil
 }
 
@@ -310,13 +373,47 @@ func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error 
 		return errs.ErrInvalidRefreshToken
 	}
 
-	if err := s.refreshTokenRepo.RevokeRefreshToken(ctx, refreshTokenStr); err != nil {
+	rt, err := s.refreshTokenRepo.GetByToken(ctx, refreshTokenStr)
+	if err != nil {
 		if errors.Is(err, errs.ErrRefreshTokenNotFound) {
 			return errs.ErrInvalidRefreshToken
 		}
 		return err
 	}
+
+	// Retrieve session associated with this refresh token
+	session, err := s.userSessionRepo.GetByRefreshTokenID(ctx, rt.ID)
+	if err == nil {
+		if err := s.userSessionRepo.Revoke(ctx, session.ID); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, errs.ErrSessionNotFound) {
+		return err
+	} else {
+		// Fallback for tokens without a session
+		if err := s.refreshTokenRepo.RevokeRefreshToken(ctx, refreshTokenStr); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func (s *authService) ListSessions(ctx context.Context, userID int64) ([]*usersession.UserSession, error) {
+	return s.userSessionRepo.ListActiveByUserID(ctx, userID)
+}
+
+func (s *authService) RevokeSession(ctx context.Context, sessionID int64, userID int64, userRole string) error {
+	session, err := s.userSessionRepo.GetByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+
+	// Regular users can only revoke their own sessions. Admins can revoke any session.
+	if userRole != "admin" && session.UserID != userID {
+		return errs.ErrForbidden
+	}
+
+	return s.userSessionRepo.Revoke(ctx, sessionID)
 }
 
 // HashRefreshToken returns the SHA-256 hash of a refresh token string.

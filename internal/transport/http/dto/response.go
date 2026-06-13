@@ -1,7 +1,6 @@
 package dto
 
 // AuthResponse is the HTTP response body for login and token refresh.
-// RefreshToken is omitted in refresh responses (only access token is reissued).
 type AuthResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token,omitempty"`
@@ -41,4 +40,18 @@ type PresignedUploadResponse struct {
 
 type MessageResponse struct {
 	Message string `json:"message"`
+}
+
+type SessionResponse struct {
+	ID         int64  `json:"id"`
+	UserID     int64  `json:"user_id"`
+	DeviceName string `json:"device_name"`
+	UserAgent  string `json:"user_agent"`
+	IPAddress  string `json:"ip_address"`
+	CreatedAt  string `json:"created_at"`
+	LastUsedAt string `json:"last_used_at"`
+}
+
+type SessionListResponse struct {
+	Sessions []SessionResponse `json:"sessions"`
 }

@@ -4,8 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/unowned-22/api/internal/auth"
+	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 	"github.com/unowned-22/api/internal/validator"
@@ -71,8 +76,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	authReq := auth.LoginRequest{
-		Email:    req.Email,
-		Password: req.Password,
+		Email:      req.Email,
+		Password:   req.Password,
+		DeviceName: req.DeviceName,
+		UserAgent:  r.Header.Get("User-Agent"),
+		IPAddress:  getClientIP(r),
 	}
 
 	accessToken, refreshToken, err := h.authService.Login(r.Context(), authReq)
@@ -104,7 +112,12 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.authService.Refresh(r.Context(), req.RefreshToken)
+	accessToken, refreshToken, err := h.authService.Refresh(
+		r.Context(),
+		req.RefreshToken,
+		r.Header.Get("User-Agent"),
+		getClientIP(r),
+	)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
@@ -192,4 +205,76 @@ func toFieldErrors(fields []validator.FieldError) []response.ValidationFieldErro
 		})
 	}
 	return out
+}
+
+// ListSessions retrieves all active user sessions for the authenticated user
+func (h *AuthHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	sessions, err := h.authService.ListSessions(r.Context(), userID)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	sessionDTOs := make([]dto.SessionResponse, len(sessions))
+	for i, s := range sessions {
+		sessionDTOs[i] = dto.SessionResponse{
+			ID:         s.ID,
+			UserID:     s.UserID,
+			DeviceName: s.DeviceName,
+			UserAgent:  s.UserAgent,
+			IPAddress:  s.IPAddress,
+			CreatedAt:  s.CreatedAt.Format(time.RFC3339),
+			LastUsedAt: s.LastUsedAt.Format(time.RFC3339),
+		}
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.SessionListResponse{Sessions: sessionDTOs})
+}
+
+// RevokeSession revokes a user session by its ID
+func (h *AuthHandler) RevokeSession(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	userRole, _ := contextx.UserRole(r.Context())
+
+	idStr := chi.URLParam(r, "id")
+	sessionID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid session ID")
+		return
+	}
+
+	err = h.authService.RevokeSession(r.Context(), sessionID, userID, userRole)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "session revoked successfully"})
+}
+
+func getClientIP(r *http.Request) string {
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip == "" {
+		ip = r.Header.Get("X-Real-IP")
+	}
+	if ip == "" {
+		ip = r.RemoteAddr
+		if idx := strings.LastIndex(ip, ":"); idx != -1 {
+			ip = ip[:idx]
+		}
+	}
+	if idx := strings.Index(ip, ","); idx != -1 {
+		ip = strings.TrimSpace(ip[:idx])
+	}
+	return ip
 }
