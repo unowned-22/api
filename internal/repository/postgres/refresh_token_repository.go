@@ -21,14 +21,14 @@ func NewRefreshTokenRepository(db *pgxpool.Pool) *RefreshTokenRepository {
 	return &RefreshTokenRepository{db: db}
 }
 
-// Create inserts a new refresh token into the database.
-func (r *RefreshTokenRepository) Create(ctx context.Context, t *token.RefreshToken) error {
+// CreateRefreshToken inserts a new refresh token into the database.
+func (r *RefreshTokenRepository) CreateRefreshToken(ctx context.Context, t *token.RefreshToken) error {
 	query := `
-		INSERT INTO refresh_tokens (user_id, token, expires_at, created_at, revoked)
+		INSERT INTO refresh_tokens (user_id, token, expires_at, status, created_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
 	`
-	err := r.db.QueryRow(ctx, query, t.UserID, t.Token, t.ExpiresAt, t.CreatedAt, t.Revoked).Scan(&t.ID)
+	err := r.db.QueryRow(ctx, query, t.UserID, t.Token, t.ExpiresAt, t.Status, t.CreatedAt).Scan(&t.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create refresh token in db: %w", err)
 	}
@@ -38,13 +38,13 @@ func (r *RefreshTokenRepository) Create(ctx context.Context, t *token.RefreshTok
 // GetByToken retrieves a refresh token by its token string value.
 func (r *RefreshTokenRepository) GetByToken(ctx context.Context, tokenStr string) (*token.RefreshToken, error) {
 	query := `
-		SELECT id, user_id, token, expires_at, revoked, created_at
+		SELECT id, user_id, token, expires_at, status, created_at
 		FROM refresh_tokens
 		WHERE token = $1
 	`
 	var t token.RefreshToken
 	err := r.db.QueryRow(ctx, query, tokenStr).
-		Scan(&t.ID, &t.UserID, &t.Token, &t.ExpiresAt, &t.Revoked, &t.CreatedAt)
+		Scan(&t.ID, &t.UserID, &t.Token, &t.ExpiresAt, &t.Status, &t.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrRefreshTokenNotFound
@@ -54,14 +54,14 @@ func (r *RefreshTokenRepository) GetByToken(ctx context.Context, tokenStr string
 	return &t, nil
 }
 
-// Revoke marks a refresh token as revoked.
-func (r *RefreshTokenRepository) Revoke(ctx context.Context, tokenStr string) error {
+// RevokeRefreshToken marks a refresh token as revoked.
+func (r *RefreshTokenRepository) RevokeRefreshToken(ctx context.Context, tokenStr string) error {
 	query := `
 		UPDATE refresh_tokens
-		SET revoked = TRUE
-		WHERE token = $1
+		SET status = $1
+		WHERE token = $2
 	`
-	res, err := r.db.Exec(ctx, query, tokenStr)
+	res, err := r.db.Exec(ctx, query, token.RefreshTokenStatusRevoked, tokenStr)
 	if err != nil {
 		return fmt.Errorf("failed to revoke refresh token in db: %w", err)
 	}
@@ -85,10 +85,10 @@ func (r *RefreshTokenRepository) DeleteExpired(ctx context.Context) error {
 func (r *RefreshTokenRepository) RevokeAllByUserID(ctx context.Context, userID int64) error {
 	query := `
 		UPDATE refresh_tokens
-		SET revoked = TRUE
-		WHERE user_id = $1
+		SET status = $1
+		WHERE user_id = $2
 	`
-	_, err := r.db.Exec(ctx, query, userID)
+	_, err := r.db.Exec(ctx, query, token.RefreshTokenStatusRevoked, userID)
 	if err != nil {
 		return fmt.Errorf("failed to revoke refresh tokens by user id in db: %w", err)
 	}

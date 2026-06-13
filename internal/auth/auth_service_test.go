@@ -133,7 +133,7 @@ func newMockRefreshTokenRepo() *mockRefreshTokenRepo {
 	return &mockRefreshTokenRepo{tokens: make(map[string]*domainToken.RefreshToken)}
 }
 
-func (m *mockRefreshTokenRepo) Create(ctx context.Context, t *domainToken.RefreshToken) error {
+func (m *mockRefreshTokenRepo) CreateRefreshToken(ctx context.Context, t *domainToken.RefreshToken) error {
 	m.seq++
 	t.ID = m.seq
 	cp := *t
@@ -149,12 +149,12 @@ func (m *mockRefreshTokenRepo) GetByToken(ctx context.Context, tokenStr string) 
 	return t, nil
 }
 
-func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, tokenStr string) error {
+func (m *mockRefreshTokenRepo) RevokeRefreshToken(ctx context.Context, tokenStr string) error {
 	t, ok := m.tokens[tokenStr]
 	if !ok {
 		return errs.ErrRefreshTokenNotFound
 	}
-	t.Revoked = true
+	t.Status = domainToken.RefreshTokenStatusRevoked
 	return nil
 }
 
@@ -170,7 +170,7 @@ func (m *mockRefreshTokenRepo) DeleteExpired(ctx context.Context) error {
 func (m *mockRefreshTokenRepo) RevokeAllByUserID(ctx context.Context, userID int64) error {
 	for _, t := range m.tokens {
 		if t.UserID == userID {
-			t.Revoked = true
+			t.Status = domainToken.RefreshTokenStatusRevoked
 		}
 	}
 	return nil
@@ -250,7 +250,8 @@ func TestAuthService(t *testing.T) {
 	roleRepo := newMockRoleRepo()
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, "http://localhost:3222", "App")
+	publisher := &mockEventPublisher{}
+	srv := NewAuthService(userRepo, refreshTokenRepo, roleRepo, tm, mailer, publisher, "http://localhost:3222", "App")
 
 	ctx := context.Background()
 
@@ -290,41 +291,50 @@ func TestAuthService(t *testing.T) {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
 
-	// 6. Refresh success
-	newAccessToken, err := srv.Refresh(ctx, refreshToken)
+	// 6. Refresh success returns a new access token and a rotated refresh token.
+	newAccessToken, newRefreshToken, err := srv.Refresh(ctx, refreshToken)
 	if err != nil {
 		t.Fatalf("Refresh failed: %v", err)
 	}
 	if newAccessToken != "mock-token-for-user" {
 		t.Errorf("unexpected refreshed access token: %s", newAccessToken)
 	}
+	if newRefreshToken == "" || newRefreshToken == refreshToken {
+		t.Errorf("expected a new refresh token")
+	}
 
-	// 7. Refresh with unknown token
-	_, err = srv.Refresh(ctx, "non-existent-token")
+	// 7. Reusing the old refresh token must fail.
+	_, _, err = srv.Refresh(ctx, refreshToken)
+	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
+		t.Errorf("expected ErrInvalidRefreshToken for reused token, got %v", err)
+	}
+
+	// 8. Refresh with unknown token
+	_, _, err = srv.Refresh(ctx, "non-existent-token")
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken, got %v", err)
 	}
 
-	// 8. Logout
-	if err = srv.Logout(ctx, refreshToken); err != nil {
+	// 9. Logout revokes the active refresh token.
+	if err = srv.Logout(ctx, newRefreshToken); err != nil {
 		t.Fatalf("Logout failed: %v", err)
 	}
 
-	// 9. Refresh after logout (revoked)
-	_, err = srv.Refresh(ctx, refreshToken)
+	// 10. Refresh after logout (revoked)
+	_, _, err = srv.Refresh(ctx, newRefreshToken)
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken after logout, got %v", err)
 	}
 
-	// 10. Refresh expired token
+	// 11. Refresh expired token
 	expiredToken := &domainToken.RefreshToken{
 		UserID:    1,
 		Token:     "expired-token",
 		ExpiresAt: time.Now().Add(-1 * time.Hour),
-		Revoked:   false,
+		Status:    domainToken.RefreshTokenStatusActive,
 	}
-	_ = refreshTokenRepo.Create(ctx, expiredToken)
-	_, err = srv.Refresh(ctx, "expired-token")
+	_ = refreshTokenRepo.CreateRefreshToken(ctx, expiredToken)
+	_, _, err = srv.Refresh(ctx, "expired-token")
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken for expired token, got %v", err)
 	}
@@ -333,7 +343,8 @@ func TestAuthService(t *testing.T) {
 func TestRegisterAssignsDefaultRole(t *testing.T) {
 	userRepo := newMockUserRepo()
 	mailer := &mockMailer{}
-	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{}, mailer, "http://localhost:3222", "App")
+	publisher := &mockEventPublisher{}
+	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {

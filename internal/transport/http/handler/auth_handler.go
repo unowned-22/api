@@ -104,14 +104,15 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := h.authService.Refresh(r.Context(), req.RefreshToken)
+	accessToken, refreshToken, err := h.authService.Refresh(r.Context(), req.RefreshToken)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
 	}
 
 	response.SendSuccess(w, http.StatusOK, dto.AuthResponse{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 	})
 }
 

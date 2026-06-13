@@ -5,6 +5,15 @@ import (
 	"time"
 )
 
+// RefreshTokenStatus defines the lifecycle states for refresh tokens.
+type RefreshTokenStatus string
+
+const (
+	RefreshTokenStatusActive  RefreshTokenStatus = "active"
+	RefreshTokenStatusRevoked RefreshTokenStatus = "revoked"
+	RefreshTokenStatusExpired RefreshTokenStatus = "expired"
+)
+
 // RefreshToken is an opaque, revocable token that lets a client obtain a
 // new access token without re-authenticating.
 // UserID is a plain int64 scalar; importing domain/user is not required,
@@ -14,16 +23,23 @@ type RefreshToken struct {
 	UserID    int64
 	Token     string
 	ExpiresAt time.Time
-	Revoked   bool
+	Status    RefreshTokenStatus
 	CreatedAt time.Time
+}
+
+func (t *RefreshToken) EffectiveStatus() RefreshTokenStatus {
+	if t.ExpiresAt.Before(time.Now()) {
+		return RefreshTokenStatusExpired
+	}
+	return t.Status
 }
 
 // RefreshTokenRepository defines the persistence contract for refresh tokens.
 // Implementations live in internal/repository/postgres.
 type RefreshTokenRepository interface {
-	Create(ctx context.Context, token *RefreshToken) error
+	CreateRefreshToken(ctx context.Context, token *RefreshToken) error
 	GetByToken(ctx context.Context, token string) (*RefreshToken, error)
-	Revoke(ctx context.Context, token string) error
+	RevokeRefreshToken(ctx context.Context, token string) error
 	DeleteExpired(ctx context.Context) error
 	RevokeAllByUserID(ctx context.Context, userID int64) error
 }
