@@ -242,7 +242,7 @@ func runServe() error {
 	authHandler := handler.NewAuthHandler(authService)
 	passwordResetHandler := handler.NewPasswordResetHandler(passwordResetService)
 	userHandler := handler.NewUserHandler(userService)
-	adminHandler := handler.NewAdminHandler(userService, permissionService)
+	adminHandler := handler.NewAdminHandler(userService, permissionService, authService)
 	healthHandler := handler.NewHealthHandler(healthService)
 	uploadHandler := handler.NewUploadHandler(minioStorage, cfg.MinIOBucket)
 

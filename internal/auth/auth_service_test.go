@@ -123,6 +123,15 @@ func (m *mockUserRepo) UpdatePassword(ctx context.Context, userID int64, hashedP
 	return nil
 }
 
+func (m *mockUserRepo) SetDeactivatedAt(ctx context.Context, userID int64, t *time.Time) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.DeactivatedAt = t
+	return nil
+}
+
 // ── mock: RefreshTokenRepository ─────────────────────────────────────────────
 
 type mockRefreshTokenRepo struct {
@@ -530,6 +539,109 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 	}
 	if u.RoleName != "user" {
 		t.Errorf("expected RoleName='user', got '%s'", u.RoleName)
+	}
+}
+
+func TestDeactivateUserRevokesSessionsAndDeniesAuth(t *testing.T) {
+	userRepo := newMockUserRepo()
+	refreshTokenRepo := newMockRefreshTokenRepo()
+	sessionRepo := newMockUserSessionRepo()
+	roleRepo := newMockRoleRepo()
+	tm := &mockTokenManager{}
+	mailer := &mockMailer{}
+	publisher := &mockEventPublisher{}
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+
+	ctx := context.Background()
+	if err := srv.Register(ctx, RegisterRequest{Email: "disable@example.com", Password: "password123"}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+	u, err := userRepo.GetByEmail(ctx, "disable@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail failed: %v", err)
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+
+	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "disable@example.com", Password: "password123"})
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	sessions, err := srv.ListSessions(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ListSessions failed: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected one active session, got %d", len(sessions))
+	}
+
+	// Deactivate user
+	if err := srv.DeactivateUser(ctx, u.ID); err != nil {
+		t.Fatalf("DeactivateUser failed: %v", err)
+	}
+
+	// Sessions should be revoked
+	activeSessions, err := srv.ListSessions(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("ListSessions after deactivate failed: %v", err)
+	}
+	if len(activeSessions) != 0 {
+		t.Fatalf("expected no active sessions after deactivate, got %d", len(activeSessions))
+	}
+
+	// Login must be denied
+	_, _, err = srv.Login(ctx, LoginRequest{Email: "disable@example.com", Password: "password123"})
+	if !errors.Is(err, errs.ErrUserDeactivated) {
+		t.Errorf("expected ErrUserDeactivated on login after deactivation, got %v", err)
+	}
+
+	// Refresh should be invalid because tokens were revoked
+	_, _, err = srv.Refresh(ctx, refreshToken, "", "")
+	if !errors.Is(err, errs.ErrInvalidRefreshToken) && !errors.Is(err, errs.ErrUserDeactivated) {
+		t.Errorf("expected ErrInvalidRefreshToken or ErrUserDeactivated on refresh after deactivation, got %v", err)
+	}
+}
+
+func TestReactivateUserAllowsLogin(t *testing.T) {
+	userRepo := newMockUserRepo()
+	refreshTokenRepo := newMockRefreshTokenRepo()
+	sessionRepo := newMockUserSessionRepo()
+	roleRepo := newMockRoleRepo()
+	tm := &mockTokenManager{}
+	mailer := &mockMailer{}
+	publisher := &mockEventPublisher{}
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+
+	ctx := context.Background()
+	if err := srv.Register(ctx, RegisterRequest{Email: "reactivate@example.com", Password: "password123"}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+	u, err := userRepo.GetByEmail(ctx, "reactivate@example.com")
+	if err != nil {
+		t.Fatalf("GetByEmail failed: %v", err)
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+
+	// Deactivate then Reactivate
+	if err := srv.DeactivateUser(ctx, u.ID); err != nil {
+		t.Fatalf("DeactivateUser failed: %v", err)
+	}
+	// ensure login is denied
+	_, _, err = srv.Login(ctx, LoginRequest{Email: "reactivate@example.com", Password: "password123"})
+	if !errors.Is(err, errs.ErrUserDeactivated) {
+		t.Fatalf("expected ErrUserDeactivated after deactivate, got %v", err)
+	}
+
+	if err := srv.ReactivateUser(ctx, u.ID); err != nil {
+		t.Fatalf("ReactivateUser failed: %v", err)
+	}
+
+	// login should succeed now
+	_, _, err = srv.Login(ctx, LoginRequest{Email: "reactivate@example.com", Password: "password123"})
+	if err != nil {
+		t.Fatalf("expected login to succeed after reactivate, got %v", err)
 	}
 }
 

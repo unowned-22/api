@@ -98,6 +98,15 @@ func (m *mockUserRepo) UpdatePassword(ctx context.Context, userID int64, hashedP
 	return nil
 }
 
+func (m *mockUserRepo) SetDeactivatedAt(ctx context.Context, userID int64, t *time.Time) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.DeactivatedAt = t
+	return nil
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestUserService_GetProfile(t *testing.T) {

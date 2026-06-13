@@ -48,6 +48,8 @@ type AuthService interface {
 	Refresh(ctx context.Context, refreshToken string, userAgent string, ipAddress string) (string, string, error)
 	Logout(ctx context.Context, refreshToken string) error
 	LogoutAll(ctx context.Context, userID int64) error
+	DeactivateUser(ctx context.Context, userID int64) error
+	ReactivateUser(ctx context.Context, userID int64) error
 	ListSessions(ctx context.Context, userID int64) ([]*usersession.UserSession, error)
 	RevokeSession(ctx context.Context, sessionID int64, userID int64, userRole string) error
 }
@@ -223,6 +225,11 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		return "", "", err
 	}
 
+	// Deny login for deactivated users
+	if u.DeactivatedAt != nil {
+		return "", "", errs.ErrUserDeactivated
+	}
+
 	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)); err != nil {
 		return "", "", errs.ErrInvalidCredentials
 	}
@@ -329,6 +336,11 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string, userA
 		return "", "", fmt.Errorf("failed to fetch user for refresh: %w", err)
 	}
 
+	// Deny refresh for deactivated users
+	if u.DeactivatedAt != nil {
+		return "", "", errs.ErrUserDeactivated
+	}
+
 	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate access token: %w", err)
@@ -402,6 +414,33 @@ func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error 
 // LogoutAll revokes all sessions and refresh tokens for the given user.
 func (s *authService) LogoutAll(ctx context.Context, userID int64) error {
 	return s.userSessionRepo.RevokeAllByUserID(ctx, userID)
+}
+
+// DeactivateUser marks a user as deactivated and revokes all sessions and refresh tokens.
+func (s *authService) DeactivateUser(ctx context.Context, userID int64) error {
+	now := time.Now()
+	if err := s.userRepo.SetDeactivatedAt(ctx, userID, &now); err != nil {
+		return err
+	}
+
+	if err := s.userSessionRepo.RevokeAllByUserID(ctx, userID); err != nil {
+		return err
+	}
+
+	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, userID); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ReactivateUser clears the deactivated timestamp to re-enable the account.
+func (s *authService) ReactivateUser(ctx context.Context, userID int64) error {
+	// Clear deactivated_at
+	if err := s.userRepo.SetDeactivatedAt(ctx, userID, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *authService) ListSessions(ctx context.Context, userID int64) ([]*usersession.UserSession, error) {

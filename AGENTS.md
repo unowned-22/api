@@ -309,6 +309,7 @@ Security notes:
 - Reset tokens are short-lived and single-use; services must check `expires_at` and `used_at`.
 - On successful password reset, all refresh tokens are revoked using the `RefreshTokenRepository` contract to force re-authentication.
 - Email sending failures during token creation are logged but do not cause the API to reveal token state to callers.
+ - Administrators may also deactivate accounts (set `deactivated_at`); deactivated accounts must be denied login and token refresh and all sessions/tokens must be revoked.
 
 ## Rate Limiting
 
