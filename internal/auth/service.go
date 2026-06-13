@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/unowned-22/api/internal/domain/event"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 	"github.com/unowned-22/api/internal/domain/role"
 	"github.com/unowned-22/api/internal/domain/token"
@@ -46,6 +48,7 @@ type authService struct {
 	roleRepo         role.RoleRepository
 	tokenManager     token.ManagerExtended
 	mailer           domainmailer.Mailer
+	publisher        event.Publisher
 	appURL           string
 	appName          string
 }
@@ -57,6 +60,7 @@ func NewAuthService(
 	roleRepo role.RoleRepository,
 	tokenManager token.ManagerExtended,
 	mailer domainmailer.Mailer,
+	publisher event.Publisher,
 	appURL string,
 	appName string,
 ) AuthService {
@@ -66,6 +70,7 @@ func NewAuthService(
 		roleRepo:         roleRepo,
 		tokenManager:     tokenManager,
 		mailer:           mailer,
+		publisher:        publisher,
 		appURL:           appURL,
 		appName:          appName,
 	}
@@ -110,12 +115,22 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 		return fmt.Errorf("failed to persist verification token: %w", err)
 	}
 
-	if err := s.sendVerificationEmail(ctx, u.Email, token); err != nil {
-		if logger.Log != nil {
+	payload, err := json.Marshal(map[string]interface{}{
+		"user_id": u.ID,
+		"email":   u.Email,
+		"token":   token,
+	})
+	if err != nil {
+		logger.Log.WithError(err).Warn("failed to marshal user.registered event")
+	} else {
+		if err := s.publisher.Publish(ctx, event.Event{
+			Name:    event.UserRegistered,
+			Payload: payload,
+		}); err != nil {
 			logger.Log.WithError(err).WithFields(map[string]interface{}{
 				"email":   u.Email,
 				"user_id": u.ID,
-			}).Warn("failed to send verification email")
+			}).Warn("failed to publish user.registered event")
 		}
 	}
 
@@ -191,6 +206,10 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 
 	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)); err != nil {
 		return "", "", errs.ErrInvalidCredentials
+	}
+
+	if u.EmailVerifiedAt == nil {
+		return "", "", errs.ErrEmailNotVerified
 	}
 
 	// Embed role in the access token.

@@ -143,6 +143,22 @@ Error response:
 }
 ```
 
+### Response Types
+All handler responses must use typed DTO structs. Anonymous maps (`map[string]string`)
+are strictly prohibited in handler responses.
+
+Response structs must be declared in:
+
+```text
+internal/transport/http/dto/
+```
+
+Simple message responses must use:
+
+```go
+dto.MessageResponse{Message: "..."}
+```
+
 Business logic inside handlers is strictly prohibited.
 
 ---

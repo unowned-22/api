@@ -48,7 +48,7 @@ func NewRouter(
 
 			r.Post("/auth/register", authHandler.Register)
 			r.Post("/auth/login", authHandler.Login)
-			r.Post("/auth/verify-email", authHandler.VerifyEmail)
+			r.Get("/auth/verify-email", authHandler.VerifyEmail)
 			r.Post("/auth/resend-verification", authHandler.ResendVerification)
 			r.Post("/auth/forgot-password", passwordResetHandler.ForgotPassword)
 			r.Post("/auth/reset-password", passwordResetHandler.ResetPassword)

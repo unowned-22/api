@@ -65,6 +65,10 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusInternalServerError
 		code = "INTERNAL_SERVER_ERROR"
 		message = "internal server error"
+	} else if errors.Is(err, errs.ErrEmailNotVerified) {
+		status = http.StatusForbidden
+		code = "EMAIL_NOT_VERIFIED"
+		message = "please verify your email address before logging in"
 	} else if errors.Is(err, errs.ErrForbidden) {
 		status = http.StatusForbidden
 		code = "FORBIDDEN"

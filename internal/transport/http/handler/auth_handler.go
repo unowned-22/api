@@ -47,7 +47,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.SendSuccess(w, http.StatusCreated, map[string]string{"message": "user registered successfully"})
+	response.SendSuccess(w, http.StatusCreated, dto.MessageResponse{Message: "user registered successfully, please check your email to verify your account"})
 }
 
 // Login processes user authentication requests and returns access and refresh tokens
@@ -114,27 +114,18 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 // Logout revokes the given refresh token
 func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
-	var req dto.VerifyEmailRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.SendBadRequest(w, "invalid request body")
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		response.SendBadRequest(w, "token is required")
 		return
 	}
 
-	if err := validator.Validate(&req); err != nil {
-		if ve, ok := errors.AsType[*validator.ValidationErrors](err); ok {
-			response.SendValidationError(w, toFieldErrors(ve.Fields))
-			return
-		}
-		response.SendBadRequest(w, "invalid request")
-		return
-	}
-
-	if err := h.authService.VerifyEmail(r.Context(), req.Token); err != nil {
+	if err := h.authService.VerifyEmail(r.Context(), token); err != nil {
 		response.SendError(w, r, err)
 		return
 	}
 
-	response.SendSuccess(w, http.StatusOK, map[string]string{"message": "email verified successfully"})
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "email verified successfully"})
 }
 
 func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +149,7 @@ func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	response.SendSuccess(w, http.StatusOK, map[string]string{"message": "verification email resent"})
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "verification email resent"})
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
@@ -183,9 +174,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.SendSuccess(w, http.StatusOK, map[string]string{
-		"message": "logged out successfully",
-	})
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "logged out successfully"})
 }
 
 // toFieldErrors converts validator field errors to response field errors,

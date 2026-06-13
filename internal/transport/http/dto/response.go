@@ -38,3 +38,7 @@ type PresignedUploadResponse struct {
 	Key       string `json:"key"`
 	ExpiresIn int    `json:"expires_in"`
 }
+
+type MessageResponse struct {
+	Message string `json:"message"`
+}

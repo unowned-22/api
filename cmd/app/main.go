@@ -218,7 +218,16 @@ func runServe() error {
 	})
 
 	// 8. Services
-	authService := auth.NewAuthService(userRepo, refreshTokenRepo, roleRepo, tokenManager, smtpMailer, cfg.AppURL, cfg.AppName)
+	authService := auth.NewAuthService(
+		userRepo,
+		refreshTokenRepo,
+		roleRepo,
+		tokenManager,
+		smtpMailer,
+		publisher,
+		cfg.AppURL,
+		cfg.AppName,
+	)
 	passwordResetRepo := postgresRepo.NewPasswordResetRepository(pool)
 	passwordResetService := service.NewPasswordResetService(userRepo, passwordResetRepo, refreshTokenRepo, smtpMailer, cfg.AppURL, cfg.AppName)
 	userService := service.NewUserService(userRepo)
@@ -332,7 +341,7 @@ func runWorker() error {
 
 	// 5. Event Handlers
 	handlers := map[domainevent.Name]domainevent.Handler{
-		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer),
+		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName),
 		domainevent.PasswordResetRequested: workerHandler.NewPasswordResetHandler(smtpMailer),
 	}
 

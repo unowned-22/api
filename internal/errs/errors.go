@@ -14,4 +14,5 @@ var (
 	ErrEmailAlreadyVerified      = errors.New("email already verified")
 	ErrPasswordResetTokenInvalid = errors.New("password reset token is invalid or expired")
 	ErrPasswordResetTokenUsed    = errors.New("password reset token has already been used")
+	ErrEmailNotVerified          = errors.New("email not verified")
 )
