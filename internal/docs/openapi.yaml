@@ -265,6 +265,15 @@ components:
           type: string
           format: email
           example: user@example.com
+        full_name:
+          type: string
+          example: Jane Smith
+        username:
+          type: string
+          example: jane.smith
+        phone:
+          type: string
+          example: "+79991234567"
         role:
           type: string
           example: user
