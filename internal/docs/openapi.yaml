@@ -1,0 +1,901 @@
+openapi: 3.0.3
+
+info:
+  title: Go REST API
+  description: |
+    Production-ready REST API with JWT authentication, RBAC, and email verification.
+
+    ## Authentication
+    Most protected endpoints require a Bearer token in the `Authorization` header:
+    ```
+    Authorization: Bearer <access_token>
+    ```
+    Obtain a token via `POST /api/v1/auth/login`.
+  version: "1.0"
+  contact: {}
+
+servers:
+  - url: http://api.localhost
+    description: Local development
+
+tags:
+  - name: auth
+    description: Registration, login, token management, email verification
+  - name: password-reset
+    description: Password reset flow
+  - name: users
+    description: User profile
+  - name: admin
+    description: Admin-only endpoints (role=admin or permission=admin.access)
+  - name: uploads
+    description: Presigned object-storage URLs
+  - name: health
+    description: Liveness and readiness probes
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ── Wrappers ────────────────────────────────────────────────────────────────
+    MessageData:
+      type: object
+      properties:
+        message:
+          type: string
+          example: operation completed successfully
+
+    ErrorDetail:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: validation failed
+
+    ValidationFieldError:
+      type: object
+      properties:
+        field:
+          type: string
+          example: email
+        message:
+          type: string
+          example: must be a valid email address
+
+    ValidationErrorDetail:
+      allOf:
+        - $ref: '#/components/schemas/ErrorDetail'
+        - type: object
+          properties:
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ValidationFieldError'
+
+    # ── Auth ────────────────────────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password, full_name, username]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          minLength: 8
+          example: securepassword123
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: Jane Smith
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+          pattern: '^[a-zA-Z0-9._-]+$'
+          example: jane.smith
+        phone:
+          type: string
+          pattern: '^\+'
+          example: "+79991234567"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        password:
+          type: string
+          example: securepassword123
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          example: Y7vL6mQ9qF...
+
+    LogoutRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          example: Y7vL6mQ9qF...
+
+    ResendVerificationRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+
+    AuthTokens:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refresh_token:
+          type: string
+          example: Y7vL6mQ9qF...
+
+    AccessToken:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    # ── Password reset ──────────────────────────────────────────────────────────
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          example: user@example.com
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+          example: a3f9c2...
+        new_password:
+          type: string
+          minLength: 8
+          example: newSecurePassword123
+
+    # ── Users ───────────────────────────────────────────────────────────────────
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        full_name:
+          type: string
+          example: Jane Smith
+        username:
+          type: string
+          example: jane.smith
+        phone:
+          type: string
+          example: "+79991234567"
+        role:
+          type: string
+          example: user
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-12T09:53:01Z"
+
+    # ── Admin ───────────────────────────────────────────────────────────────────
+    Permission:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        name:
+          type: string
+          example: admin.access
+        description:
+          type: string
+          example: Access administration endpoints
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-12T09:53:01Z"
+
+    PermissionList:
+      type: object
+      properties:
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+
+    # ── Uploads ─────────────────────────────────────────────────────────────────
+    PresignedUploadRequest:
+      type: object
+      required: [filename, content_type]
+      properties:
+        filename:
+          type: string
+          example: avatar.png
+        content_type:
+          type: string
+          example: image/png
+
+    PresignedUploadResponse:
+      type: object
+      properties:
+        upload_url:
+          type: string
+          example: https://minio.example.com/app-uploads/1/uuid/avatar.png?X-Amz-Signature=...
+        key:
+          type: string
+          example: 1/550e8400-e29b-41d4-a716-446655440000/avatar.png
+        expires_in:
+          type: integer
+          example: 900
+
+    # ── Health ──────────────────────────────────────────────────────────────────
+    HealthCheckResult:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, fail]
+        message:
+          type: string
+
+    HealthReport:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, fail]
+        checks:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/HealthCheckResult'
+          example:
+            postgres:
+              status: ok
+
+  # ── Reusable responses ───────────────────────────────────────────────────────
+  responses:
+    400BadRequest:
+      description: Malformed request body
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: '#/components/schemas/ErrorDetail'
+          example:
+            error:
+              code: BAD_REQUEST
+              message: invalid request body
+
+    401Unauthorized:
+      description: Missing or invalid credentials / token
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: '#/components/schemas/ErrorDetail'
+          example:
+            error:
+              code: INVALID_CREDENTIALS
+              message: invalid email or password
+
+    403Forbidden:
+      description: Insufficient role or permission
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: '#/components/schemas/ErrorDetail'
+          example:
+            error:
+              code: FORBIDDEN
+              message: you do not have permission to access this resource
+
+    404NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: '#/components/schemas/ErrorDetail'
+          example:
+            error:
+              code: USER_NOT_FOUND
+              message: user not found
+
+    409Conflict:
+      description: Conflict — resource already exists
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: '#/components/schemas/ErrorDetail'
+          example:
+            error:
+              code: USER_ALREADY_EXISTS
+              message: user already exists
+
+    422Validation:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: '#/components/schemas/ValidationErrorDetail'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: validation failed
+              details:
+                - field: email
+                  message: must be a valid email address
+                - field: username
+                  message: must contain only letters, digits, dots, dashes, or underscores
+
+    429TooMany:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: '#/components/schemas/ErrorDetail'
+          example:
+            error:
+              code: RATE_LIMITED
+              message: too many requests
+
+    500Internal:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                $ref: '#/components/schemas/ErrorDetail'
+          example:
+            error:
+              code: INTERNAL_SERVER_ERROR
+              message: internal server error
+
+# ────────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ────────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── Health ──────────────────────────────────────────────────────────────────
+  /health/live:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: Always returns 200. Used by orchestrators to confirm the process is alive.
+      operationId: healthLive
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/HealthReport'
+
+  /health/ready:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: Returns 200 only when all dependencies (e.g. PostgreSQL) are reachable.
+      operationId: healthReady
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/HealthReport'
+        "503":
+          description: Service is not ready (dependency failure)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/HealthReport'
+
+  # ── Auth ────────────────────────────────────────────────────────────────────
+  /api/v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      description: |
+        Creates a new account and sends an email verification link.
+        The user **cannot log in** until the email is verified.
+      operationId: authRegister
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        "201":
+          description: User registered — verification email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: user registered successfully, please check your email to verify your account
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "409": { $ref: '#/components/responses/409Conflict' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "429": { $ref: '#/components/responses/429TooMany' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Authenticate and obtain tokens
+      description: |
+        Validates credentials and returns a short-lived JWT access token
+        and a long-lived opaque refresh token.
+
+        Email verification is required before login is permitted.
+      operationId: authLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AuthTokens'
+              example:
+                data:
+                  access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  refresh_token: Y7vL6mQ9qF...
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403":
+          description: Email not verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+              example:
+                error:
+                  code: EMAIL_NOT_VERIFIED
+                  message: please verify your email address before logging in
+        "422": { $ref: '#/components/responses/422Validation' }
+        "429": { $ref: '#/components/responses/429TooMany' }
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Refresh access token
+      description: Exchanges a valid refresh token for a new JWT access token.
+      operationId: authRefresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        "200":
+          description: New access token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AccessToken'
+        "401":
+          description: Refresh token is invalid, expired, or revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+              example:
+                error:
+                  code: INVALID_REFRESH_TOKEN
+                  message: refresh token is invalid
+        "422": { $ref: '#/components/responses/422Validation' }
+        "429": { $ref: '#/components/responses/429TooMany' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke refresh token
+      description: Permanently revokes the supplied refresh token. The client should discard both tokens.
+      operationId: authLogout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: logged out successfully
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "429": { $ref: '#/components/responses/429TooMany' }
+
+  /api/v1/auth/verify-email:
+    get:
+      tags: [auth]
+      summary: Verify email address
+      description: Validates the one-time token sent to the user's email and marks the account as verified.
+      operationId: authVerifyEmail
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          example: a3f9c2d1b8e74f6a...
+      responses:
+        "200":
+          description: Email verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: email verified successfully
+        "400":
+          description: Invalid or expired verification token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+              example:
+                error:
+                  code: INVALID_VERIFICATION_TOKEN
+                  message: verification token is invalid or expired
+        "409":
+          description: Email already verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+              example:
+                error:
+                  code: EMAIL_ALREADY_VERIFIED
+                  message: email already verified
+        "429": { $ref: '#/components/responses/429TooMany' }
+
+  /api/v1/auth/resend-verification:
+    post:
+      tags: [auth]
+      summary: Resend verification email
+      operationId: authResendVerification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+      responses:
+        "200":
+          description: Verification email re-sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: verification email resent
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "409":
+          description: Email already verified
+          content:
+            application/json:
+              example:
+                error:
+                  code: EMAIL_ALREADY_VERIFIED
+                  message: email already verified
+        "422": { $ref: '#/components/responses/422Validation' }
+        "429": { $ref: '#/components/responses/429TooMany' }
+
+  # ── Password reset ──────────────────────────────────────────────────────────
+  /api/v1/auth/forgot-password:
+    post:
+      tags: [password-reset]
+      summary: Initiate password reset
+      description: |
+        Sends a reset link to the email if it belongs to a registered account.
+
+        **Always returns 200** regardless of whether the email is known,
+        to prevent account enumeration.
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        "200":
+          description: Request accepted (response is the same whether the email exists or not)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: if the email exists, a reset link has been sent
+        "422": { $ref: '#/components/responses/422Validation' }
+        "429": { $ref: '#/components/responses/429TooMany' }
+
+  /api/v1/auth/reset-password:
+    post:
+      tags: [password-reset]
+      summary: Complete password reset
+      description: |
+        Validates the one-time reset token, updates the password,
+        and revokes **all** existing refresh tokens for the user.
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        "200":
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: password has been reset successfully
+        "400":
+          description: Token is invalid, expired, or already used
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+              example:
+                error:
+                  code: BAD_REQUEST
+                  message: password reset token is invalid or expired
+        "422": { $ref: '#/components/responses/422Validation' }
+        "429": { $ref: '#/components/responses/429TooMany' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  # ── Users ───────────────────────────────────────────────────────────────────
+  /api/v1/users/me:
+    get:
+      tags: [users]
+      summary: Get current user profile
+      description: Returns the full profile of the authenticated user.
+      operationId: usersMe
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UserProfile'
+              example:
+                data:
+                  id: 1
+                  email: user@example.com
+                  full_name: Jane Smith
+                  username: jane.smith
+                  phone: "+79991234567"
+                  role: user
+                  created_at: "2026-06-12T09:53:01Z"
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  # ── Admin ───────────────────────────────────────────────────────────────────
+  /api/v1/admin/ping:
+    get:
+      tags: [admin]
+      summary: Admin ping
+      description: |
+        Returns a success message confirming the caller has the `admin` **role**.
+
+        Secured by role middleware (`RequireRole("admin")`).
+      operationId: adminPing
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Admin access confirmed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: admin access granted
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/admin/permissions:
+    get:
+      tags: [admin]
+      summary: List current user permissions
+      description: |
+        Returns all permissions assigned to the authenticated user's role.
+
+        Secured by permission middleware (`RequirePermission("admin.access")`).
+      operationId: adminPermissions
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Permission list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PermissionList'
+              example:
+                data:
+                  permissions:
+                    - id: 7
+                      name: admin.access
+                      description: Access administration endpoints
+                      created_at: "2026-06-12T09:53:01Z"
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  # ── Uploads ─────────────────────────────────────────────────────────────────
+  /api/v1/uploads/presign:
+    post:
+      tags: [uploads]
+      summary: Generate presigned upload URL
+      description: |
+        Returns a short-lived presigned PUT URL for direct client-to-storage upload
+        (bypasses the API server entirely for the actual file transfer).
+
+        The URL expires in **15 minutes**.
+      operationId: uploadsPresign
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresignedUploadRequest'
+      responses:
+        "200":
+          description: Presigned URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PresignedUploadResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
