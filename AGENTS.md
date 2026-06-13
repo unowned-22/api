@@ -350,6 +350,7 @@ internal/middleware/auth_ratelimit.go
 | `POST /api/v1/auth/reset-password` | Global | Per IP | `RATE_LIMIT`, `RATE_LIMIT_WINDOW` |
 | `POST /api/v1/auth/refresh` | Global | Global | `RATE_LIMIT`, `RATE_LIMIT_WINDOW` |
 | `POST /api/v1/auth/logout` | Global | Global | `RATE_LIMIT`, `RATE_LIMIT_WINDOW` |
+| `POST /api/v1/auth/logout-all` | Authenticated | Global | `RATE_LIMIT`, `RATE_LIMIT_WINDOW` |
 
 ### Middleware Helpers
 

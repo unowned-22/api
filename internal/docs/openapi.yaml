@@ -647,6 +647,30 @@ paths:
         "422": { $ref: '#/components/responses/422Validation' }
         "429": { $ref: '#/components/responses/429TooMany' }
 
+  /api/v1/auth/logout-all:
+    post:
+      tags: [auth]
+      summary: Revoke all sessions
+      description: Revokes all active sessions and refresh tokens for the authenticated user. User must log in again on all devices.
+      operationId: authLogoutAll
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: All sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: all sessions revoked successfully
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
   /api/v1/auth/sessions:
     get:
       tags: [auth]

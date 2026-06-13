@@ -138,6 +138,7 @@ func NewRouter(
 			r.Get("/users/me", userHandler.Me)
 			r.Get("/auth/sessions", authHandler.ListSessions)
 			r.Delete("/auth/sessions/{id}", authHandler.RevokeSession)
+			r.Post("/auth/logout-all", authHandler.LogoutAll)
 			r.Post("/uploads/presign", uploadHandler.Presign)
 
 			// Role-gated: admin only.

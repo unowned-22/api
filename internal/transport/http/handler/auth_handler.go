@@ -262,6 +262,22 @@ func (h *AuthHandler) RevokeSession(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "session revoked successfully"})
 }
 
+// LogoutAll revokes all sessions and refresh tokens for the authenticated user
+func (h *AuthHandler) LogoutAll(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	if err := h.authService.LogoutAll(r.Context(), userID); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "logged out from all devices"})
+}
+
 func getClientIP(r *http.Request) string {
 	ip := r.Header.Get("X-Forwarded-For")
 	if ip == "" {

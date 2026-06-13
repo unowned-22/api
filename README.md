@@ -282,6 +282,26 @@ curl -X GET http://localhost:8080/api/v1/auth/sessions \
   -H "Authorization: Bearer <PASTE_YOUR_ACCESS_TOKEN_HERE>"
 ```
 
+### 5. Global Logout (Revoke All Sessions)
+
+Revoke all sessions and refresh tokens for the authenticated user. This forces re-authentication on all devices.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/logout-all \
+  -H "Authorization: Bearer <PASTE_YOUR_ACCESS_TOKEN_HERE>"
+```
+
+#### Successful Response
+
+```json
+{
+  "data": {
+    "message": "all sessions revoked successfully"
+  }
+}
+```
+
+
 #### Successful Response
 
 ```json
