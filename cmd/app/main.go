@@ -1,39 +1,21 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"syscall"
-	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/spf13/cobra"
-
-	"github.com/unowned-22/api/internal/auth"
-	"github.com/unowned-22/api/internal/config"
-	"github.com/unowned-22/api/internal/database"
-	domainevent "github.com/unowned-22/api/internal/domain/event"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 
-	"github.com/unowned-22/api/internal/infrastructure/mailer"
-	"github.com/unowned-22/api/internal/infrastructure/queue"
-	storageInfra "github.com/unowned-22/api/internal/infrastructure/storage"
-	"github.com/unowned-22/api/internal/logger"
-	"github.com/unowned-22/api/internal/middleware"
-	postgresRepo "github.com/unowned-22/api/internal/repository/postgres"
-	"github.com/unowned-22/api/internal/service"
-	transportHttp "github.com/unowned-22/api/internal/transport/http"
-	"github.com/unowned-22/api/internal/transport/http/handler"
-	workerHandler "github.com/unowned-22/api/internal/worker/handler"
+	"github.com/unowned-22/api/internal/bootstrap"
+	"github.com/unowned-22/api/internal/config"
 )
 
 var (
@@ -56,7 +38,11 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start HTTP REST API server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runServe()
+		app, err := bootstrap.NewApp()
+		if err != nil {
+			return err
+		}
+		return app.Run()
 	},
 }
 
@@ -64,7 +50,11 @@ var workerCmd = &cobra.Command{
 	Use:   "worker",
 	Short: "Start RabbitMQ event consumer",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runWorker()
+		w, err := bootstrap.NewWorker(Version, Commit, BuildDate)
+		if err != nil {
+			return err
+		}
+		return w.Run()
 	},
 }
 
@@ -144,302 +134,6 @@ func main() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
-}
-
-// runServe starts the REST API server with graceful shutdown.
-func runServe() error {
-	// 1. Config
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// 2. Logger
-	if err := logger.Init(); err != nil {
-		return fmt.Errorf("failed to initialize logger: %w", err)
-	}
-	logger.Log.Info("Logger successfully initialized")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// 3. PostgreSQL
-	pool, err := database.NewPostgresPool(ctx, cfg)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-	defer func() {
-		pool.Close()
-		logger.Log.Info("PostgreSQL connection pool closed successfully")
-	}()
-	logger.Log.Info("PostgreSQL connection pool established")
-
-	// 4. Repositories
-	userRepo := postgresRepo.NewUserRepository(pool)
-	refreshTokenRepo := postgresRepo.NewRefreshTokenRepository(pool)
-	userSessionRepo := postgresRepo.NewUserSessionRepository(pool)
-	roleRepo := postgresRepo.NewRoleRepository(pool)
-	permissionRepo := postgresRepo.NewPermissionRepository(pool)
-
-	// 5. Object Storage
-	minioStorage, err := storageInfra.NewMinIOStorage(storageInfra.Config{
-		Endpoint:        cfg.MinIOEndpoint,
-		AccessKeyID:     cfg.MinIOAccessKey,
-		SecretAccessKey: cfg.MinIOSecretKey,
-		UseSSL:          cfg.MinIOUseSSL,
-		Region:          cfg.MinIORegion,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to initialize MinIO storage: %w", err)
-	}
-
-	// 6. Event Publisher (RabbitMQ)
-	publisher, err := queue.New(queue.Config{
-		URL:      cfg.RabbitMQURL,
-		Exchange: cfg.RabbitMQExchange,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to initialize RabbitMQ publisher: %w", err)
-	}
-	defer func() {
-		if err := publisher.Close(); err != nil {
-			logger.Log.WithError(err).Error("Failed to close RabbitMQ publisher")
-		}
-	}()
-
-	// 6. TokenManager
-	tokenManager := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.AccessTokenTTL)
-
-	// 7. Mailer
-	smtpMailer = mailer.New(mailer.Config{
-		Host:     cfg.SMTPHost,
-		Port:     cfg.SMTPPort,
-		Username: cfg.SMTPUsername,
-		Password: cfg.SMTPPassword,
-		From:     cfg.SMTPFrom,
-	})
-
-	// 8. Services
-	authService := auth.NewAuthService(
-		userRepo,
-		refreshTokenRepo,
-		userSessionRepo,
-		roleRepo,
-		tokenManager,
-		smtpMailer,
-		publisher,
-		cfg.RefreshTokenTTL,
-		cfg.AppURL,
-		cfg.AppName,
-	)
-	passwordResetRepo := postgresRepo.NewPasswordResetRepository(pool)
-	passwordResetService := service.NewPasswordResetService(userRepo, passwordResetRepo, refreshTokenRepo, userSessionRepo, smtpMailer, publisher, cfg.AppURL, cfg.AppName)
-	userService := service.NewUserService(userRepo)
-	permissionService := service.NewPermissionService(permissionRepo)
-	healthService := service.NewHealthService(pool)
-
-	// 9. Handlers
-	authHandler := handler.NewAuthHandler(authService)
-	passwordResetHandler := handler.NewPasswordResetHandler(passwordResetService)
-	userHandler := handler.NewUserHandler(userService)
-	adminHandler := handler.NewAdminHandler(userService, permissionService, authService)
-	healthHandler := handler.NewHealthHandler(healthService)
-	uploadHandler := handler.NewUploadHandler(minioStorage, cfg.MinIOBucket)
-
-	// 10. Auth Rate Limiters
-	loginLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{
-		Limit:  cfg.LoginRateLimit,
-		Window: cfg.LoginRateLimitWindow,
-	})
-	defer loginLimiter.Stop()
-
-	registerLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{
-		Limit:  cfg.RegisterRateLimit,
-		Window: cfg.RegisterRateLimitWindow,
-	})
-	defer registerLimiter.Stop()
-
-	forgotPasswordLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{
-		Limit:  cfg.ForgotPasswordRateLimit,
-		Window: cfg.ForgotPasswordRateLimitWindow,
-	})
-	defer forgotPasswordLimiter.Stop()
-
-	resendVerificationLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{
-		Limit:  cfg.ResendVerificationRateLimit,
-		Window: cfg.ResendVerificationRateLimitWindow,
-	})
-	defer resendVerificationLimiter.Stop()
-
-	// 11. Router
-	router := transportHttp.NewRouter(cfg, authHandler, userHandler, passwordResetHandler, adminHandler, uploadHandler, healthHandler, tokenManager, userService, permissionService, loginLimiter, registerLimiter, forgotPasswordLimiter, resendVerificationLimiter)
-
-	// 12. HTTP Server
-	srv := &http.Server{
-		Addr:              ":" + cfg.AppPort,
-		Handler:           router,
-		ReadTimeout:       10 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       60 * time.Second,
-	}
-
-	// Graceful shutdown setup.
-	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(shutdown)
-
-	logger.Log.WithFields(map[string]interface{}{
-		"service": "api",
-		"version": Version,
-		"commit":  Commit,
-		"env":     cfg.AppEnv,
-		"port":    cfg.AppPort,
-		"db_host": cfg.DBHost,
-	}).Info("Starting application")
-
-	errCh := make(chan error, 1)
-	go func() {
-		logger.Log.Infof("Starting server on port %s", cfg.AppPort)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("failed to start HTTP server: %w", err)
-		}
-	}()
-
-	select {
-	case sig := <-shutdown:
-		logger.Log.Infof("Received termination signal (%s), initiating graceful shutdown...", sig)
-	case err := <-errCh:
-		logger.Log.Error(err)
-		cancel()
-		return err
-	}
-
-	cancel()
-
-	ctxShut, cancelShut := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelShut()
-
-	// 1. Stop accepting new requests; wait for active ones to finish.
-	if err := srv.Shutdown(ctxShut); err != nil {
-		logger.Log.Errorf("HTTP server graceful shutdown failed: %v", err)
-	} else {
-		logger.Log.Info("HTTP server stopped accepting new requests")
-	}
-
-	logger.Log.Info("Graceful shutdown completed. Exiting.")
-	return nil
-}
-
-// runWorker starts the RabbitMQ event consumer with graceful shutdown.
-func runWorker() error {
-	// 1. Config
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// 2. Logger
-	if err := logger.Init(); err != nil {
-		return fmt.Errorf("failed to initialize logger: %w", err)
-	}
-	logger.Log.Info("Logger successfully initialized")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// 3. PostgreSQL (for future use, if needed by handlers)
-	pool, err := database.NewPostgresPool(ctx, cfg)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %w", err)
-	}
-	defer func() {
-		pool.Close()
-		logger.Log.Info("PostgreSQL connection pool closed successfully")
-	}()
-	logger.Log.Info("PostgreSQL connection pool established")
-
-	// 4. SMTP Mailer
-	smtpMailer = mailer.New(mailer.Config{
-		Host:     cfg.SMTPHost,
-		Port:     cfg.SMTPPort,
-		Username: cfg.SMTPUsername,
-		Password: cfg.SMTPPassword,
-		From:     cfg.SMTPFrom,
-	})
-
-	// 5. Event Handlers
-	// Create audit repository and handlers
-	auditRepo := postgresRepo.NewAuditRepository(pool)
-
-	handlers := map[domainevent.Name]domainevent.Handler{
-		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName),
-		domainevent.PasswordResetRequested: workerHandler.NewPasswordResetHandler(smtpMailer),
-		// Audit handlers for security events
-		domainevent.LoginSuccess:                workerHandler.NewAuditHandler(auditRepo, domainevent.LoginSuccess),
-		domainevent.LoginFailed:                 workerHandler.NewAuditHandler(auditRepo, domainevent.LoginFailed),
-		domainevent.Logout:                      workerHandler.NewAuditHandler(auditRepo, domainevent.Logout),
-		domainevent.LogoutAll:                   workerHandler.NewAuditHandler(auditRepo, domainevent.LogoutAll),
-		domainevent.VerificationSent:            workerHandler.NewAuditHandler(auditRepo, domainevent.VerificationSent),
-		domainevent.EmailVerified:               workerHandler.NewAuditHandler(auditRepo, domainevent.EmailVerified),
-		domainevent.PasswordResetRequestedAudit: workerHandler.NewAuditHandler(auditRepo, domainevent.PasswordResetRequestedAudit),
-		domainevent.PasswordResetCompleted:      workerHandler.NewAuditHandler(auditRepo, domainevent.PasswordResetCompleted),
-		domainevent.PasswordChanged:             workerHandler.NewAuditHandler(auditRepo, domainevent.PasswordChanged),
-		domainevent.RefreshRotated:              workerHandler.NewAuditHandler(auditRepo, domainevent.RefreshRotated),
-		// Refresh token reuse detection
-		domainevent.RefreshTokenReuseDetected: workerHandler.NewAuditHandler(auditRepo, domainevent.RefreshTokenReuseDetected),
-		domainevent.SessionRevoked:            workerHandler.NewAuditHandler(auditRepo, domainevent.SessionRevoked),
-		domainevent.AccountDeactivated:        workerHandler.NewAuditHandler(auditRepo, domainevent.AccountDeactivated),
-		domainevent.AccountActivated:          workerHandler.NewAuditHandler(auditRepo, domainevent.AccountActivated),
-	}
-
-	// 6. AMQP Consumer
-	consumer, err := queue.NewConsumer(queue.ConsumerConfig{
-		URL:      cfg.RabbitMQURL,
-		Exchange: cfg.RabbitMQExchange,
-		Queue:    cfg.RabbitMQQueue,
-		Tag:      "worker",
-	}, handlers)
-	if err != nil {
-		return fmt.Errorf("failed to create AMQP consumer: %w", err)
-	}
-
-	// 7. Start consuming
-	if err := consumer.Consume(); err != nil {
-		consumer.Shutdown(context.Background())
-		return fmt.Errorf("failed to start consuming: %w", err)
-	}
-
-	logger.Log.WithFields(map[string]interface{}{
-		"service":  "worker",
-		"version":  Version,
-		"commit":   Commit,
-		"env":      cfg.AppEnv,
-		"queue":    cfg.RabbitMQQueue,
-		"exchange": cfg.RabbitMQExchange,
-	}).Info("Starting RabbitMQ consumer")
-
-	// 8. Graceful shutdown setup
-	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(shutdown)
-
-	// Wait for signal
-	sig := <-shutdown
-	logger.Log.Infof("Received termination signal (%s), initiating graceful shutdown...", sig)
-
-	// Shutdown consumer with timeout
-	ctxShut, cancelShut := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelShut()
-
-	if err := consumer.Shutdown(ctxShut); err != nil {
-		logger.Log.Errorf("Consumer graceful shutdown failed: %v", err)
-	} else {
-		logger.Log.Info("Consumer stopped gracefully")
-	}
-
-	logger.Log.Info("Graceful shutdown completed. Exiting.")
-	return nil
 }
 
 func getMigrator(cfg *config.Config) (*migrate.Migrate, error) {

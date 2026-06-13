@@ -10,6 +10,11 @@ To reduce repeated directory scanning, agents may consult this short index descr
 
 - `cmd/` — application entrypoints and composition root (`cmd/app/main.go`).
 - `internal/transport/http/` — HTTP handlers, router, DTOs and response helpers.
+
+- `cmd/` — application entrypoints (`cmd/app/main.go`) (thin entrypoint; composition root moved to `internal/bootstrap/`).
+- `internal/bootstrap/` — composition root and dependency wiring (`internal/bootstrap/app.go`, `internal/bootstrap/worker.go`).
+
+ - `internal/transport/http/` — HTTP handlers, router, DTOs and response helpers.
 - `internal/service/` — business logic / services.
 - `internal/repository/postgres/` — raw SQL repository implementations (pgx).
 - `internal/domain/` — domain entities and interfaces (contracts).
