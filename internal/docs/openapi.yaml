@@ -997,6 +997,74 @@ paths:
         "403": { $ref: '#/components/responses/403Forbidden' }
         "500": { $ref: '#/components/responses/500Internal' }
 
+  /api/v1/admin/users/{id}/deactivate:
+    post:
+      tags: [admin]
+      summary: Deactivate user account
+      description: Deactivates the specified user account. Revokes all sessions and refresh tokens.
+      operationId: adminDeactivateUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 42
+      responses:
+        "200":
+          description: User deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: user deactivated
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/admin/users/{id}/reactivate:
+    post:
+      tags: [admin]
+      summary: Reactivate user account
+      description: Clears deactivation to re-enable a previously deactivated user account.
+      operationId: adminReactivateUser
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 42
+      responses:
+        "200":
+          description: User reactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: user reactivated
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
   # ── Uploads ─────────────────────────────────────────────────────────────────
   /api/v1/uploads/presign:
     post:

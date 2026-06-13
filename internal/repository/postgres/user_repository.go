@@ -62,7 +62,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt,
-			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
+			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrUserNotFound
@@ -88,7 +88,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt,
-			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
+			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrUserNotFound
@@ -174,6 +174,23 @@ func (r *UserRepository) MarkEmailVerified(ctx context.Context, userID int64) er
 	}
 	if cmd.RowsAffected() != 1 {
 		return fmt.Errorf("no user found to mark email verified")
+	}
+	return nil
+}
+
+// SetDeactivatedAt sets or clears the user's deactivated timestamp.
+func (r *UserRepository) SetDeactivatedAt(ctx context.Context, userID int64, t *time.Time) error {
+	query := `
+		UPDATE users
+		SET deactivated_at = $1
+		WHERE id = $2
+	`
+	cmd, err := r.db.Exec(ctx, query, t, userID)
+	if err != nil {
+		return fmt.Errorf("failed to set deactivated_at: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to set deactivated_at")
 	}
 	return nil
 }

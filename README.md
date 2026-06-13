@@ -301,6 +301,17 @@ curl -X POST http://localhost:8080/api/v1/auth/logout-all \
 }
 ```
 
+## Account disabling (Admin)
+
+Administrators or system processes can disable (deactivate) user accounts without deleting their data. When an account is deactivated:
+
+- Login is denied.
+- Refreshing access tokens is denied.
+- All active sessions and refresh tokens are revoked.
+- Protected endpoints return authorization errors for that user.
+
+To programmatically deactivate a user, call the service method `DeactivateUser`, which sets a `deactivated_at` timestamp and revokes sessions and tokens.
+
 
 #### Successful Response
 

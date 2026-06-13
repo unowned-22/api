@@ -17,4 +17,5 @@ var (
 	ErrPasswordResetTokenUsed    = errors.New("password reset token has already been used")
 	ErrEmailNotVerified          = errors.New("email not verified")
 	ErrSessionNotFound           = errors.New("session not found")
+	ErrUserDeactivated           = errors.New("user account is deactivated")
 )
