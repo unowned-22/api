@@ -1,0 +1,29 @@
+package bootstrap
+
+import (
+	"github.com/jackc/pgx/v5/pgxpool"
+	postgresRepo "github.com/unowned-22/api/internal/repository/postgres"
+)
+
+type Repositories struct {
+	User          *postgresRepo.UserRepository
+	RefreshToken  *postgresRepo.RefreshTokenRepository
+	UserSession   *postgresRepo.UserSessionRepository
+	Role          *postgresRepo.RoleRepository
+	Permission    *postgresRepo.PermissionRepository
+	PasswordReset *postgresRepo.PasswordResetRepository
+	Audit         *postgresRepo.AuditRepository
+}
+
+// InitRepositories wires repository implementations using the provided pool.
+func InitRepositories(pool *pgxpool.Pool) *Repositories {
+	return &Repositories{
+		User:          postgresRepo.NewUserRepository(pool),
+		RefreshToken:  postgresRepo.NewRefreshTokenRepository(pool),
+		UserSession:   postgresRepo.NewUserSessionRepository(pool),
+		Role:          postgresRepo.NewRoleRepository(pool),
+		Permission:    postgresRepo.NewPermissionRepository(pool),
+		PasswordReset: postgresRepo.NewPasswordResetRepository(pool),
+		Audit:         postgresRepo.NewAuditRepository(pool),
+	}
+}
