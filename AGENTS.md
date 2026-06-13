@@ -4,6 +4,23 @@ This document defines the strict architectural rules and constraints that all AI
 
 ---
 
+## Agent Workspace Index
+
+To reduce repeated directory scanning, agents may consult this short index describing the repository layout and where to find key concerns.
+
+- `cmd/` — application entrypoints and composition root (`cmd/app/main.go`).
+- `internal/transport/http/` — HTTP handlers, router, DTOs and response helpers.
+- `internal/service/` — business logic / services.
+- `internal/repository/postgres/` — raw SQL repository implementations (pgx).
+- `internal/domain/` — domain entities and interfaces (contracts).
+- `internal/infrastructure/` — integrations (mailer, queue, storage).
+- `internal/middleware/` — HTTP middleware (auth, rate limiting, tracing).
+- `internal/worker/` — background workers and message handlers.
+- `migrations/` — SQL migrations (apply when updating schema).
+- `internal/docs/openapi.yaml` — canonical OpenAPI spec for HTTP endpoints.
+
+Agents should prefer this index for quick navigation before doing deep recursive scans.
+
 ## 1. Layer Dependency Rules
 
 Dependencies must always flow in a single direction:

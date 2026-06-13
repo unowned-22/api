@@ -107,6 +107,25 @@ func (m *mockUserRepo) SetDeactivatedAt(ctx context.Context, userID int64, t *ti
 	return nil
 }
 
+func (m *mockUserRepo) List(ctx context.Context, offset int, limit int) ([]*user.User, error) {
+	var out []*user.User
+	for _, u := range m.idMap {
+		out = append(out, u)
+	}
+	if offset >= len(out) {
+		return []*user.User{}, nil
+	}
+	end := offset + limit
+	if end > len(out) {
+		end = len(out)
+	}
+	return out[offset:end], nil
+}
+
+func (m *mockUserRepo) Count(ctx context.Context) (int64, error) {
+	return int64(len(m.idMap)), nil
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestUserService_GetProfile(t *testing.T) {

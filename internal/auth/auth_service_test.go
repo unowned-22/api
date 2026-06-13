@@ -132,6 +132,26 @@ func (m *mockUserRepo) SetDeactivatedAt(ctx context.Context, userID int64, t *ti
 	return nil
 }
 
+func (m *mockUserRepo) List(ctx context.Context, offset int, limit int) ([]*domainUser.User, error) {
+	var out []*domainUser.User
+	for _, u := range m.idMap {
+		out = append(out, u)
+	}
+	// simple stable order by id (not guaranteed) but ok for tests
+	if offset >= len(out) {
+		return []*domainUser.User{}, nil
+	}
+	end := offset + limit
+	if end > len(out) {
+		end = len(out)
+	}
+	return out[offset:end], nil
+}
+
+func (m *mockUserRepo) Count(ctx context.Context) (int64, error) {
+	return int64(len(m.idMap)), nil
+}
+
 // ── mock: RefreshTokenRepository ─────────────────────────────────────────────
 
 type mockRefreshTokenRepo struct {
