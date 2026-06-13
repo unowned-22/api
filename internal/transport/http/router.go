@@ -1,9 +1,10 @@
 package http
 
 import (
+	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/unowned-22/api/internal/config"
@@ -21,40 +22,23 @@ func emailExtractorFunc(r *http.Request) string {
 		return ""
 	}
 
-	// Read body
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		return ""
 	}
 
-	// Restore body for handler to read
-	r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+	// Restore body for downstream handlers
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-	// Simple JSON parsing to extract email
-	// Looking for "email":"value" pattern
-	body := string(bodyBytes)
-	emailKey := "\"email\":"
-	startIdx := strings.Index(body, emailKey)
-	if startIdx == -1 {
+	var payload struct {
+		Email string `json:"email"`
+	}
+
+	if err := json.Unmarshal(bodyBytes, &payload); err != nil {
 		return ""
 	}
 
-	startIdx += len(emailKey)
-	// Skip whitespace and opening quote
-	for startIdx < len(body) && (body[startIdx] == ' ' || body[startIdx] == '"') {
-		startIdx++
-	}
-
-	endIdx := startIdx
-	for endIdx < len(body) && body[endIdx] != '"' && body[endIdx] != ',' && body[endIdx] != '}' {
-		endIdx++
-	}
-
-	if endIdx > startIdx {
-		return body[startIdx:endIdx]
-	}
-
-	return ""
+	return payload.Email
 }
 
 // NewRouter constructs the Chi router, registers middleware, and sets up all routes.
