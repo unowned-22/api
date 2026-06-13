@@ -38,6 +38,9 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusOK, dto.UserResponse{
 		ID:        u.ID,
 		Email:     u.Email,
+		FullName:  u.FullName,
+		Username:  u.Username,
+		Phone:     u.Phone,
 		Role:      u.RoleName,
 		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
@@ -58,6 +61,9 @@ func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
 		out = append(out, dto.UserResponse{
 			ID:        u.ID,
 			Email:     u.Email,
+			FullName:  u.FullName,
+			Username:  u.Username,
+			Phone:     u.Phone,
 			Role:      u.RoleName,
 			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 		})
