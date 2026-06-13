@@ -154,6 +154,10 @@ func (s *passwordResetService) ResetPassword(ctx context.Context, token, newPass
 		return err
 	}
 
+	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, resetToken.UserID); err != nil {
+		return err
+	}
+
 	// publish password_reset_completed asynchronously
 	go func() {
 		payload, _ := json.Marshal(map[string]interface{}{"user_id": resetToken.UserID})

@@ -1,3 +1,8 @@
+DROP TABLE IF EXISTS user_settings;
+DROP TABLE IF EXISTS system_settings;
+DROP TABLE IF EXISTS outbox_events;
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS user_sessions;
 DROP TABLE IF EXISTS password_reset_tokens;
 DROP TABLE IF EXISTS role_permissions;
 DROP TABLE IF EXISTS permissions;
