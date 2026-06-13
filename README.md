@@ -49,6 +49,16 @@ JWT_ISSUER=api-service
 JWT_AUDIENCE=client-app
 ACCESS_TOKEN_TTL=15m
 REFRESH_TOKEN_TTL=720h
+
+# Auth Endpoint Rate Limiting (per IP and email)
+LOGIN_RATE_LIMIT=5
+LOGIN_RATE_LIMIT_WINDOW=5m
+REGISTER_RATE_LIMIT=3
+REGISTER_RATE_LIMIT_WINDOW=1h
+FORGOT_PASSWORD_RATE_LIMIT=3
+FORGOT_PASSWORD_RATE_LIMIT_WINDOW=15m
+RESEND_VERIFICATION_RATE_LIMIT=3
+RESEND_VERIFICATION_RATE_LIMIT_WINDOW=15m
 ```
 
 ### 2. Build the Application
@@ -381,6 +391,68 @@ curl -X POST http://localhost:8080/api/v1/auth/reset-password \
 ```
 
 > **Note:** The `forgot-password` endpoint intentionally returns 200 OK regardless of whether the email exists to avoid leaking valid accounts. Reset tokens are short-lived and marked as used after a successful reset. All refresh tokens for the user are revoked on password change.
+
+---
+
+## Security: Rate Limiting
+
+The API protects critical authentication endpoints against brute-force and credential stuffing attacks using endpoint-specific rate limiting.
+
+### Rate Limiting Configuration
+
+Rate limits are applied per IP address and per email address (where applicable). Limits are configurable via environment variables:
+
+| Endpoint | Limit | Default | Env Variable | Window Env Variable |
+|---|---|---|---|---|
+| **POST /api/v1/auth/login** | Per IP + Email | 5 attempts | `LOGIN_RATE_LIMIT` | `LOGIN_RATE_LIMIT_WINDOW` (default: 5m) |
+| **POST /api/v1/auth/register** | Per IP + Email | 3 registrations | `REGISTER_RATE_LIMIT` | `REGISTER_RATE_LIMIT_WINDOW` (default: 1h) |
+| **POST /api/v1/auth/forgot-password** | Per IP + Email | 3 requests | `FORGOT_PASSWORD_RATE_LIMIT` | `FORGOT_PASSWORD_RATE_LIMIT_WINDOW` (default: 15m) |
+| **POST /api/v1/auth/resend-verification** | Per IP + Email | 3 requests | `RESEND_VERIFICATION_RATE_LIMIT` | `RESEND_VERIFICATION_RATE_LIMIT_WINDOW` (default: 15m) |
+| **POST /api/v1/auth/verify-email** | Per IP | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
+| **POST /api/v1/auth/reset-password** | Per IP | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
+| **POST /api/v1/auth/refresh** | Global | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
+| **POST /api/v1/auth/logout** | Global | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
+
+### Rate Limit Response
+
+When rate limit is exceeded, the API responds with HTTP `429 Too Many Requests`:
+
+```json
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "too many requests, please try again later"
+  }
+}
+```
+
+Response headers include:
+
+```http
+X-RateLimit-Remaining: 0
+```
+
+### Example: Login Rate Limit
+
+```bash
+# First 5 requests within 5 minutes — success
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "wrong"}'
+# HTTP 401 (invalid credentials, but request counted)
+
+# 6th request within the same 5-minute window — rejected
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "wrong"}'
+# HTTP 429 Too Many Requests
+# {
+#   "error": {
+#     "code": "RATE_LIMITED",
+#     "message": "too many requests, please try again later"
+#   }
+# }
+```
 
 ---
 

@@ -51,6 +51,15 @@ type Config struct {
 	JWTAudience     string        `envconfig:"JWT_AUDIENCE" default:"client-app"`
 	AccessTokenTTL  time.Duration `envconfig:"ACCESS_TOKEN_TTL" default:"15m"`
 	RefreshTokenTTL time.Duration `envconfig:"REFRESH_TOKEN_TTL" default:"720h"`
+
+	LoginRateLimit                    int           `envconfig:"LOGIN_RATE_LIMIT" default:"5"`
+	LoginRateLimitWindow              time.Duration `envconfig:"LOGIN_RATE_LIMIT_WINDOW" default:"5m"`
+	RegisterRateLimit                 int           `envconfig:"REGISTER_RATE_LIMIT" default:"3"`
+	RegisterRateLimitWindow           time.Duration `envconfig:"REGISTER_RATE_LIMIT_WINDOW" default:"1h"`
+	ForgotPasswordRateLimit           int           `envconfig:"FORGOT_PASSWORD_RATE_LIMIT" default:"3"`
+	ForgotPasswordRateLimitWindow     time.Duration `envconfig:"FORGOT_PASSWORD_RATE_LIMIT_WINDOW" default:"15m"`
+	ResendVerificationRateLimit       int           `envconfig:"RESEND_VERIFICATION_RATE_LIMIT" default:"3"`
+	ResendVerificationRateLimitWindow time.Duration `envconfig:"RESEND_VERIFICATION_RATE_LIMIT_WINDOW" default:"15m"`
 }
 
 func Load() (*Config, error) {
@@ -107,6 +116,31 @@ func (c *Config) Validate() error {
 	}
 	if c.RefreshTokenTTL <= 0 {
 		return fmt.Errorf("REFRESH_TOKEN_TTL must be greater than zero")
+	}
+
+	if c.LoginRateLimit <= 0 {
+		return fmt.Errorf("LOGIN_RATE_LIMIT must be greater than zero")
+	}
+	if c.LoginRateLimitWindow <= 0 {
+		return fmt.Errorf("LOGIN_RATE_LIMIT_WINDOW must be greater than zero")
+	}
+	if c.RegisterRateLimit <= 0 {
+		return fmt.Errorf("REGISTER_RATE_LIMIT must be greater than zero")
+	}
+	if c.RegisterRateLimitWindow <= 0 {
+		return fmt.Errorf("REGISTER_RATE_LIMIT_WINDOW must be greater than zero")
+	}
+	if c.ForgotPasswordRateLimit <= 0 {
+		return fmt.Errorf("FORGOT_PASSWORD_RATE_LIMIT must be greater than zero")
+	}
+	if c.ForgotPasswordRateLimitWindow <= 0 {
+		return fmt.Errorf("FORGOT_PASSWORD_RATE_LIMIT_WINDOW must be greater than zero")
+	}
+	if c.ResendVerificationRateLimit <= 0 {
+		return fmt.Errorf("RESEND_VERIFICATION_RATE_LIMIT must be greater than zero")
+	}
+	if c.ResendVerificationRateLimitWindow <= 0 {
+		return fmt.Errorf("RESEND_VERIFICATION_RATE_LIMIT_WINDOW must be greater than zero")
 	}
 
 	return nil
