@@ -594,3 +594,68 @@ Validation errors include per-field details:
 | `USER_NOT_FOUND` | 404 | User does not exist |
 | `RATE_LIMITED` | 429 | Too many requests |
 | `INTERNAL_SERVER_ERROR` | 500 | Unexpected server error |
+
+---
+
+## Uploading Avatar and Cover Images
+
+You can upload a user's avatar and cover image using the authenticated endpoints below. The requests must be multipart/form-data and include a single file field named `file`.
+
+Endpoints
+- `POST /api/v1/users/me/avatar` — upload avatar (max 5 MB)
+- `POST /api/v1/users/me/cover` — upload cover (max 10 MB)
+
+Authentication
+- Include a valid access token in the `Authorization` header: `Authorization: Bearer <ACCESS_TOKEN>`.
+
+Allowed Content Types
+- `image/jpeg`, `image/png`, `image/webp`
+
+Server-side limits and behavior
+- Handler enforces a total request body limit (11 MB) to protect memory.
+- Service enforces per-file limits: avatar up to 5 MB, cover up to 10 MB.
+- The service stores uploaded objects in the user's configured storage bucket (created automatically on user registration via the outbox worker when possible). If the user has no bucket configured, the upload will fail.
+
+Response
+- Successful response returns JSON with the uploaded resource URL inside `data`.
+
+Example: Upload avatar via curl
+
+```bash
+curl -X POST http://localhost:8080/api/v1/users/me/avatar \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@/path/to/avatar.jpg"
+```
+
+Example: Upload cover via curl
+
+```bash
+curl -X POST http://localhost:8080/api/v1/users/me/cover \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@/path/to/cover.png"
+```
+
+Example successful response
+
+```json
+{
+  "data": {
+    "avatar_url": "https://storage.example.com/user-123/avatars/avatar.jpg"
+  }
+}
+```
+
+Extract URL using `jq`
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/users/me/avatar \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@/path/to/avatar.jpg" | jq -r '.data.avatar_url'
+```
+
+Troubleshooting
+- 400 Bad Request: invalid content type, missing `file` part, or file exceeds allowed size.
+- 401 Unauthorized: missing or invalid bearer token.
+- 500 Internal Server Error: upstream storage error or missing user storage configuration.
+
+If you want presigned uploads instead of server-mediated uploads, use the presign endpoints documented in the OpenAPI spec (if enabled) and upload directly to the object storage provider.
