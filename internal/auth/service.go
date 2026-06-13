@@ -231,7 +231,7 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 
 	rt := &token.RefreshToken{
 		UserID:    u.ID,
-		Token:     refreshTokenStr,
+		TokenHash: HashRefreshToken(refreshTokenStr),
 		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
 		Status:    token.RefreshTokenStatusActive,
 		CreatedAt: time.Now(),
@@ -288,7 +288,7 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (stri
 
 	newRT := &token.RefreshToken{
 		UserID:    u.ID,
-		Token:     newRefreshTokenStr,
+		TokenHash: HashRefreshToken(newRefreshTokenStr),
 		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
 		Status:    token.RefreshTokenStatusActive,
 		CreatedAt: time.Now(),
@@ -314,6 +314,11 @@ func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error 
 		return err
 	}
 	return nil
+}
+
+// HashRefreshToken returns the SHA-256 hash of a refresh token string.
+func HashRefreshToken(refreshToken string) string {
+	return token.HashRefreshToken(refreshToken)
 }
 
 // generateRefreshToken produces a cryptographically secure opaque token.

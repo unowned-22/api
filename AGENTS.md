@@ -260,7 +260,7 @@ ParseWithRole(token string) (int64, string, error)
 
 The same file also defines `RefreshToken` and `RefreshTokenRepository` — keeping all token-related domain contracts in one place.
 
-`RefreshToken` now tracks lifecycle state (`active`, `revoked`, `expired`) and refresh rotation must invalidate a refresh token immediately after it is used.
+`RefreshToken` now tracks lifecycle state (`active`, `revoked`, `expired`) and stores only a hashed refresh token value (`token_hash`). Refresh rotation must invalidate a refresh token immediately after it is used.
 
 ### Infrastructure Implementation
 

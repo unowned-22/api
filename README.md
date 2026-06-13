@@ -212,6 +212,8 @@ Copy the `access_token` and `refresh_token` values from the response:
 
 Use a valid refresh token to get a new access token and a rotated refresh token. The old refresh token becomes invalid immediately after use.
 
+> Refresh tokens are stored securely in the database as a SHA-256 hash (`token_hash`). The raw token is never persisted.
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/refresh \
   -H "Content-Type: application/json" \

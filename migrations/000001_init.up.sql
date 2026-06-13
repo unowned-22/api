@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id);
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id         BIGSERIAL PRIMARY KEY,
     user_id    BIGINT      NOT NULL,
-    token      TEXT        NOT NULL UNIQUE,
+    token_hash TEXT        NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     status     VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
