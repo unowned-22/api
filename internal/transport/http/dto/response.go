@@ -1,5 +1,7 @@
 package dto
 
+import "encoding/json"
+
 // AuthResponse is the HTTP response body for login and token refresh.
 type AuthResponse struct {
 	AccessToken  string `json:"access_token"`
@@ -57,4 +59,13 @@ type SessionResponse struct {
 
 type SessionListResponse struct {
 	Sessions []SessionResponse `json:"sessions"`
+}
+
+type UserSettingsResponse struct {
+	UserID            int64           `json:"user_id"`
+	StorageQuotaBytes int64           `json:"storage_quota_bytes"`
+	StorageUsedBytes  int64           `json:"storage_used_bytes"`
+	BucketName        string          `json:"bucket_name"`
+	Theme             json.RawMessage `json:"theme"`
+	UpdatedAt         string          `json:"updated_at"`
 }

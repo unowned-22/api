@@ -16,6 +16,7 @@ type Repositories struct {
 	PasswordReset  *postgresRepo.PasswordResetRepository
 	Audit          *postgresRepo.AuditRepository
 	SystemSettings *postgresRepo.SystemSettingsRepository
+	UserSettings   *postgresRepo.UserSettingsRepository
 	Outbox         domout.Repository
 }
 
@@ -30,6 +31,7 @@ func InitRepositories(pool *pgxpool.Pool) *Repositories {
 		PasswordReset:  postgresRepo.NewPasswordResetRepository(pool),
 		Audit:          postgresRepo.NewAuditRepository(pool),
 		SystemSettings: postgresRepo.NewSystemSettingsRepository(pool),
+		UserSettings:   postgresRepo.NewUserSettingsRepository(pool),
 		Outbox:         outboxRepo.NewRepository(pool),
 	}
 }

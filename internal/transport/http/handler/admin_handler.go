@@ -11,6 +11,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/permission"
 	"github.com/unowned-22/api/internal/domain/systemsettings"
 	"github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/usersettings"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 	"github.com/unowned-22/api/internal/validator"
@@ -18,19 +19,21 @@ import (
 
 // AdminHandler handles admin-scoped HTTP routes.
 type AdminHandler struct {
-	userService       user.UserService
-	authService       auth.AuthService
-	permissionService permission.PermissionService
-	settingsService   systemsettings.Service
+	userService         user.UserService
+	authService         auth.AuthService
+	permissionService   permission.PermissionService
+	settingsService     systemsettings.Service
+	userSettingsService usersettings.Service
 }
 
 // NewAdminHandler creates a new AdminHandler.
-func NewAdminHandler(userService user.UserService, permissionService permission.PermissionService, authService auth.AuthService, settingsService systemsettings.Service) *AdminHandler {
+func NewAdminHandler(userService user.UserService, permissionService permission.PermissionService, authService auth.AuthService, settingsService systemsettings.Service, userSettingsService usersettings.Service) *AdminHandler {
 	return &AdminHandler{
-		userService:       userService,
-		authService:       authService,
-		permissionService: permissionService,
-		settingsService:   settingsService,
+		userService:         userService,
+		authService:         authService,
+		permissionService:   permissionService,
+		settingsService:     settingsService,
+		userSettingsService: userSettingsService,
 	}
 }
 
@@ -150,4 +153,75 @@ func (h *AdminHandler) UpdateSetting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "setting updated"})
+}
+
+// GetUserSettings returns a specific user's settings (admin only).
+func (h *AdminHandler) GetUserSettings(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		response.SendBadRequest(w, "user id is required")
+		return
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid user id")
+		return
+	}
+
+	s, err := h.userSettingsService.GetUserSettings(r.Context(), id)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	if s == nil {
+		response.SendNotFound(w, "user settings not found")
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.UserSettingsResponse{
+		UserID:            s.UserID,
+		StorageQuotaBytes: s.StorageQuotaBytes,
+		StorageUsedBytes:  s.StorageUsedBytes,
+		BucketName:        s.BucketName,
+		Theme:             s.Theme,
+		UpdatedAt:         s.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+
+// UpdateUserSettings allows admin to update certain fields (quota, bucket_name).
+func (h *AdminHandler) UpdateUserSettings(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		response.SendBadRequest(w, "user id is required")
+		return
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid user id")
+		return
+	}
+
+	var req struct {
+		StorageQuotaBytes *int64  `json:"storage_quota_bytes,omitempty"`
+		BucketName        *string `json:"bucket_name,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.SendBadRequest(w, "invalid request body")
+		return
+	}
+
+	if req.StorageQuotaBytes != nil {
+		if err := h.userSettingsService.UpdateUserQuota(r.Context(), id, *req.StorageQuotaBytes); err != nil {
+			response.SendError(w, r, err)
+			return
+		}
+	}
+	if req.BucketName != nil {
+		if err := h.userSettingsService.UpdateBucketName(r.Context(), id, *req.BucketName); err != nil {
+			response.SendError(w, r, err)
+			return
+		}
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "user settings updated"})
 }

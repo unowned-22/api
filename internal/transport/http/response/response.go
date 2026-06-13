@@ -171,3 +171,15 @@ func SendValidationError(w http.ResponseWriter, fields []ValidationFieldError) {
 		},
 	})
 }
+
+// SendNotFound sends a 404 Not Found error with a custom message.
+func SendNotFound(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotFound)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error: ErrorDetail{
+			Code:    "NOT_FOUND",
+			Message: message,
+		},
+	})
+}
