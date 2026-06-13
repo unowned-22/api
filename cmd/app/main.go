@@ -386,9 +386,11 @@ func runWorker() error {
 		domainevent.PasswordResetCompleted:      workerHandler.NewAuditHandler(auditRepo, domainevent.PasswordResetCompleted),
 		domainevent.PasswordChanged:             workerHandler.NewAuditHandler(auditRepo, domainevent.PasswordChanged),
 		domainevent.RefreshRotated:              workerHandler.NewAuditHandler(auditRepo, domainevent.RefreshRotated),
-		domainevent.SessionRevoked:              workerHandler.NewAuditHandler(auditRepo, domainevent.SessionRevoked),
-		domainevent.AccountDeactivated:          workerHandler.NewAuditHandler(auditRepo, domainevent.AccountDeactivated),
-		domainevent.AccountActivated:            workerHandler.NewAuditHandler(auditRepo, domainevent.AccountActivated),
+		// Refresh token reuse detection
+		domainevent.RefreshTokenReuseDetected: workerHandler.NewAuditHandler(auditRepo, domainevent.RefreshTokenReuseDetected),
+		domainevent.SessionRevoked:            workerHandler.NewAuditHandler(auditRepo, domainevent.SessionRevoked),
+		domainevent.AccountDeactivated:        workerHandler.NewAuditHandler(auditRepo, domainevent.AccountDeactivated),
+		domainevent.AccountActivated:          workerHandler.NewAuditHandler(auditRepo, domainevent.AccountActivated),
 	}
 
 	// 6. AMQP Consumer

@@ -312,6 +312,16 @@ Administrators or system processes can disable (deactivate) user accounts withou
 
 To programmatically deactivate a user, call the service method `DeactivateUser`, which sets a `deactivated_at` timestamp and revokes sessions and tokens.
 
+### Refresh token reuse detection
+
+The service detects when a revoked refresh token is used again (possible token theft). On detection the system:
+
+- Revokes all active sessions and refresh tokens for the affected user.
+- Records a security audit event `audit.refresh_token_reuse_detected`.
+- Optionally notifies the user by email.
+
+If you see this event for a user, advise them to reset their password immediately.
+
 
 #### Successful Response
 
