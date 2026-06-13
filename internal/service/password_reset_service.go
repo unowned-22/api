@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/unowned-22/api/internal/domain/event"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 	"github.com/unowned-22/api/internal/domain/passwordreset"
 	"github.com/unowned-22/api/internal/domain/token"
@@ -32,6 +34,7 @@ type passwordResetService struct {
 	refreshTokenRepo  token.RefreshTokenRepository
 	userSessionRepo   usersession.UserSessionRepository
 	mailer            domainmailer.Mailer
+	publisher         event.Publisher
 	appURL            string
 	appName           string
 }
@@ -42,6 +45,7 @@ func NewPasswordResetService(
 	refreshTokenRepo token.RefreshTokenRepository,
 	userSessionRepo usersession.UserSessionRepository,
 	mailer domainmailer.Mailer,
+	publisher event.Publisher,
 	appURL string,
 	appName string,
 ) PasswordResetService {
@@ -51,6 +55,7 @@ func NewPasswordResetService(
 		refreshTokenRepo:  refreshTokenRepo,
 		userSessionRepo:   userSessionRepo,
 		mailer:            mailer,
+		publisher:         publisher,
 		appURL:            appURL,
 		appName:           appName,
 	}
@@ -97,6 +102,14 @@ func (s *passwordResetService) RequestReset(ctx context.Context, email string) e
 		}
 	}
 
+	// publish audit.password_reset_requested asynchronously
+	go func() {
+		payload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID, "email": u.Email})
+		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.PasswordResetRequestedAudit, Payload: payload}); err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.password_reset_requested")
+		}
+	}()
+
 	return nil
 }
 
@@ -140,6 +153,14 @@ func (s *passwordResetService) ResetPassword(ctx context.Context, token, newPass
 	if err := s.userSessionRepo.RevokeAllByUserID(ctx, resetToken.UserID); err != nil {
 		return err
 	}
+
+	// publish password_reset_completed asynchronously
+	go func() {
+		payload, _ := json.Marshal(map[string]interface{}{"user_id": resetToken.UserID})
+		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.PasswordResetCompleted, Payload: payload}); err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": resetToken.UserID}).Warn("failed to publish audit.password_reset_completed")
+		}
+	}()
 
 	return nil
 }

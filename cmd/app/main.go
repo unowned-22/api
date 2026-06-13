@@ -233,7 +233,7 @@ func runServe() error {
 		cfg.AppName,
 	)
 	passwordResetRepo := postgresRepo.NewPasswordResetRepository(pool)
-	passwordResetService := service.NewPasswordResetService(userRepo, passwordResetRepo, refreshTokenRepo, userSessionRepo, smtpMailer, cfg.AppURL, cfg.AppName)
+	passwordResetService := service.NewPasswordResetService(userRepo, passwordResetRepo, refreshTokenRepo, userSessionRepo, smtpMailer, publisher, cfg.AppURL, cfg.AppName)
 	userService := service.NewUserService(userRepo)
 	permissionService := service.NewPermissionService(permissionRepo)
 	healthService := service.NewHealthService(pool)
@@ -369,9 +369,26 @@ func runWorker() error {
 	})
 
 	// 5. Event Handlers
+	// Create audit repository and handlers
+	auditRepo := postgresRepo.NewAuditRepository(pool)
+
 	handlers := map[domainevent.Name]domainevent.Handler{
 		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName),
 		domainevent.PasswordResetRequested: workerHandler.NewPasswordResetHandler(smtpMailer),
+		// Audit handlers for security events
+		domainevent.LoginSuccess:                workerHandler.NewAuditHandler(auditRepo, domainevent.LoginSuccess),
+		domainevent.LoginFailed:                 workerHandler.NewAuditHandler(auditRepo, domainevent.LoginFailed),
+		domainevent.Logout:                      workerHandler.NewAuditHandler(auditRepo, domainevent.Logout),
+		domainevent.LogoutAll:                   workerHandler.NewAuditHandler(auditRepo, domainevent.LogoutAll),
+		domainevent.VerificationSent:            workerHandler.NewAuditHandler(auditRepo, domainevent.VerificationSent),
+		domainevent.EmailVerified:               workerHandler.NewAuditHandler(auditRepo, domainevent.EmailVerified),
+		domainevent.PasswordResetRequestedAudit: workerHandler.NewAuditHandler(auditRepo, domainevent.PasswordResetRequestedAudit),
+		domainevent.PasswordResetCompleted:      workerHandler.NewAuditHandler(auditRepo, domainevent.PasswordResetCompleted),
+		domainevent.PasswordChanged:             workerHandler.NewAuditHandler(auditRepo, domainevent.PasswordChanged),
+		domainevent.RefreshRotated:              workerHandler.NewAuditHandler(auditRepo, domainevent.RefreshRotated),
+		domainevent.SessionRevoked:              workerHandler.NewAuditHandler(auditRepo, domainevent.SessionRevoked),
+		domainevent.AccountDeactivated:          workerHandler.NewAuditHandler(auditRepo, domainevent.AccountDeactivated),
+		domainevent.AccountActivated:            workerHandler.NewAuditHandler(auditRepo, domainevent.AccountActivated),
 	}
 
 	// 6. AMQP Consumer

@@ -52,7 +52,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 		SELECT u.id, u.email, u.password, u.role_id, r.name,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 		       u.created_at,
-		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
+		       u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.email = $1
@@ -78,7 +78,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 		SELECT u.id, u.email, u.password, u.role_id, r.name,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 		       u.created_at,
-		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
+		       u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.id = $1
