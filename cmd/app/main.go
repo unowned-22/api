@@ -28,6 +28,7 @@ import (
 	"github.com/unowned-22/api/internal/infrastructure/queue"
 	storageInfra "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
+	"github.com/unowned-22/api/internal/middleware"
 	postgresRepo "github.com/unowned-22/api/internal/repository/postgres"
 	"github.com/unowned-22/api/internal/service"
 	transportHttp "github.com/unowned-22/api/internal/transport/http"
@@ -243,10 +244,35 @@ func runServe() error {
 	healthHandler := handler.NewHealthHandler(healthService)
 	uploadHandler := handler.NewUploadHandler(minioStorage, cfg.MinIOBucket)
 
-	// 10. Router
-	router := transportHttp.NewRouter(cfg, authHandler, userHandler, passwordResetHandler, adminHandler, uploadHandler, healthHandler, tokenManager, userService, permissionService)
+	// 10. Auth Rate Limiters
+	loginLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{
+		Limit:  cfg.LoginRateLimit,
+		Window: cfg.LoginRateLimitWindow,
+	})
+	defer loginLimiter.Stop()
 
-	// 11. HTTP Server
+	registerLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{
+		Limit:  cfg.RegisterRateLimit,
+		Window: cfg.RegisterRateLimitWindow,
+	})
+	defer registerLimiter.Stop()
+
+	forgotPasswordLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{
+		Limit:  cfg.ForgotPasswordRateLimit,
+		Window: cfg.ForgotPasswordRateLimitWindow,
+	})
+	defer forgotPasswordLimiter.Stop()
+
+	resendVerificationLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{
+		Limit:  cfg.ResendVerificationRateLimit,
+		Window: cfg.ResendVerificationRateLimitWindow,
+	})
+	defer resendVerificationLimiter.Stop()
+
+	// 11. Router
+	router := transportHttp.NewRouter(cfg, authHandler, userHandler, passwordResetHandler, adminHandler, uploadHandler, healthHandler, tokenManager, userService, permissionService, loginLimiter, registerLimiter, forgotPasswordLimiter, resendVerificationLimiter)
+
+	// 12. HTTP Server
 	srv := &http.Server{
 		Addr:              ":" + cfg.AppPort,
 		Handler:           router,

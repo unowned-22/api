@@ -310,9 +310,117 @@ Security notes:
 - On successful password reset, all refresh tokens are revoked using the `RefreshTokenRepository` contract to force re-authentication.
 - Email sending failures during token creation are logged but do not cause the API to reveal token state to callers.
 
+## Rate Limiting
+
+The application protects critical authentication endpoints against brute-force and credential stuffing attacks using endpoint-specific rate limiting implemented in the middleware layer.
+
+### Design
+
+Rate limiting is implemented through two mechanisms:
+
+1. **Global Rate Limiter** (`middleware.RateLimit`): A shared token bucket limiter using `golang.org/x/time/rate` applied to all endpoints by default. Configured via `RATE_LIMIT` (requests) and `RATE_LIMIT_WINDOW` (duration).
+
+2. **Auth Endpoint Rate Limiter** (`middleware.AuthRateLimiter`): Custom in-memory rolling window tracker for authentication endpoints with per-IP and per-email tracking. Separate limits and windows per endpoint.
+
+### Location
+
+Rate limiting middleware is defined in:
+
+```text
+internal/middleware/ratelimit.go
+internal/middleware/auth_ratelimit.go
+```
+
+### Implementation Requirements
+
+**AuthRateLimiter Interface:**
+
+- `Allow(identifier string) (allowed bool, remaining int)`: Check if a request is allowed; return remaining attempts in current window
+- `Stop()`: Gracefully shutdown the limiter, stopping cleanup goroutine
+
+**Endpoint-Specific Configuration:**
+
+| Endpoint | Limiter | Tracking | Config Variables |
+|---|---|---|---|
+| `POST /api/v1/auth/login` | `AuthRateLimiter` | Per IP + Email | `LOGIN_RATE_LIMIT`, `LOGIN_RATE_LIMIT_WINDOW` |
+| `POST /api/v1/auth/register` | `AuthRateLimiter` | Per IP + Email | `REGISTER_RATE_LIMIT`, `REGISTER_RATE_LIMIT_WINDOW` |
+| `POST /api/v1/auth/forgot-password` | `AuthRateLimiter` | Per IP + Email | `FORGOT_PASSWORD_RATE_LIMIT`, `FORGOT_PASSWORD_RATE_LIMIT_WINDOW` |
+| `POST /api/v1/auth/resend-verification` | `AuthRateLimiter` | Per IP + Email | `RESEND_VERIFICATION_RATE_LIMIT`, `RESEND_VERIFICATION_RATE_LIMIT_WINDOW` |
+| `POST /api/v1/auth/verify-email` | Global | Per IP | `RATE_LIMIT`, `RATE_LIMIT_WINDOW` |
+| `POST /api/v1/auth/reset-password` | Global | Per IP | `RATE_LIMIT`, `RATE_LIMIT_WINDOW` |
+| `POST /api/v1/auth/refresh` | Global | Global | `RATE_LIMIT`, `RATE_LIMIT_WINDOW` |
+| `POST /api/v1/auth/logout` | Global | Global | `RATE_LIMIT`, `RATE_LIMIT_WINDOW` |
+
+### Middleware Helpers
+
+**`AuthRateLimitByIP(limiter)`**: Middleware that extracts client IP and calls `limiter.Allow(ip)`. Used for endpoints requiring only IP-based limiting.
+
+**`AuthRateLimitByEmail(limiter, emailExtractor)`**: Middleware that extracts client IP and email from request (via custom function), creates combined identifier `"ip:email"`, and calls `limiter.Allow()`. Used for endpoints where email is the user identifier.
+
+The `emailExtractor` function reads the request body, parses JSON to extract the email field, and restores the body for the next handler. Example:
+
+```go
+emailExtractorFunc := func(r *http.Request) (string, error) {
+  var req struct {
+    Email string `json:"email"`
+  }
+  body, _ := io.ReadAll(r.Body)
+  r.Body = io.NopCloser(bytes.NewBuffer(body))
+  json.Unmarshal(body, &req)
+  return req.Email, nil
+}
+```
+
+### Dependency Injection
+
+In `cmd/app/main.go`, create one `AuthRateLimiter` instance per endpoint:
+
+```go
+loginLimiter := middleware.NewAuthRateLimiter(
+  config.LoginRateLimit,
+  config.LoginRateLimitWindow,
+)
+defer loginLimiter.Stop()
+
+// ... create 3 more limiters for register, forgot-password, resend-verification
+
+router := http.NewRouter(loginLimiter, registerLimiter, forgotPasswordLimiter, resendVerificationLimiter)
+```
+
+### Housekeeping
+
+- Each `AuthRateLimiter` runs a cleanup goroutine that removes expired request records every minute to prevent memory leaks.
+- Always call `limiter.Stop()` in graceful shutdown sequence to ensure goroutines terminate cleanly.
+- Stale records are automatically cleaned when their time window expires.
+
+### Error Response
+
+When rate limit is exceeded, middleware responds with HTTP 429:
+
+```json
+{
+  "error": {
+    "code": "RATE_LIMITED",
+    "message": "too many requests, please try again later"
+  }
+}
+```
+
+With header:
+
+```http
+X-RateLimit-Remaining: 0
+```
+
+### Future Considerations
+
+- **Distributed Deployments**: For horizontal scaling, consider replacing in-memory `AuthRateLimiter` with Redis-based implementation. Interface remains unchanged; only `internal/middleware/auth_ratelimit.go` needs modification.
+- **Custom Policies**: Add per-user or per-role rate limiting without architectural changes.
+- **Metrics**: Expose rate limit violations via Prometheus for monitoring and alerts.
+
 ---
 
-## 4. Logging and Error Handling
+## 5. Logging and Error Handling
 
 ### Logging
 
@@ -388,7 +496,7 @@ No duplicated error handling logic is allowed across handlers.
 
 ---
 
-## 5. API Documentation (OpenAPI / Swagger)
+## 6. API Documentation (OpenAPI / Swagger)
 
 The API specification is maintained as a single source of truth in:
 
@@ -429,7 +537,7 @@ Checklist for any endpoint change:
 
 ---
 
-## 6. Non-Negotiable Rules
+## 7. Non-Negotiable Rules
 
 The following rules are mandatory and must never be violated:
 

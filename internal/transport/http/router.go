@@ -1,7 +1,9 @@
 package http
 
 import (
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/unowned-22/api/internal/config"
@@ -12,6 +14,48 @@ import (
 	"github.com/unowned-22/api/internal/transport/http/handler"
 	"golang.org/x/time/rate"
 )
+
+// emailExtractorFunc extracts email from request body for rate limiting.
+func emailExtractorFunc(r *http.Request) string {
+	if r.Body == nil {
+		return ""
+	}
+
+	// Read body
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		return ""
+	}
+
+	// Restore body for handler to read
+	r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+
+	// Simple JSON parsing to extract email
+	// Looking for "email":"value" pattern
+	body := string(bodyBytes)
+	emailKey := "\"email\":"
+	startIdx := strings.Index(body, emailKey)
+	if startIdx == -1 {
+		return ""
+	}
+
+	startIdx += len(emailKey)
+	// Skip whitespace and opening quote
+	for startIdx < len(body) && (body[startIdx] == ' ' || body[startIdx] == '"') {
+		startIdx++
+	}
+
+	endIdx := startIdx
+	for endIdx < len(body) && body[endIdx] != '"' && body[endIdx] != ',' && body[endIdx] != '}' {
+		endIdx++
+	}
+
+	if endIdx > startIdx {
+		return body[startIdx:endIdx]
+	}
+
+	return ""
+}
 
 // NewRouter constructs the Chi router, registers middleware, and sets up all routes.
 func NewRouter(
@@ -25,6 +69,10 @@ func NewRouter(
 	tokenManager token.Manager,
 	userService user.UserService,
 	permissionService permission.PermissionService,
+	loginLimiter *middleware.AuthRateLimiter,
+	registerLimiter *middleware.AuthRateLimiter,
+	forgotPasswordLimiter *middleware.AuthRateLimiter,
+	resendVerificationLimiter *middleware.AuthRateLimiter,
 ) http.Handler {
 	r := chi.NewRouter()
 
@@ -51,16 +99,34 @@ func NewRouter(
 		// Global rate limiter for /api/v1
 		r.Use(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst))
 
-		// Public routes with stricter auth rate limiter.
+		// Public auth routes with endpoint-specific rate limiters.
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RateLimit(rate.Limit(cfg.AuthRateLimitRPS), cfg.AuthRateLimitBurst))
+			// Register endpoint - rate limit by IP and email
+			r.With(middleware.AuthRateLimitByEmail("register", registerLimiter, emailExtractorFunc)).
+				Post("/auth/register", authHandler.Register)
 
-			r.Post("/auth/register", authHandler.Register)
-			r.Post("/auth/login", authHandler.Login)
-			r.Get("/auth/verify-email", authHandler.VerifyEmail)
-			r.Post("/auth/resend-verification", authHandler.ResendVerification)
-			r.Post("/auth/forgot-password", passwordResetHandler.ForgotPassword)
-			r.Post("/auth/reset-password", passwordResetHandler.ResetPassword)
+			// Login endpoint - rate limit by IP and email
+			r.With(middleware.AuthRateLimitByEmail("login", loginLimiter, emailExtractorFunc)).
+				Post("/auth/login", authHandler.Login)
+
+			// Email verification - rate limit by IP only
+			r.With(middleware.AuthRateLimitByIP("verify-email", registerLimiter)).
+				Get("/auth/verify-email", authHandler.VerifyEmail)
+
+			// Resend verification - rate limit by IP and email
+			r.With(middleware.AuthRateLimitByEmail("resend-verification", resendVerificationLimiter, emailExtractorFunc)).
+				Post("/auth/resend-verification", authHandler.ResendVerification)
+
+			// Forgot password - rate limit by IP and email
+			r.With(middleware.AuthRateLimitByEmail("forgot-password", forgotPasswordLimiter, emailExtractorFunc)).
+				Post("/auth/forgot-password", passwordResetHandler.ForgotPassword)
+
+			// Reset password - rate limit by IP only
+			r.With(middleware.AuthRateLimitByIP("reset-password", forgotPasswordLimiter)).
+				Post("/auth/reset-password", passwordResetHandler.ResetPassword)
+
+			// Refresh and logout - use generic rate limiter
+			r.Use(middleware.RateLimit(rate.Limit(cfg.AuthRateLimitRPS), cfg.AuthRateLimitBurst))
 			r.Post("/auth/refresh", authHandler.Refresh)
 			r.Post("/auth/logout", authHandler.Logout)
 		})
