@@ -41,13 +41,13 @@ func (h *AdminHandler) Permissions(w http.ResponseWriter, r *http.Request) {
 
 	u, err := h.userService.GetProfile(r.Context(), userID)
 	if err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 
 	perms, err := h.permissionService.GetPermissionsByRole(r.Context(), u.RoleID)
 	if err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 

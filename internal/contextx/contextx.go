@@ -8,8 +8,9 @@ import "context"
 type contextKey int
 
 const (
-	userIDKey   contextKey = iota // int64 — authenticated user's primary key
-	userRoleKey                   // string — role name embedded in the JWT claim
+	userIDKey    contextKey = iota // int64 — authenticated user's primary key
+	userRoleKey                    // string — role name embedded in the JWT claim
+	requestIDKey                   // string — unique request identifier for tracing
 )
 
 // SetUserID returns a new context carrying the authenticated user's ID.
@@ -27,6 +28,18 @@ func UserID(ctx context.Context) (int64, bool) {
 // SetUserRole returns a new context carrying the authenticated user's role name.
 func SetUserRole(ctx context.Context, role string) context.Context {
 	return context.WithValue(ctx, userRoleKey, role)
+}
+
+// SetRequestID returns a new context carrying the request identifier.
+func SetRequestID(ctx context.Context, requestID string) context.Context {
+	return context.WithValue(ctx, requestIDKey, requestID)
+}
+
+// GetRequestID retrieves the request identifier from ctx.
+// The second return value is false when no request ID has been stored.
+func GetRequestID(ctx context.Context) (string, bool) {
+	reqID, ok := ctx.Value(requestIDKey).(string)
+	return reqID, ok
 }
 
 // UserRole retrieves the authenticated user's role from ctx.

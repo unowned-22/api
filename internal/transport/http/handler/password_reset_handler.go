@@ -59,7 +59,7 @@ func (h *PasswordResetHandler) ResetPassword(w http.ResponseWriter, r *http.Requ
 	}
 
 	if err := h.service.ResetPassword(r.Context(), req.Token, req.NewPassword); err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 

@@ -20,6 +20,7 @@ func NewRouter(
 	userHandler *handler.UserHandler,
 	passwordResetHandler *handler.PasswordResetHandler,
 	adminHandler *handler.AdminHandler,
+	uploadHandler *handler.UploadHandler,
 	healthHandler *handler.HealthHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
@@ -60,6 +61,7 @@ func NewRouter(
 			r.Use(middleware.JWTAuth(tokenManager))
 
 			r.Get("/users/me", userHandler.Me)
+			r.Post("/uploads/presign", uploadHandler.Presign)
 
 			// Role-gated: admin only.
 			r.Group(func(r chi.Router) {

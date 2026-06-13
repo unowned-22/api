@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
@@ -16,16 +17,17 @@ func Recover(next http.Handler) http.Handler {
 			if err := recover(); err != nil {
 				stack := debug.Stack()
 
-				if logger.Log != nil {
-					reqID := GetRequestID(r.Context())
-					logger.Log.WithFields(map[string]interface{}{
-						"panic":      err,
-						"stack":      string(stack),
-						"request_id": reqID,
-					}).Error("panic recovered")
+				fields := map[string]interface{}{
+					"panic": err,
+					"stack": string(stack),
+				}
+				if userID, ok := contextx.UserID(r.Context()); ok {
+					fields["user_id"] = userID
 				}
 
-				response.SendError(w, fmt.Errorf("panic: %v", err))
+				logger.FromContext(r.Context()).WithFields(fields).Error("panic recovered")
+
+				response.SendError(w, r, fmt.Errorf("panic: %v", err))
 			}
 		}()
 

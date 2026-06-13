@@ -42,3 +42,9 @@ type ResetPasswordRequest struct {
 	Token       string `json:"token" validate:"required"`
 	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
+
+// PresignedUploadRequest содержит метаданные для генерации presigned URL.
+type PresignedUploadRequest struct {
+	Filename    string `json:"filename"     validate:"required"`
+	ContentType string `json:"content_type" validate:"required"`
+}

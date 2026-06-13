@@ -30,7 +30,7 @@ func SendSuccess(w http.ResponseWriter, status int, data interface{}) {
 }
 
 // SendError maps application errors to standard HTTP response formats and writes to ResponseWriter
-func SendError(w http.ResponseWriter, err error) {
+func SendError(w http.ResponseWriter, r *http.Request, err error) {
 	w.Header().Set("Content-Type", "application/json")
 
 	var status int
@@ -70,10 +70,7 @@ func SendError(w http.ResponseWriter, err error) {
 		code = "FORBIDDEN"
 		message = "you do not have permission to access this resource"
 	} else {
-		// Log the actual internal error so we don't lose context
-		if logger.Log != nil {
-			logger.Log.WithError(err).Error("Internal server error encountered")
-		}
+		logger.FromContext(r.Context()).WithError(err).Error("internal server error")
 		status = http.StatusInternalServerError
 		code = "INTERNAL_SERVER_ERROR"
 		message = "internal server error"

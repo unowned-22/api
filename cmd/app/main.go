@@ -23,8 +23,10 @@ import (
 	"github.com/unowned-22/api/internal/database"
 	domainevent "github.com/unowned-22/api/internal/domain/event"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
+
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
+	storageInfra "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
 	postgresRepo "github.com/unowned-22/api/internal/repository/postgres"
 	"github.com/unowned-22/api/internal/service"
@@ -177,7 +179,19 @@ func runServe() error {
 	roleRepo := postgresRepo.NewRoleRepository(pool)
 	permissionRepo := postgresRepo.NewPermissionRepository(pool)
 
-	// 5. Event Publisher (RabbitMQ)
+	// 5. Object Storage
+	minioStorage, err := storageInfra.NewMinIOStorage(storageInfra.Config{
+		Endpoint:        cfg.MinIOEndpoint,
+		AccessKeyID:     cfg.MinIOAccessKey,
+		SecretAccessKey: cfg.MinIOSecretKey,
+		UseSSL:          cfg.MinIOUseSSL,
+		Region:          cfg.MinIORegion,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to initialize MinIO storage: %w", err)
+	}
+
+	// 6. Event Publisher (RabbitMQ)
 	publisher, err := queue.New(queue.Config{
 		URL:      cfg.RabbitMQURL,
 		Exchange: cfg.RabbitMQExchange,
@@ -217,9 +231,10 @@ func runServe() error {
 	userHandler := handler.NewUserHandler(userService)
 	adminHandler := handler.NewAdminHandler(userService, permissionService)
 	healthHandler := handler.NewHealthHandler(healthService)
+	uploadHandler := handler.NewUploadHandler(minioStorage, cfg.MinIOBucket)
 
 	// 10. Router
-	router := transportHttp.NewRouter(cfg, authHandler, userHandler, passwordResetHandler, adminHandler, healthHandler, tokenManager, userService, permissionService)
+	router := transportHttp.NewRouter(cfg, authHandler, userHandler, passwordResetHandler, adminHandler, uploadHandler, healthHandler, tokenManager, userService, permissionService)
 
 	// 11. HTTP Server
 	srv := &http.Server{

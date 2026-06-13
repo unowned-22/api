@@ -32,3 +32,9 @@ type PermissionResponse struct {
 type AdminPermissionsResponse struct {
 	Permissions []PermissionResponse `json:"permissions"`
 }
+
+type PresignedUploadResponse struct {
+	UploadURL string `json:"upload_url"`
+	Key       string `json:"key"`
+	ExpiresIn int    `json:"expires_in"`
+}

@@ -43,7 +43,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.authService.Register(r.Context(), authReq); err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -74,7 +74,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, refreshToken, err := h.authService.Login(r.Context(), authReq)
 	if err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, err := h.authService.Refresh(r.Context(), req.RefreshToken)
 	if err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -130,7 +130,7 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.authService.VerifyEmail(r.Context(), req.Token); err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -154,7 +154,7 @@ func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := h.authService.ResendVerification(r.Context(), req.Email); err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -179,7 +179,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 
 	err := h.authService.Logout(r.Context(), req.RefreshToken)
 	if err != nil {
-		response.SendError(w, err)
+		response.SendError(w, r, err)
 		return
 	}
 

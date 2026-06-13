@@ -38,6 +38,13 @@ type Config struct {
 	DBName    string `envconfig:"DB_NAME"`
 	DBSSLMode string `envconfig:"DB_SSL_MODE" default:"disable"`
 
+	MinIOEndpoint  string `envconfig:"MINIO_ENDPOINT"    default:"minio:9000"`
+	MinIOAccessKey string `envconfig:"MINIO_ACCESS_KEY"  default:"studio-minio"`
+	MinIOSecretKey string `envconfig:"MINIO_SECRET_KEY"  default:"studio-minio"`
+	MinIOUseSSL    bool   `envconfig:"MINIO_USE_SSL"     default:"false"`
+	MinIORegion    string `envconfig:"MINIO_REGION"      default:"us-east-1"`
+	MinIOBucket    string `envconfig:"MINIO_BUCKET"      default:"app-uploads"`
+
 	JWTSecret string `envconfig:"JWT_SECRET"`
 }
 

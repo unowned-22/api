@@ -1,15 +1,12 @@
 package middleware
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+
+	"github.com/unowned-22/api/internal/contextx"
 )
-
-type contextKey string
-
-const RequestIDKey contextKey = "request_id"
 
 // RequestID generates a unique Request ID for tracing, setting it in headers and context
 func RequestID(next http.Handler) http.Handler {
@@ -20,17 +17,9 @@ func RequestID(next http.Handler) http.Handler {
 		}
 
 		w.Header().Set("X-Request-Id", reqID)
-		ctx := context.WithValue(r.Context(), RequestIDKey, reqID)
+		ctx := contextx.SetRequestID(r.Context(), reqID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-// GetRequestID extracts the request ID from the context
-func GetRequestID(ctx context.Context) string {
-	if val, ok := ctx.Value(RequestIDKey).(string); ok {
-		return val
-	}
-	return ""
 }
 
 func generateRandomID(length int) string {

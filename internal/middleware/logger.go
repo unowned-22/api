@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/logger"
 )
 
@@ -45,7 +46,7 @@ func Logger(next http.Handler) http.Handler {
 		duration := time.Since(start)
 
 		if logger.Log != nil {
-			reqID := GetRequestID(r.Context())
+			reqID, _ := contextx.GetRequestID(r.Context())
 
 			fields := logrus.Fields{
 				"method":      r.Method,

@@ -6,6 +6,7 @@ import (
 	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/domain/permission"
 	"github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
@@ -26,13 +27,15 @@ func RequirePermission(
 
 			u, err := userService.GetProfile(r.Context(), userID)
 			if err != nil {
-				response.SendError(w, err)
+				logger.FromContext(r.Context()).WithError(err).Error("failed to check permissions")
+				response.SendError(w, r, err)
 				return
 			}
 
 			permissions, err := permissionService.GetPermissionsByRole(r.Context(), u.RoleID)
 			if err != nil {
-				response.SendError(w, err)
+				logger.FromContext(r.Context()).WithError(err).Error("failed to check permissions")
+				response.SendError(w, r, err)
 				return
 			}
 
