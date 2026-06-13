@@ -8,26 +8,28 @@ import (
 )
 
 type Repositories struct {
-	User          *postgresRepo.UserRepository
-	RefreshToken  *postgresRepo.RefreshTokenRepository
-	UserSession   *postgresRepo.UserSessionRepository
-	Role          *postgresRepo.RoleRepository
-	Permission    *postgresRepo.PermissionRepository
-	PasswordReset *postgresRepo.PasswordResetRepository
-	Audit         *postgresRepo.AuditRepository
-	Outbox        domout.Repository
+	User           *postgresRepo.UserRepository
+	RefreshToken   *postgresRepo.RefreshTokenRepository
+	UserSession    *postgresRepo.UserSessionRepository
+	Role           *postgresRepo.RoleRepository
+	Permission     *postgresRepo.PermissionRepository
+	PasswordReset  *postgresRepo.PasswordResetRepository
+	Audit          *postgresRepo.AuditRepository
+	SystemSettings *postgresRepo.SystemSettingsRepository
+	Outbox         domout.Repository
 }
 
 // InitRepositories wires repository implementations using the provided pool.
 func InitRepositories(pool *pgxpool.Pool) *Repositories {
 	return &Repositories{
-		User:          postgresRepo.NewUserRepository(pool),
-		RefreshToken:  postgresRepo.NewRefreshTokenRepository(pool),
-		UserSession:   postgresRepo.NewUserSessionRepository(pool),
-		Role:          postgresRepo.NewRoleRepository(pool),
-		Permission:    postgresRepo.NewPermissionRepository(pool),
-		PasswordReset: postgresRepo.NewPasswordResetRepository(pool),
-		Audit:         postgresRepo.NewAuditRepository(pool),
-		Outbox:        outboxRepo.NewRepository(pool),
+		User:           postgresRepo.NewUserRepository(pool),
+		RefreshToken:   postgresRepo.NewRefreshTokenRepository(pool),
+		UserSession:    postgresRepo.NewUserSessionRepository(pool),
+		Role:           postgresRepo.NewRoleRepository(pool),
+		Permission:     postgresRepo.NewPermissionRepository(pool),
+		PasswordReset:  postgresRepo.NewPasswordResetRepository(pool),
+		Audit:          postgresRepo.NewAuditRepository(pool),
+		SystemSettings: postgresRepo.NewSystemSettingsRepository(pool),
+		Outbox:         outboxRepo.NewRepository(pool),
 	}
 }
