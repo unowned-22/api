@@ -40,6 +40,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	authReq := auth.RegisterRequest{
 		Email:    req.Email,
 		Password: req.Password,
+		FullName: req.FullName,
+		Username: req.Username,
+		Phone:    req.Phone,
 	}
 
 	if err := h.authService.Register(r.Context(), authReq); err != nil {
@@ -112,7 +115,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Logout revokes the given refresh token
+// VerifyEmail validates a verification token and marks the user's email as verified
 func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {

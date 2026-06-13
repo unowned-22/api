@@ -2,8 +2,11 @@ package dto
 
 // RegisterRequest is the HTTP request body for user registration.
 type RegisterRequest struct {
-	Email    string `json:"email"    validate:"required,email"`
-	Password string `json:"password" validate:"required,min=8"`
+	Email    string `json:"email"     validate:"required,email"`
+	Password string `json:"password"  validate:"required,min=8"`
+	FullName string `json:"full_name" validate:"required,min=2,max=100"`
+	Username string `json:"username"  validate:"required,min=3,max=30,username"`
+	Phone    string `json:"phone"     validate:"omitempty,phone"`
 }
 
 // LoginRequest is the HTTP request body for user authentication.

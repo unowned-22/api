@@ -124,23 +124,34 @@ Full rollback requires explicit confirmation.
 
 ### 1. Register a New User
 
-Create a new user account:
+Create a new user account. `full_name`, `username`, and optionally `phone` are required in addition to credentials.
+
+| Field | Required | Rules |
+|---|---|---|
+| `email` | Yes | valid email |
+| `password` | Yes | min 8 characters |
+| `full_name` | Yes | 2–100 characters |
+| `username` | Yes | 3–30 characters, only `a-z A-Z 0-9 . - _` |
+| `phone` | No | must start with `+`, max 20 characters |
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "email": "user@example.com",
-    "password": "securepassword123"
+    "password": "securepassword123",
+    "full_name": "Jane Smith",
+    "username": "jane.smith",
+    "phone": "+79991234567"
   }'
 ```
 
-### Successful Response
+#### Successful Response
 
 ```json
 {
   "data": {
-    "message": "user registered successfully"
+    "message": "user registered successfully, please check your email to verify your account"
   }
 }
 ```
@@ -160,7 +171,7 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   }'
 ```
 
-### Successful Response
+#### Successful Response
 
 Copy the `access_token` and `refresh_token` values from the response:
 
@@ -187,7 +198,7 @@ curl -X POST http://localhost:8080/api/v1/auth/refresh \
   }'
 ```
 
-### Successful Response
+#### Successful Response
 
 ```json
 {
@@ -211,7 +222,7 @@ curl -X POST http://localhost:8080/api/v1/auth/logout \
   }'
 ```
 
-### Successful Response
+#### Successful Response
 
 ```json
 {
@@ -232,13 +243,16 @@ curl -X GET http://localhost:8080/api/v1/users/me \
   -H "Authorization: Bearer <PASTE_YOUR_ACCESS_TOKEN_HERE>"
 ```
 
-### Successful Response
+#### Successful Response
 
 ```json
 {
   "data": {
     "id": 1,
     "email": "user@example.com",
+    "full_name": "Jane Smith",
+    "username": "jane.smith",
+    "phone": "+79991234567",
     "role": "user",
     "created_at": "2026-06-12T09:53:01Z"
   }
@@ -256,7 +270,7 @@ curl -X GET http://localhost:8080/api/v1/admin/ping \
   -H "Authorization: Bearer <PASTE_ADMIN_ACCESS_TOKEN_HERE>"
 ```
 
-### Successful Response
+#### Successful Response
 
 ```json
 {
@@ -277,7 +291,7 @@ curl -X GET http://localhost:8080/api/v1/admin/permissions \
   -H "Authorization: Bearer <PASTE_ACCESS_TOKEN_HERE>"
 ```
 
-### Successful Response
+#### Successful Response
 
 ```json
 {
@@ -286,51 +300,6 @@ curl -X GET http://localhost:8080/api/v1/admin/permissions \
       {
         "id": 1,
         "name": "admin.access",
-
-      ### 8. Password Reset
-
-      Initiate a password reset (silent response to prevent account enumeration):
-
-      ```bash
-      curl -X POST http://localhost:8080/api/v1/auth/forgot-password \
-        -H "Content-Type: application/json" \
-        -d '{"email": "user@example.com"}'
-      ```
-
-      Successful response (always 200):
-
-      ```json
-      {
-        "data": {
-          "message": "if the email exists, a reset link has been sent"
-        }
-      }
-      ```
-
-      Complete the reset using the token from the email:
-
-      ```bash
-      curl -X POST http://localhost:8080/api/v1/auth/reset-password \
-        -H "Content-Type: application/json" \
-        -d '{
-          "token": "<RESET_TOKEN_FROM_EMAIL>",
-          "new_password": "newSecurePassword123"
-        }'
-      ```
-
-      Successful response:
-
-      ```json
-      {
-        "data": {
-          "message": "password has been reset successfully"
-        }
-      }
-      ```
-
-      Notes:
-      - The `forgot-password` endpoint intentionally returns a 200 OK regardless of whether the email exists to avoid leaking valid accounts.
-      - Reset tokens expire (short-lived) and are marked used after a successful reset. All refresh tokens for the user are revoked on password change.
         "description": "Access administration endpoints",
         "created_at": "2026-06-12T09:53:01Z"
       }
@@ -341,28 +310,93 @@ curl -X GET http://localhost:8080/api/v1/admin/permissions \
 
 ---
 
+### 8. Password Reset
+
+Initiate a password reset (silent response to prevent account enumeration):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com"}'
+```
+
+#### Successful Response (always 200)
+
+```json
+{
+  "data": {
+    "message": "if the email exists, a reset link has been sent"
+  }
+}
+```
+
+Complete the reset using the token from the email:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "<RESET_TOKEN_FROM_EMAIL>",
+    "new_password": "newSecurePassword123"
+  }'
+```
+
+#### Successful Response
+
+```json
+{
+  "data": {
+    "message": "password has been reset successfully"
+  }
+}
+```
+
+> **Note:** The `forgot-password` endpoint intentionally returns 200 OK regardless of whether the email exists to avoid leaking valid accounts. Reset tokens are short-lived and marked as used after a successful reset. All refresh tokens for the user are revoked on password change.
+
+---
+
 ## Error Response Format
 
-All API errors are returned in a consistent format.
-
-Example for invalid credentials:
+All API errors are returned in a consistent format:
 
 ```json
 {
   "error": {
-    "code": "INVALID_CREDENTIALS",
-    "message": "invalid email or password"
+    "code": "ERROR_CODE",
+    "message": "human-readable description"
   }
 }
 ```
 
-Example for invalid refresh token:
+Validation errors include per-field details:
 
 ```json
 {
   "error": {
-    "code": "INVALID_REFRESH_TOKEN",
-    "message": "refresh token is invalid"
+    "code": "VALIDATION_ERROR",
+    "message": "validation failed",
+    "details": [
+      { "field": "username", "message": "must contain only letters, digits, dots, dashes, or underscores" },
+      { "field": "phone",    "message": "must start with +" }
+    ]
   }
 }
 ```
+
+### Error Codes Reference
+
+| Code | HTTP Status | Description |
+|---|---|---|
+| `VALIDATION_ERROR` | 422 | One or more fields failed validation |
+| `BAD_REQUEST` | 400 | Malformed request body |
+| `INVALID_CREDENTIALS` | 401 | Wrong email or password |
+| `INVALID_REFRESH_TOKEN` | 401 | Refresh token is missing, expired, or revoked |
+| `EMAIL_NOT_VERIFIED` | 403 | Login attempted before email verification |
+| `EMAIL_ALREADY_VERIFIED` | 409 | Verification re-attempted on an already-verified account |
+| `USER_ALREADY_EXISTS` | 409 | Email is already registered |
+| `USERNAME_ALREADY_EXISTS` | 409 | Username is already taken |
+| `INVALID_VERIFICATION_TOKEN` | 400 | Email verification token is invalid or expired |
+| `FORBIDDEN` | 403 | Insufficient role or permission |
+| `USER_NOT_FOUND` | 404 | User does not exist |
+| `RATE_LIMITED` | 429 | Too many requests |
+| `INTERNAL_SERVER_ERROR` | 500 | Unexpected server error |
