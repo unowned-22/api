@@ -38,7 +38,7 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start HTTP REST API server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		app, err := bootstrap.NewApp(Version, Commit, BuildDate)
+		app, err := bootstrap.NewApp()
 		if err != nil {
 			return err
 		}

@@ -11,29 +11,33 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/config"
-	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
 	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/middleware"
 )
 
 type App struct {
-	Version   string
-	Commit    string
-	BuildDate string
+	// Core runtime values
+	Config  any
+	DB      any
+	Storage any
+	Queue   any
 
-	cfg *config.Config
+	Router http.Handler
+	Server *http.Server
 
-	pool      *pgxpool.Pool
-	publisher *queue.AMQPPublisher
-	smtp      *mailer.SMTPMailer
-	server    *http.Server
-	// limiters need stopping
+	Repositories *Repositories
+	Services     *Services
+	Handlers     *Handlers
+
+	// internal pieces we need to shutdown
 	loginLimiter, registerLimiter, forgotLimiter, resendLimiter *middleware.AuthRateLimiter
+	publisher                                                   *queue.AMQPPublisher
+	pool                                                        *pgxpool.Pool
 }
 
 // NewApp initializes application dependencies and returns an App ready to Run.
-func NewApp(version, commit, buildDate string) (*App, error) {
+func NewApp() (*App, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
@@ -42,6 +46,7 @@ func NewApp(version, commit, buildDate string) (*App, error) {
 	if err := logger.Init(); err != nil {
 		return nil, fmt.Errorf("failed to initialize logger: %w", err)
 	}
+
 	// Initialize infra
 	pool, minioStorage, publisher, smtpMailer, tokenManager, err := InitInfrastructure(cfg)
 	if err != nil {
@@ -61,18 +66,22 @@ func NewApp(version, commit, buildDate string) (*App, error) {
 	srv, loginLimiter, registerLimiter, forgotLimiter, resendLimiter := NewServer(cfg, handlers, tokenManager, svcs)
 
 	app := &App{
-		Version:         version,
-		Commit:          commit,
-		BuildDate:       buildDate,
-		cfg:             cfg,
-		pool:            pool,
-		publisher:       publisher,
-		smtp:            smtpMailer,
-		server:          srv,
+		Config:       cfg,
+		DB:           pool,
+		Storage:      minioStorage,
+		Queue:        publisher,
+		Router:       srv.Handler,
+		Server:       srv,
+		Repositories: repos,
+		Services:     svcs,
+		Handlers:     handlers,
+
 		loginLimiter:    loginLimiter,
 		registerLimiter: registerLimiter,
 		forgotLimiter:   forgotLimiter,
 		resendLimiter:   resendLimiter,
+		publisher:       publisher,
+		pool:            pool,
 	}
 
 	return app, nil
@@ -80,14 +89,19 @@ func NewApp(version, commit, buildDate string) (*App, error) {
 
 // Run starts the HTTP server and handles graceful shutdown.
 func (a *App) Run() error {
+	cfg, ok := a.Config.(*config.Config)
+	if !ok {
+		return fmt.Errorf("invalid config in App container")
+	}
+
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(shutdown)
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Log.Infof("Starting server on port %s", a.cfg.AppPort)
-		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		logger.Log.Infof("Starting server on port %s", cfg.AppPort)
+		if err := a.Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("failed to start HTTP server: %w", err)
 		}
 	}()
@@ -103,24 +117,33 @@ func (a *App) Run() error {
 	ctxShut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := a.server.Shutdown(ctxShut); err != nil {
+	if err := a.Server.Shutdown(ctxShut); err != nil {
 		logger.Log.Errorf("HTTP server graceful shutdown failed: %v", err)
 	} else {
 		logger.Log.Info("HTTP server stopped accepting new requests")
 	}
 
 	// Stop limiters
-	a.loginLimiter.Stop()
-	a.registerLimiter.Stop()
-	a.forgotLimiter.Stop()
-	a.resendLimiter.Stop()
+	if a.loginLimiter != nil {
+		a.loginLimiter.Stop()
+	}
+	if a.registerLimiter != nil {
+		a.registerLimiter.Stop()
+	}
+	if a.forgotLimiter != nil {
+		a.forgotLimiter.Stop()
+	}
+	if a.resendLimiter != nil {
+		a.resendLimiter.Stop()
+	}
 
 	if a.publisher != nil {
 		a.publisher.Close()
 	}
 
 	if a.pool != nil {
-		// placeholder: real pool.Close called via database package type
+		a.pool.Close()
+		logger.Log.Info("PostgreSQL connection pool closed successfully")
 	}
 
 	logger.Log.Info("Graceful shutdown completed. Exiting.")
