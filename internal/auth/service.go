@@ -52,6 +52,7 @@ type authService struct {
 	tokenManager     token.ManagerExtended
 	mailer           domainmailer.Mailer
 	publisher        event.Publisher
+	refreshTokenTTL  time.Duration
 	appURL           string
 	appName          string
 }
@@ -64,6 +65,7 @@ func NewAuthService(
 	tokenManager token.ManagerExtended,
 	mailer domainmailer.Mailer,
 	publisher event.Publisher,
+	refreshTokenTTL time.Duration,
 	appURL string,
 	appName string,
 ) AuthService {
@@ -74,6 +76,7 @@ func NewAuthService(
 		tokenManager:     tokenManager,
 		mailer:           mailer,
 		publisher:        publisher,
+		refreshTokenTTL:  refreshTokenTTL,
 		appURL:           appURL,
 		appName:          appName,
 	}
@@ -232,7 +235,7 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 	rt := &token.RefreshToken{
 		UserID:    u.ID,
 		TokenHash: HashRefreshToken(refreshTokenStr),
-		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+		ExpiresAt: time.Now().Add(s.refreshTokenTTL),
 		Status:    token.RefreshTokenStatusActive,
 		CreatedAt: time.Now(),
 	}
@@ -289,7 +292,7 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (stri
 	newRT := &token.RefreshToken{
 		UserID:    u.ID,
 		TokenHash: HashRefreshToken(newRefreshTokenStr),
-		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+		ExpiresAt: time.Now().Add(s.refreshTokenTTL),
 		Status:    token.RefreshTokenStatusActive,
 		CreatedAt: time.Now(),
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -45,7 +46,11 @@ type Config struct {
 	MinIORegion    string `envconfig:"MINIO_REGION"      default:"us-east-1"`
 	MinIOBucket    string `envconfig:"MINIO_BUCKET"      default:"app-uploads"`
 
-	JWTSecret string `envconfig:"JWT_SECRET"`
+	JWTSecret       string        `envconfig:"JWT_SECRET"`
+	JWTIssuer       string        `envconfig:"JWT_ISSUER" default:"api-service"`
+	JWTAudience     string        `envconfig:"JWT_AUDIENCE" default:"client-app"`
+	AccessTokenTTL  time.Duration `envconfig:"ACCESS_TOKEN_TTL" default:"15m"`
+	RefreshTokenTTL time.Duration `envconfig:"REFRESH_TOKEN_TTL" default:"720h"`
 }
 
 func Load() (*Config, error) {
@@ -74,11 +79,13 @@ func (c *Config) Validate() error {
 	}
 
 	required := map[string]string{
-		"DB_HOST":    c.DBHost,
-		"DB_PORT":    c.DBPort,
-		"DB_USER":    c.DBUser,
-		"DB_NAME":    c.DBName,
-		"JWT_SECRET": c.JWTSecret,
+		"DB_HOST":      c.DBHost,
+		"DB_PORT":      c.DBPort,
+		"DB_USER":      c.DBUser,
+		"DB_NAME":      c.DBName,
+		"JWT_SECRET":   c.JWTSecret,
+		"JWT_ISSUER":   c.JWTIssuer,
+		"JWT_AUDIENCE": c.JWTAudience,
 	}
 	for name, value := range required {
 		if strings.TrimSpace(value) == "" {
@@ -93,6 +100,13 @@ func (c *Config) Validate() error {
 
 	if strings.TrimSpace(c.DBSSLMode) == "" {
 		return fmt.Errorf("DB_SSL_MODE is required")
+	}
+
+	if c.AccessTokenTTL <= 0 {
+		return fmt.Errorf("ACCESS_TOKEN_TTL must be greater than zero")
+	}
+	if c.RefreshTokenTTL <= 0 {
+		return fmt.Errorf("REFRESH_TOKEN_TTL must be greater than zero")
 	}
 
 	return nil

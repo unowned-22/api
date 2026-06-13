@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestConfigLoad(t *testing.T) {
@@ -14,6 +15,10 @@ func TestConfigLoad(t *testing.T) {
 	os.Setenv("DB_PASSWORD", "somepass")
 	os.Setenv("DB_NAME", "somedb")
 	os.Setenv("JWT_SECRET", "somesecret")
+	os.Setenv("JWT_ISSUER", "api-service")
+	os.Setenv("JWT_AUDIENCE", "client-app")
+	os.Setenv("ACCESS_TOKEN_TTL", "30m")
+	os.Setenv("REFRESH_TOKEN_TTL", "720h")
 
 	defer func() {
 		os.Unsetenv("APP_PORT")
@@ -23,6 +28,10 @@ func TestConfigLoad(t *testing.T) {
 		os.Unsetenv("DB_PASSWORD")
 		os.Unsetenv("DB_NAME")
 		os.Unsetenv("JWT_SECRET")
+		os.Unsetenv("JWT_ISSUER")
+		os.Unsetenv("JWT_AUDIENCE")
+		os.Unsetenv("ACCESS_TOKEN_TTL")
+		os.Unsetenv("REFRESH_TOKEN_TTL")
 	}()
 
 	cfg, err := Load()
@@ -38,5 +47,17 @@ func TestConfigLoad(t *testing.T) {
 	}
 	if cfg.DBPass != "somepass" {
 		t.Errorf("expected DBPass somepass, got %s", cfg.DBPass)
+	}
+	if cfg.JWTIssuer != "api-service" {
+		t.Errorf("expected JWTIssuer api-service, got %s", cfg.JWTIssuer)
+	}
+	if cfg.JWTAudience != "client-app" {
+		t.Errorf("expected JWTAudience client-app, got %s", cfg.JWTAudience)
+	}
+	if cfg.AccessTokenTTL != 30*time.Minute {
+		t.Errorf("expected AccessTokenTTL 30m, got %s", cfg.AccessTokenTTL)
+	}
+	if cfg.RefreshTokenTTL != 720*time.Hour {
+		t.Errorf("expected RefreshTokenTTL 720h, got %s", cfg.RefreshTokenTTL)
 	}
 }

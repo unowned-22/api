@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/unowned-22/api/internal/domain/token"
 )
 
@@ -13,12 +14,21 @@ import (
 // token.ManagerExtended.  It lives in the infrastructure layer so that
 // the domain never depends on the JWT library.
 type JWTManager struct {
-	secret string
+	secret    string
+	issuer    string
+	audience  string
+	accessTTL time.Duration
 }
 
 // NewJWTManager creates a new instance of JWTManager.
-func NewJWTManager(secret string) *JWTManager {
-	return &JWTManager{secret: secret}
+func NewJWTManager(secret, issuer, audience string, accessTTL time.Duration) *JWTManager {
+	return &JWTManager{secret: secret, issuer: issuer, audience: audience, accessTTL: accessTTL}
+}
+
+// accessTokenClaims defines the standard JWT claims plus the optional role.
+type accessTokenClaims struct {
+	jwt.RegisteredClaims
+	Role string `json:"role,omitempty"`
 }
 
 // Generate creates a JWT access token containing only the user ID.
@@ -30,12 +40,20 @@ func (m *JWTManager) Generate(userID int64) (string, error) {
 // GenerateWithRole creates a JWT access token that embeds user ID and role.
 // Satisfies token.ManagerExtended.
 func (m *JWTManager) GenerateWithRole(userID int64, role string) (string, error) {
-	claims := jwt.MapClaims{
-		"sub": strconv.FormatInt(userID, 10),
-		"exp": time.Now().Add(15 * time.Minute).Unix(),
+	now := time.Now().UTC()
+	claims := accessTokenClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    m.issuer,
+			Subject:   strconv.FormatInt(userID, 10),
+			Audience:  jwt.ClaimStrings{m.audience},
+			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessTTL)),
+			NotBefore: jwt.NewNumericDate(now),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        uuid.NewString(),
+		},
 	}
 	if role != "" {
-		claims["role"] = role
+		claims.Role = role
 	}
 
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -56,23 +74,23 @@ func (m *JWTManager) Parse(tokenString string) (int64, error) {
 // ParseWithRole validates the JWT and returns both user ID and role claim.
 // Satisfies token.ManagerExtended.
 func (m *JWTManager) ParseWithRole(tokenString string) (int64, string, error) {
-	t, err := jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+	claims := &accessTokenClaims{}
+	t, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 		}
 		return []byte(m.secret), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer(m.issuer), jwt.WithAudience(m.audience))
 	if err != nil {
 		return 0, "", fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	claims, ok := t.Claims.(jwt.MapClaims)
-	if !ok || !t.Valid {
+	if !t.Valid {
 		return 0, "", fmt.Errorf("invalid token claims")
 	}
 
-	subStr, ok := claims["sub"].(string)
-	if !ok {
+	subStr := claims.Subject
+	if subStr == "" {
 		return 0, "", fmt.Errorf("sub claim is missing or not a string")
 	}
 
@@ -81,9 +99,7 @@ func (m *JWTManager) ParseWithRole(tokenString string) (int64, string, error) {
 		return 0, "", fmt.Errorf("failed to parse sub claim as user ID: %w", err)
 	}
 
-	role, _ := claims["role"].(string) // empty string if not present
-
-	return userID, role, nil
+	return userID, claims.Role, nil
 }
 
 // Compile-time interface compliance checks.

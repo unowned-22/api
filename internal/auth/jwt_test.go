@@ -2,11 +2,14 @@ package auth
 
 import (
 	"testing"
+	"time"
 )
 
 func TestJWTManager(t *testing.T) {
 	secret := "test-secret-key-12345"
-	manager := NewJWTManager(secret)
+	issuer := "api-service"
+	audience := "client-app"
+	manager := NewJWTManager(secret, issuer, audience, 15*time.Minute)
 
 	userID := int64(9876)
 	token, err := manager.Generate(userID)
@@ -21,6 +24,18 @@ func TestJWTManager(t *testing.T) {
 
 	if parsedID != userID {
 		t.Errorf("expected user ID %d, got %d", userID, parsedID)
+	}
+
+	// Verify standard claims are present and validated.
+	parsedID2, role, err := manager.ParseWithRole(token)
+	if err != nil {
+		t.Fatalf("failed to parse token with role: %v", err)
+	}
+	if parsedID2 != userID {
+		t.Errorf("expected user ID %d from ParseWithRole, got %d", userID, parsedID2)
+	}
+	if role != "" {
+		t.Errorf("expected empty role, got %q", role)
 	}
 
 	// Test invalid token parsing
