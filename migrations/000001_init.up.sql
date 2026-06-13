@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     user_id    BIGINT      NOT NULL,
     token      TEXT        NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
-    revoked    BOOLEAN     NOT NULL DEFAULT FALSE,
+    status     VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

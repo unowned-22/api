@@ -41,7 +41,7 @@ type AuthService interface {
 	VerifyEmail(ctx context.Context, token string) error
 	ResendVerification(ctx context.Context, email string) error
 	Login(ctx context.Context, req LoginRequest) (string, string, error)
-	Refresh(ctx context.Context, refreshToken string) (string, error)
+	Refresh(ctx context.Context, refreshToken string) (string, string, error)
 	Logout(ctx context.Context, refreshToken string) error
 }
 
@@ -233,11 +233,11 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		UserID:    u.ID,
 		Token:     refreshTokenStr,
 		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
-		Revoked:   false,
+		Status:    token.RefreshTokenStatusActive,
 		CreatedAt: time.Now(),
 	}
 
-	if err = s.refreshTokenRepo.Create(ctx, rt); err != nil {
+	if err = s.refreshTokenRepo.CreateRefreshToken(ctx, rt); err != nil {
 		return "", "", fmt.Errorf("failed to save refresh token: %w", err)
 	}
 
@@ -245,38 +245,60 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 }
 
 // Refresh validates a refresh token and issues a new access token (with role).
-func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (string, error) {
+func (s *authService) Refresh(ctx context.Context, refreshTokenStr string) (string, string, error) {
 	if refreshTokenStr == "" {
-		return "", errs.ErrInvalidRefreshToken
+		return "", "", errs.ErrInvalidRefreshToken
 	}
 
 	rt, err := s.refreshTokenRepo.GetByToken(ctx, refreshTokenStr)
 	if err != nil {
 		if errors.Is(err, errs.ErrRefreshTokenNotFound) {
-			return "", errs.ErrInvalidRefreshToken
+			return "", "", errs.ErrInvalidRefreshToken
 		}
-		return "", err
+		return "", "", err
 	}
 
-	if rt.Revoked {
-		return "", errs.ErrInvalidRefreshToken
+	if rt.EffectiveStatus() != token.RefreshTokenStatusActive {
+		return "", "", errs.ErrInvalidRefreshToken
 	}
-	if rt.ExpiresAt.Before(time.Now()) {
-		return "", errs.ErrInvalidRefreshToken
+
+	// Rotate the refresh token immediately after validation.
+	if err := s.refreshTokenRepo.RevokeRefreshToken(ctx, refreshTokenStr); err != nil {
+		if errors.Is(err, errs.ErrRefreshTokenNotFound) {
+			return "", "", errs.ErrInvalidRefreshToken
+		}
+		return "", "", err
 	}
 
 	// Look up user to get current role (role may have changed since last login).
 	u, err := s.userRepo.GetByID(ctx, rt.UserID)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch user for refresh: %w", err)
+		return "", "", fmt.Errorf("failed to fetch user for refresh: %w", err)
 	}
 
 	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate access token: %w", err)
+		return "", "", fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	return accessToken, nil
+	newRefreshTokenStr, err := generateRefreshToken()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	newRT := &token.RefreshToken{
+		UserID:    u.ID,
+		Token:     newRefreshTokenStr,
+		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+		Status:    token.RefreshTokenStatusActive,
+		CreatedAt: time.Now(),
+	}
+
+	if err := s.refreshTokenRepo.CreateRefreshToken(ctx, newRT); err != nil {
+		return "", "", fmt.Errorf("failed to save refresh token: %w", err)
+	}
+
+	return accessToken, newRefreshTokenStr, nil
 }
 
 // Logout revokes the given refresh token.
@@ -285,7 +307,7 @@ func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error 
 		return errs.ErrInvalidRefreshToken
 	}
 
-	if err := s.refreshTokenRepo.Revoke(ctx, refreshTokenStr); err != nil {
+	if err := s.refreshTokenRepo.RevokeRefreshToken(ctx, refreshTokenStr); err != nil {
 		if errors.Is(err, errs.ErrRefreshTokenNotFound) {
 			return errs.ErrInvalidRefreshToken
 		}

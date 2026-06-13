@@ -553,14 +553,14 @@ paths:
               $ref: '#/components/schemas/RefreshRequest'
       responses:
         "200":
-          description: New access token issued
+          description: New access token and refresh token issued
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   data:
-                    $ref: '#/components/schemas/AccessToken'
+                    $ref: '#/components/schemas/AuthTokens'
         "401":
           description: Refresh token is invalid, expired, or revoked
           content:

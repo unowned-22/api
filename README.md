@@ -210,7 +210,7 @@ Copy the `access_token` and `refresh_token` values from the response:
 
 ### 3. Refresh Access Token
 
-Use a valid refresh token to get a new access token:
+Use a valid refresh token to get a new access token and a rotated refresh token. The old refresh token becomes invalid immediately after use.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/refresh \
@@ -225,7 +225,8 @@ curl -X POST http://localhost:8080/api/v1/auth/refresh \
 ```json
 {
   "data": {
-    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "Y7vL6mQ9qF..."
   }
 }
 ```
