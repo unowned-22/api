@@ -40,6 +40,10 @@ WHERE role_id IS NULL;
 ALTER TABLE users
     ALTER COLUMN role_id SET NOT NULL;
 
+ALTER TABLE users
+    ADD CONSTRAINT chk_users_phone
+        CHECK (phone = '' OR phone ~ '^\\+[1-9][0-9]{6,14}$');
+
 CREATE INDEX IF NOT EXISTS idx_users_role_id        ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_users_deactivated_at ON users(deactivated_at);
 
