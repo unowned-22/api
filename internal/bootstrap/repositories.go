@@ -17,6 +17,7 @@ type Repositories struct {
 	Audit          *postgresRepo.AuditRepository
 	SystemSettings *postgresRepo.SystemSettingsRepository
 	UserSettings   *postgresRepo.UserSettingsRepository
+	UserDevice     *postgresRepo.UserDeviceRepository
 	Outbox         domout.Repository
 }
 
@@ -32,6 +33,7 @@ func InitRepositories(pool *pgxpool.Pool) *Repositories {
 		Audit:          postgresRepo.NewAuditRepository(pool),
 		SystemSettings: postgresRepo.NewSystemSettingsRepository(pool),
 		UserSettings:   postgresRepo.NewUserSettingsRepository(pool),
+		UserDevice:     postgresRepo.NewUserDeviceRepository(pool),
 		Outbox:         outboxRepo.NewRepository(pool),
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/role"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
+	"github.com/unowned-22/api/internal/domain/userdevice"
 	"github.com/unowned-22/api/internal/domain/usersession"
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
@@ -59,6 +60,7 @@ type authService struct {
 	userRepo         user.UserRepository
 	refreshTokenRepo token.RefreshTokenRepository
 	userSessionRepo  usersession.UserSessionRepository
+	userDeviceRepo   userdevice.Repository
 	roleRepo         role.RoleRepository
 	tokenManager     token.ManagerExtended
 	mailer           domainmailer.Mailer
@@ -73,6 +75,7 @@ func NewAuthService(
 	userRepo user.UserRepository,
 	refreshTokenRepo token.RefreshTokenRepository,
 	userSessionRepo usersession.UserSessionRepository,
+	userDeviceRepo userdevice.Repository,
 	roleRepo role.RoleRepository,
 	tokenManager token.ManagerExtended,
 	mailer domainmailer.Mailer,
@@ -85,6 +88,7 @@ func NewAuthService(
 		userRepo:         userRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		userSessionRepo:  userSessionRepo,
+		userDeviceRepo:   userDeviceRepo,
 		roleRepo:         roleRepo,
 		tokenManager:     tokenManager,
 		mailer:           mailer,
@@ -314,18 +318,84 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		ipAddress = "Unknown"
 	}
 
-	// Publish login_success audit event asynchronously
+	// Device / notification handling: detect new device/browser/country
+	isNewDevice := false
+	if s.userDeviceRepo != nil {
+		fingerprint := deviceName + "|" + userAgent
+		browser := userAgent
+		country := ""
+
+		d, err := s.userDeviceRepo.GetByUnique(u.ID, fingerprint, browser, country)
+		if err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to lookup user device")
+		} else if d == nil {
+			// new device -> create record and mark for notification
+			newD := &userdevice.Device{
+				UserID:      u.ID,
+				Fingerprint: fingerprint,
+				Browser:     browser,
+				Platform:    "",
+				Country:     country,
+				City:        "",
+				IP:          ipAddress,
+				LastSeen:    time.Now(),
+				CreatedAt:   time.Now(),
+			}
+			if err := s.userDeviceRepo.Create(newD); err != nil {
+				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to create user device record")
+			} else {
+				isNewDevice = true
+			}
+		} else {
+			// existing device — update last_seen
+
+			if err := s.userDeviceRepo.UpdateLastSeen(d.ID, time.Now()); err != nil {
+				logger.Log.WithError(err).WithFields(map[string]interface{}{"device_id": d.ID}).Warn("failed to update device last_seen")
+			}
+		}
+	}
+
+	// Publish login_success audit event asynchronously (include new_device flag)
 	go func() {
 		payload, _ := json.Marshal(map[string]interface{}{
 			"user_id":    u.ID,
 			"ip_address": ipAddress,
 			"user_agent": userAgent,
 			"device":     deviceName,
+			"new_device": isNewDevice,
 		})
 		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.LoginSuccess, Payload: payload}); err != nil {
 			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.login_success")
 		}
 	}()
+
+	// If it's a new device, render notification email template and persist send request to outbox (avoid spamming)
+	if isNewDevice {
+		htmlContent, textContent, err := mailer.RenderTemplate("login_notification", map[string]interface{}{
+			"AppName":  s.appName,
+			"Time":     time.Now().Format(time.RFC3339),
+			"IP":       ipAddress,
+			"Country":  "",
+			"City":     "",
+			"Device":   deviceName,
+			"Browser":  userAgent,
+			"Platform": "",
+		})
+		if err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to render login notification template")
+		} else {
+			payload, _ := json.Marshal(map[string]interface{}{
+				"to":      []string{u.Email},
+				"subject": "New sign-in to your account",
+				"html":    htmlContent,
+				"text":    textContent,
+			})
+
+			if err := s.publisher.Publish(context.Background(), event.Event{Name: event.EmailSend, Payload: payload}); err != nil {
+				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish email.send to outbox")
+			}
+		}
+	}
 
 	session := &usersession.UserSession{
 		UserID:         u.ID,
