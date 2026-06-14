@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	dom "github.com/unowned-22/api/internal/domain/outbox"
 )
@@ -24,6 +25,17 @@ func (r *PostgresRepository) Insert(ctx context.Context, evt *dom.OutboxEvent) e
     `, evt.ID, evt.EventType, evt.Payload, dom.StatusPending, evt.CreatedAt, evt.RetryCount)
 	if err != nil {
 		return fmt.Errorf("outbox insert failed: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRepository) InsertTx(ctx context.Context, tx pgx.Tx, evt *dom.OutboxEvent) error {
+	_, err := tx.Exec(ctx, `
+        INSERT INTO outbox_events (id, event_type, payload, status, created_at, retry_count)
+        VALUES ($1, $2, $3, $4, $5, $6)
+    `, evt.ID, evt.EventType, evt.Payload, dom.StatusPending, evt.CreatedAt, evt.RetryCount)
+	if err != nil {
+		return fmt.Errorf("outbox insert tx failed: %w", err)
 	}
 	return nil
 }

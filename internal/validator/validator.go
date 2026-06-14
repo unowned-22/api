@@ -32,7 +32,7 @@ var validate *validator.Validate
 
 var (
 	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
-	phoneRegex    = regexp.MustCompile(`^\+`)
+	phoneRegex    = regexp.MustCompile(`^\+[1-9]\d{6,14}$`)
 )
 
 func init() {
@@ -105,7 +105,7 @@ func messageForTag(fe validator.FieldError) string {
 	case "username":
 		return "must contain only letters, digits, dots, dashes, or underscores"
 	case "phone":
-		return "must start with +"
+		return "must be a valid phone number in E.164 format (e.g. +79001234567)"
 	default:
 		return fmt.Sprintf("failed on '%s' validation", fe.Tag())
 	}

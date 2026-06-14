@@ -1,12 +1,3 @@
--- ============================================================
--- INIT MIGRATION (consolidated)
--- Includes: 000001 → 000005, 000007 → 000010
--- ============================================================
-
-
--- ========================
--- ROLES
--- ========================
 CREATE TABLE IF NOT EXISTS roles (
     id         BIGSERIAL PRIMARY KEY,
     name       VARCHAR(100) NOT NULL UNIQUE,
@@ -17,17 +8,13 @@ INSERT INTO roles (name)
 VALUES ('admin'), ('moderator'), ('user')
 ON CONFLICT (name) DO NOTHING;
 
-
--- ========================
--- USERS
--- ========================
 CREATE TABLE IF NOT EXISTS users (
     id                            BIGSERIAL    PRIMARY KEY,
     email                         VARCHAR(255) NOT NULL UNIQUE,
     password                      VARCHAR(255) NOT NULL,
     full_name                     VARCHAR(128) NOT NULL,
     username                      VARCHAR(64)  NOT NULL,
-    phone                         VARCHAR(16)  NOT NULL,
+    phone                         VARCHAR(16)  NULL,
     role_id                       BIGINT,
     email_verified_at             TIMESTAMPTZ,
     verification_token            TEXT,
@@ -53,13 +40,13 @@ WHERE role_id IS NULL;
 ALTER TABLE users
     ALTER COLUMN role_id SET NOT NULL;
 
+ALTER TABLE users
+    ADD CONSTRAINT chk_users_phone
+        CHECK (phone IS NULL OR phone = '' OR phone ~ '^\\+[1-9][0-9]{6,14}$');
+
 CREATE INDEX IF NOT EXISTS idx_users_role_id        ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_users_deactivated_at ON users(deactivated_at);
 
-
--- ========================
--- REFRESH TOKENS
--- ========================
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT      NOT NULL,
@@ -72,10 +59,6 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 
-
--- ========================
--- PERMISSIONS
--- ========================
 CREATE TABLE IF NOT EXISTS permissions (
     id          BIGSERIAL    PRIMARY KEY,
     name        VARCHAR(100) NOT NULL UNIQUE,
@@ -130,10 +113,6 @@ JOIN permissions p ON p.name = 'users.read'
 WHERE r.name = 'user'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
-
--- ========================
--- PASSWORD RESET TOKENS
--- ========================
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -146,10 +125,6 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token   ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);  -- 000007
 
-
--- ========================
--- USER SESSIONS            (000002)
--- ========================
 CREATE TABLE IF NOT EXISTS user_sessions (
     id               BIGSERIAL    PRIMARY KEY,
     user_id          BIGINT       NOT NULL REFERENCES users(id)          ON DELETE CASCADE,
@@ -165,10 +140,6 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id          ON user_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_refresh_token_id ON user_sessions(refresh_token_id);
 
-
--- ========================
--- AUDIT LOGS               (000003)
--- ========================
 CREATE TABLE IF NOT EXISTS audit_logs (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT,
@@ -182,10 +153,6 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id    ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
 
-
--- ========================
--- OUTBOX EVENTS            (000005)
--- ========================
 CREATE TABLE IF NOT EXISTS outbox_events (
     id           UUID        PRIMARY KEY,
     event_type   TEXT        NOT NULL,
@@ -196,10 +163,6 @@ CREATE TABLE IF NOT EXISTS outbox_events (
     retry_count  INTEGER     NOT NULL DEFAULT 0
 );
 
-
--- ========================
--- SYSTEM SETTINGS          (000008)
--- ========================
 CREATE TABLE IF NOT EXISTS system_settings (
     key        VARCHAR(100) PRIMARY KEY,
     value      JSONB        NOT NULL,
@@ -212,10 +175,6 @@ INSERT INTO system_settings (key, value) VALUES
     ('theme',                       '{"primary_color": "#3B82F6", "mode": "light"}')
 ON CONFLICT (key) DO NOTHING;
 
-
--- ========================
--- USER SETTINGS            (000009)
--- ========================
 CREATE TABLE IF NOT EXISTS user_settings (
     user_id             BIGINT      PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     storage_quota_bytes BIGINT      NOT NULL DEFAULT 1073741824,
@@ -223,4 +182,18 @@ CREATE TABLE IF NOT EXISTS user_settings (
     bucket_name         VARCHAR(128),
     theme               JSONB       NOT NULL DEFAULT '{}',
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE user_devices (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  fingerprint TEXT NOT NULL,
+  browser TEXT NOT NULL,
+  platform TEXT,
+  country TEXT,
+  city TEXT,
+  ip TEXT,
+  last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, fingerprint, browser, country)
 );

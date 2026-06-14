@@ -57,6 +57,7 @@ func NewRouter(
 	registerLimiter *middleware.AuthRateLimiter,
 	forgotPasswordLimiter *middleware.AuthRateLimiter,
 	resendVerificationLimiter *middleware.AuthRateLimiter,
+	tokenVersionCache user.TokenVersionCache,
 ) http.Handler {
 	r := chi.NewRouter()
 
@@ -117,7 +118,7 @@ func NewRouter(
 
 		// Authenticated routes.
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.JWTAuth(tokenManager, userService))
+			r.Use(middleware.JWTAuth(tokenManager, userService, tokenVersionCache))
 
 			r.Get("/users/me", userHandler.Me)
 			r.Patch("/users/me", userHandler.UpdateProfile)

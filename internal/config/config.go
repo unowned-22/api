@@ -51,6 +51,7 @@ type Config struct {
 	JWTAudience     string        `envconfig:"JWT_AUDIENCE" default:"client-app"`
 	AccessTokenTTL  time.Duration `envconfig:"ACCESS_TOKEN_TTL" default:"15m"`
 	RefreshTokenTTL time.Duration `envconfig:"REFRESH_TOKEN_TTL" default:"720h"`
+	RedisURL        string        `envconfig:"REDIS_URL" default:""`
 
 	LoginRateLimit                    int           `envconfig:"LOGIN_RATE_LIMIT" default:"5"`
 	LoginRateLimitWindow              time.Duration `envconfig:"LOGIN_RATE_LIMIT_WINDOW" default:"5m"`

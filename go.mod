@@ -36,10 +36,12 @@ require (
 	github.com/minio/minio-go/v7 v7.2.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/rabbitmq/amqp091-go v1.11.0 // indirect
+	github.com/redis/go-redis/v9 v9.20.1 // indirect
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/tinylib/msgp v1.6.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
