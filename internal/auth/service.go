@@ -162,13 +162,11 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 			}).Warn("failed to publish user.registered event")
 		}
 
-		// publish verification_sent audit event asynchronously
-		go func() {
-			payload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID, "email": u.Email})
-			if err := s.publisher.Publish(context.Background(), event.Event{Name: event.VerificationSent, Payload: payload}); err != nil {
-				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.verification_sent")
-			}
-		}()
+		// publish verification_sent audit event
+		auditPayload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID, "email": u.Email})
+		if err := s.publisher.Publish(ctx, event.Event{Name: event.VerificationSent, Payload: auditPayload}); err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.verification_sent")
+		}
 	}
 
 	return nil
@@ -197,13 +195,11 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) error {
 		return err
 	}
 
-	// publish email_verified audit event asynchronously
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.EmailVerified, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.email_verified")
-		}
-	}()
+	// publish email_verified audit event
+	payload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.EmailVerified, Payload: payload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.email_verified")
+	}
 
 	return nil
 }
@@ -236,13 +232,11 @@ func (s *authService) ResendVerification(ctx context.Context, email string) erro
 		return err
 	}
 
-	// publish verification_sent audit event asynchronously
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID, "email": u.Email})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.VerificationSent, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.verification_sent")
-		}
-	}()
+	// publish verification_sent audit event
+	payload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID, "email": u.Email})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.VerificationSent, Payload: payload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.verification_sent")
+	}
 
 	return nil
 }
@@ -267,17 +261,15 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)); err != nil {
-		// publish login_failed asynchronously
-		go func() {
-			payload, _ := json.Marshal(map[string]interface{}{
-				"email":      req.Email,
-				"ip_address": req.IPAddress,
-				"user_agent": req.UserAgent,
-			})
-			if err := s.publisher.Publish(context.Background(), event.Event{Name: event.LoginFailed, Payload: payload}); err != nil {
-				logger.Log.WithError(err).Warn("failed to publish audit.login_failed")
-			}
-		}()
+		// publish login_failed
+		payload, _ := json.Marshal(map[string]interface{}{
+			"email":      req.Email,
+			"ip_address": req.IPAddress,
+			"user_agent": req.UserAgent,
+		})
+		if err := s.publisher.Publish(ctx, event.Event{Name: event.LoginFailed, Payload: payload}); err != nil {
+			logger.Log.WithError(err).Warn("failed to publish audit.login_failed")
+		}
 		return "", "", errs.ErrInvalidCredentials
 	}
 
@@ -358,19 +350,17 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		}
 	}
 
-	// Publish login_success audit event asynchronously (include new_device flag)
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{
-			"user_id":    u.ID,
-			"ip_address": ipAddress,
-			"user_agent": userAgent,
-			"device":     deviceName,
-			"new_device": isNewDevice,
-		})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.LoginSuccess, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.login_success")
-		}
-	}()
+	// Publish login_success audit event (include new_device flag)
+	loginSuccessPayload, _ := json.Marshal(map[string]interface{}{
+		"user_id":    u.ID,
+		"ip_address": ipAddress,
+		"user_agent": userAgent,
+		"device":     deviceName,
+		"new_device": isNewDevice,
+	})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.LoginSuccess, Payload: loginSuccessPayload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.login_success")
+	}
 
 	// If it's a new device, render notification email template and persist send request to outbox (avoid spamming)
 	if isNewDevice {
@@ -387,14 +377,13 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		if err != nil {
 			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to render login notification template")
 		} else {
-			payload, _ := json.Marshal(map[string]interface{}{
+			emailPayload, _ := json.Marshal(map[string]interface{}{
 				"to":      []string{u.Email},
 				"subject": "New sign-in to your account",
 				"html":    htmlContent,
 				"text":    textContent,
 			})
-
-			if err := s.publisher.Publish(context.Background(), event.Event{Name: event.EmailSend, Payload: payload}); err != nil {
+			if err := s.publisher.Publish(ctx, event.Event{Name: event.EmailSend, Payload: emailPayload}); err != nil {
 				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish email.send to outbox")
 			}
 		}
@@ -459,13 +448,11 @@ func (s *authService) ChangePassword(ctx context.Context, userID int64, currentP
 		return fmt.Errorf("failed to revoke user sessions: %w", err)
 	}
 
-	// Publish audit event asynchronously
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.PasswordChanged, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.password_changed")
-		}
-	}()
+	// publish audit event
+	payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.PasswordChanged, Payload: payload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.password_changed")
+	}
 
 	return nil
 }
@@ -507,17 +494,15 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string, userA
 			}
 
 			// Publish audit event for reuse detection
-			go func() {
-				payload, _ := json.Marshal(map[string]interface{}{
-					"user_id":    rt.UserID,
-					"ip_address": ipAddress,
-					"user_agent": userAgent,
-					"token_hash": rt.TokenHash,
-				})
-				if err := s.publisher.Publish(context.Background(), event.Event{Name: event.RefreshTokenReuseDetected, Payload: payload}); err != nil {
-					logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.refresh_token_reuse_detected")
-				}
-			}()
+			reusePayload, _ := json.Marshal(map[string]interface{}{
+				"user_id":    rt.UserID,
+				"ip_address": ipAddress,
+				"user_agent": userAgent,
+				"token_hash": rt.TokenHash,
+			})
+			if err := s.publisher.Publish(ctx, event.Event{Name: event.RefreshTokenReuseDetected, Payload: reusePayload}); err != nil {
+				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.refresh_token_reuse_detected")
+			}
 
 			// Optionally notify user by email
 			if userEmail != "" {
@@ -560,17 +545,15 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string, userA
 		return "", "", err
 	}
 
-	// publish refresh_rotated asynchronously
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{
-			"user_id":    rt.UserID,
-			"ip_address": ipAddress,
-			"user_agent": userAgent,
-		})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.RefreshRotated, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.refresh_rotated")
-		}
-	}()
+	// publish refresh_rotated
+	rotatedPayload, _ := json.Marshal(map[string]interface{}{
+		"user_id":    rt.UserID,
+		"ip_address": ipAddress,
+		"user_agent": userAgent,
+	})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.RefreshRotated, Payload: rotatedPayload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.refresh_rotated")
+	}
 
 	// Look up user to get current role (role may have changed since last login).
 	u, err := s.userRepo.GetByID(ctx, rt.UserID)
@@ -642,18 +625,16 @@ func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error 
 		if err := s.userSessionRepo.Revoke(ctx, session.ID); err != nil {
 			return err
 		}
-		// publish session_revoked audit event asynchronously
-		go func() {
-			payload, _ := json.Marshal(map[string]interface{}{
-				"user_id":    session.UserID,
-				"session_id": session.ID,
-				"ip_address": session.IPAddress,
-				"user_agent": session.UserAgent,
-			})
-			if err := s.publisher.Publish(context.Background(), event.Event{Name: event.SessionRevoked, Payload: payload}); err != nil {
-				logger.Log.WithError(err).WithFields(map[string]interface{}{"session_id": session.ID}).Warn("failed to publish audit.session_revoked")
-			}
-		}()
+		// publish session_revoked audit event
+		sessionPayload, _ := json.Marshal(map[string]interface{}{
+			"user_id":    session.UserID,
+			"session_id": session.ID,
+			"ip_address": session.IPAddress,
+			"user_agent": session.UserAgent,
+		})
+		if err := s.publisher.Publish(ctx, event.Event{Name: event.SessionRevoked, Payload: sessionPayload}); err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"session_id": session.ID}).Warn("failed to publish audit.session_revoked")
+		}
 	} else if !errors.Is(err, errs.ErrSessionNotFound) {
 		return err
 	} else {
@@ -665,14 +646,12 @@ func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error 
 
 	// publish logout event if we have token info
 	if rt != nil {
-		go func() {
-			payload, _ := json.Marshal(map[string]interface{}{
-				"user_id": rt.UserID,
-			})
-			if err := s.publisher.Publish(context.Background(), event.Event{Name: event.Logout, Payload: payload}); err != nil {
-				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.logout")
-			}
-		}()
+		logoutPayload, _ := json.Marshal(map[string]interface{}{
+			"user_id": rt.UserID,
+		})
+		if err := s.publisher.Publish(ctx, event.Event{Name: event.Logout, Payload: logoutPayload}); err != nil {
+			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.logout")
+		}
 	}
 	return nil
 }
@@ -697,13 +676,11 @@ func (s *authService) LogoutAll(ctx context.Context, userID int64) error {
 		}
 	}
 
-	// publish logout_all audit event asynchronously
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.LogoutAll, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.logout_all")
-		}
-	}()
+	// publish logout_all audit event
+	logoutAllPayload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.LogoutAll, Payload: logoutAllPayload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.logout_all")
+	}
 
 	return nil
 }
@@ -733,13 +710,11 @@ func (s *authService) DeactivateUser(ctx context.Context, userID int64) error {
 		}
 	}
 
-	// publish account_deactivated audit event asynchronously
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.AccountDeactivated, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.account_deactivated")
-		}
-	}()
+	// publish account_deactivated audit event
+	deactivatedPayload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.AccountDeactivated, Payload: deactivatedPayload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.account_deactivated")
+	}
 
 	return nil
 }
@@ -757,13 +732,11 @@ func (s *authService) ReactivateUser(ctx context.Context, userID int64) error {
 		}
 	}
 
-	// publish account_activated audit event asynchronously
-	go func() {
-		payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
-		if err := s.publisher.Publish(context.Background(), event.Event{Name: event.AccountActivated, Payload: payload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.account_activated")
-		}
-	}()
+	// publish account_activated audit event
+	activatedPayload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.AccountActivated, Payload: activatedPayload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish audit.account_activated")
+	}
 	return nil
 }
 
