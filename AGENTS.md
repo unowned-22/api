@@ -262,25 +262,35 @@ Authentication must be implemented through the `token.Manager` abstraction defin
 
 ### Domain Contract
 
-`internal/domain/token/token.go` defines two interfaces:
+`internal/domain/token/token.go` defines the token Manager contracts.
 
 ```go
 // Manager is the primary contract — used by services and middleware.
 type Manager interface {
-Generate(userID int64) (string, error)
-Parse(token string) (int64, error)
+  Generate(userID int64) (string, error)
+  Parse(token string) (int64, error)
 }
 
-// ManagerExtended embeds Manager and adds role-aware token support.
+// ManagerExtended embeds Manager and adds role + version-aware token support.
 // Used by AuthService and JWTAuth middleware.
+// Note: access tokens now include a `ver` claim representing the user's
+// current `token_version` value. Implementations MUST surface the token
+// version during generation and parsing so middleware can reject stale JWTs.
 type ManagerExtended interface {
-Manager
-GenerateWithRole(userID int64, role string) (string, error)
-ParseWithRole(token string) (int64, string, error)
+  Manager
+  // GenerateWithRole creates a token embedding role and the user's token version.
+  GenerateWithRole(userID int64, role string, tokenVersion int) (string, error)
+  // ParseWithRole returns userID, role, and tokenVersion extracted from the token.
+  ParseWithRole(token string) (int64, string, int, error)
 }
 ```
 
 The same file also defines `RefreshToken` and `RefreshTokenRepository` — keeping all token-related domain contracts in one place.
+
+Important notes:
+- Access tokens include a `ver` claim mirroring `users.token_version`. When a user's `token_version` increments, previously issued JWTs become invalid.
+- Services must call the `UserRepository` contract to increment `token_version` when performing global session invalidation events (e.g. password change, logout-all, admin force logout).
+- The JWT middleware (`internal/middleware/jwt.go`) MUST use a `UserService` or `UserRepository` to compare the token's `ver` claim with the current `token_version` and return `401 Unauthorized` on mismatch.
 
 `RefreshToken` now tracks lifecycle state (`active`, `revoked`, `expired`) and stores only a hashed refresh token value (`token_hash`). Refresh rotation must invalidate a refresh token immediately after it is used.
 

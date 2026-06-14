@@ -23,6 +23,8 @@ const (
 	AccountDeactivated          Name = "audit.account_deactivated"
 	AccountActivated            Name = "audit.account_activated"
 	RefreshTokenReuseDetected   Name = "audit.refresh_token_reuse_detected"
+	// EmailSend is used to request an email send via the outbox/worker pipeline.
+	EmailSend Name = "email.send"
 )
 
 // Event is a unit of publication.

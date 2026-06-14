@@ -117,7 +117,7 @@ func NewRouter(
 
 		// Authenticated routes.
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.JWTAuth(tokenManager))
+			r.Use(middleware.JWTAuth(tokenManager, userService))
 
 			r.Get("/users/me", userHandler.Me)
 			r.Patch("/users/me", userHandler.UpdateProfile)

@@ -20,6 +20,7 @@ type UserRepository interface {
 	GetByVerificationToken(ctx context.Context, token string) (*User, error)
 	MarkEmailVerified(ctx context.Context, userID int64) error
 	UpdatePassword(ctx context.Context, userID int64, hashedPassword string) error
+	IncrementTokenVersion(ctx context.Context, userID int64) error
 	SetDeactivatedAt(ctx context.Context, userID int64, t *time.Time) error
 	UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error
 	UpdateAvatar(ctx context.Context, userID int64, avatarURL string) error

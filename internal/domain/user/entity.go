@@ -9,6 +9,7 @@ type User struct {
 	ID                         int64
 	Email                      string
 	Password                   string
+	TokenVersion               int
 	RoleID                     int64  // FK to roles.id
 	RoleName                   string // denormalised for read convenience
 	FullName                   string

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -11,28 +12,51 @@ import (
 	domainRole "github.com/unowned-22/api/internal/domain/role"
 	domainToken "github.com/unowned-22/api/internal/domain/token"
 	domainUser "github.com/unowned-22/api/internal/domain/user"
+	userdevice "github.com/unowned-22/api/internal/domain/userdevice"
 	"github.com/unowned-22/api/internal/domain/usersession"
 	"github.com/unowned-22/api/internal/errs"
 )
 
 // ── mock: EventPublisher ─────────────────────────────────────────────────────
 
-type mockEventPublisher struct{}
+type mockEventPublisher struct {
+	events []domainevent.Event
+}
 
 func (m *mockEventPublisher) Publish(ctx context.Context, event domainevent.Event) error {
+	m.events = append(m.events, event)
 	return nil
 }
 
-func (m *mockEventPublisher) Close() error {
-	return nil
-}
+func (m *mockEventPublisher) Close() error { return nil }
 
 type mockMailer struct {
 	sendErr error
+	lastMsg domainmailer.Message
 }
 
 func (m *mockMailer) Send(ctx context.Context, msg domainmailer.Message) error {
+	m.lastMsg = msg
 	return m.sendErr
+}
+
+// mockUserDeviceRepo simulates absence of existing devices (so Login treats as new)
+type mockUserDeviceRepo struct {
+	created *userdevice.Device
+}
+
+func (m *mockUserDeviceRepo) GetByUnique(userID int64, fingerprint, browser, country string) (*userdevice.Device, error) {
+	return nil, nil
+}
+
+func (m *mockUserDeviceRepo) Create(d *userdevice.Device) error {
+	m.created = d
+	d.ID = 1
+	return nil
+}
+
+func (m *mockUserDeviceRepo) UpdateLastSeen(id int64, t time.Time) error {
+	return nil
 }
 
 // ── mock: UserRepository ─────────────────────────────────────────────────────
@@ -56,6 +80,7 @@ func (m *mockUserRepo) Create(ctx context.Context, u *domainUser.User) error {
 	}
 	m.seq++
 	u.ID = m.seq
+	u.TokenVersion = 1
 	if u.RoleID == 2 {
 		u.RoleName = "user"
 	} else if u.RoleID == 1 {
@@ -120,6 +145,15 @@ func (m *mockUserRepo) UpdatePassword(ctx context.Context, userID int64, hashedP
 		return errs.ErrUserNotFound
 	}
 	u.Password = hashedPassword
+	return nil
+}
+
+func (m *mockUserRepo) IncrementTokenVersion(ctx context.Context, userID int64) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.TokenVersion++
 	return nil
 }
 
@@ -380,15 +414,15 @@ func (m *mockTokenManager) Parse(tokenStr string) (int64, error) {
 	return 0, errors.New("invalid token")
 }
 
-func (m *mockTokenManager) GenerateWithRole(userID int64, role string) (string, error) {
+func (m *mockTokenManager) GenerateWithRole(userID int64, role string, tokenVersion int) (string, error) {
 	return "mock-token-for-user", nil
 }
 
-func (m *mockTokenManager) ParseWithRole(tokenStr string) (int64, string, error) {
+func (m *mockTokenManager) ParseWithRole(tokenStr string) (int64, string, int, error) {
 	if tokenStr == "mock-token-for-user" {
-		return 1, "user", nil
+		return 1, "user", 1, nil
 	}
-	return 0, "", errors.New("invalid token")
+	return 0, "", 0, errors.New("invalid token")
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -401,7 +435,7 @@ func TestAuthService(t *testing.T) {
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
 	sessionRepo := newMockUserSessionRepo()
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 
 	ctx := context.Background()
 
@@ -532,7 +566,7 @@ func TestRevokeSessionPreventsRefresh(t *testing.T) {
 	userRepo := newMockUserRepo()
 	refreshTokenRepo := newMockRefreshTokenRepo()
 	sessionRepo := newMockUserSessionRepo()
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, newMockRoleRepo(), &mockTokenManager{}, &mockMailer{}, &mockEventPublisher{}, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, newMockRoleRepo(), &mockTokenManager{}, &mockMailer{}, &mockEventPublisher{}, 720*time.Hour, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "sessions@example.com", Password: "password123"}); err != nil {
@@ -578,7 +612,7 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 	userRepo := newMockUserRepo()
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), nil, newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
@@ -605,7 +639,7 @@ func TestDeactivateUserRevokesSessionsAndDeniesAuth(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 
 	ctx := context.Background()
 	if err := srv.Register(ctx, RegisterRequest{Email: "disable@example.com", Password: "password123"}); err != nil {
@@ -666,7 +700,7 @@ func TestReactivateUserAllowsLogin(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 
 	ctx := context.Background()
 	if err := srv.Register(ctx, RegisterRequest{Email: "reactivate@example.com", Password: "password123"}); err != nil {
@@ -707,7 +741,7 @@ func TestLoginStoresRefreshTokenHashOnly(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, newMockUserSessionRepo(), roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, newMockUserSessionRepo(), nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "security@example.com", Password: "password123"}); err != nil {
@@ -740,5 +774,62 @@ func TestLoginStoresRefreshTokenHashOnly(t *testing.T) {
 		if key == refreshToken {
 			t.Fatal("plain refresh token must not be stored")
 		}
+	}
+}
+
+func TestLoginSendsNewDeviceNotification(t *testing.T) {
+	userRepo := newMockUserRepo()
+	refreshTokenRepo := newMockRefreshTokenRepo()
+	sessionRepo := newMockUserSessionRepo()
+	roleRepo := newMockRoleRepo()
+	tm := &mockTokenManager{}
+	publisher := &mockEventPublisher{}
+	mailer := &mockMailer{}
+	deviceRepo := &mockUserDeviceRepo{}
+
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, deviceRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+
+	ctx := context.Background()
+	if err := srv.Register(ctx, RegisterRequest{Email: "notify@example.com", Password: "password123"}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+	u, _ := userRepo.GetByEmail(ctx, "notify@example.com")
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+
+	_, _, err := srv.Login(ctx, LoginRequest{Email: "notify@example.com", Password: "password123", DeviceName: "MyPhone", UserAgent: "UA/1.0", IPAddress: "1.2.3.4"})
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+
+	if deviceRepo.created == nil {
+		t.Fatalf("expected deviceRepo.Create to be called")
+	}
+
+	// wait briefly for asynchronous outbox publish
+	waited := time.Now()
+	for time.Since(waited) < 3*time.Second {
+		if len(publisher.events) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	var found *domainevent.Event
+	for i := range publisher.events {
+		if publisher.events[i].Name == domainevent.EmailSend {
+			found = &publisher.events[i]
+			break
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected an outbox email.send event to be published, got events: %v", publisher.events)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(found.Payload, &payload); err != nil {
+		t.Fatalf("failed to unmarshal event payload: %v", err)
+	}
+	tos, ok := payload["to"].([]interface{})
+	if !ok || len(tos) == 0 || tos[0].(string) != "notify@example.com" {
+		t.Fatalf("expected payload.to to contain notify@example.com, got %v", payload["to"])
 	}
 }

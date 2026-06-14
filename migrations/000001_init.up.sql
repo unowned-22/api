@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified_at             TIMESTAMPTZ,
     verification_token            TEXT,
     verification_token_expires_at TIMESTAMPTZ,
+    token_version                 INTEGER      NOT NULL DEFAULT 1,
     deactivated_at                TIMESTAMPTZ,
     avatar_url                    VARCHAR(512),
     cover_url                     VARCHAR(512),

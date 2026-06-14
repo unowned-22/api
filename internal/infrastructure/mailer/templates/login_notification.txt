@@ -1,0 +1,15 @@
+Hello,
+
+We noticed a new sign-in to your {{.AppName}} account:
+
+Time: {{.Time}}
+IP: {{.IP}}
+Country: {{.Country}}
+City: {{.City}}
+Device: {{.Device}}
+Browser: {{.Browser}}
+Platform: {{.Platform}}
+
+If this wasn't you, please secure your account immediately.
+
+— {{.AppName}} team

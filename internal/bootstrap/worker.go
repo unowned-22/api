@@ -94,6 +94,8 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 		domainevent.SessionRevoked:              workerHandler.NewAuditHandler(auditRepo, domainevent.SessionRevoked),
 		domainevent.AccountDeactivated:          workerHandler.NewAuditHandler(auditRepo, domainevent.AccountDeactivated),
 		domainevent.AccountActivated:            workerHandler.NewAuditHandler(auditRepo, domainevent.AccountActivated),
+		// email send handler: deliver email.send events by calling SMTP mailer
+		domainevent.EmailSend: workerHandler.NewEmailSendHandler(smtpMailer),
 	}
 
 	consumer, err := queue.NewConsumer(queue.ConsumerConfig{

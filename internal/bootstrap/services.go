@@ -32,6 +32,7 @@ func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, t
 		repos.User,
 		repos.RefreshToken,
 		repos.UserSession,
+		repos.UserDevice,
 		repos.Role,
 		tokenManager,
 		smtp,

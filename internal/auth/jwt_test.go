@@ -27,7 +27,7 @@ func TestJWTManager(t *testing.T) {
 	}
 
 	// Verify standard claims are present and validated.
-	parsedID2, role, err := manager.ParseWithRole(token)
+	parsedID2, role, ver, err := manager.ParseWithRole(token)
 	if err != nil {
 		t.Fatalf("failed to parse token with role: %v", err)
 	}
@@ -36,6 +36,10 @@ func TestJWTManager(t *testing.T) {
 	}
 	if role != "" {
 		t.Errorf("expected empty role, got %q", role)
+	}
+	if ver != 0 && ver != 1 {
+		// tokenVersion may be zero if not set; accept 0 or 1
+		t.Errorf("unexpected token version: %d", ver)
 	}
 
 	// Test invalid token parsing

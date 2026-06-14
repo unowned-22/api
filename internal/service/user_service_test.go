@@ -161,6 +161,15 @@ func (m *mockUserRepo) Count(ctx context.Context) (int64, error) {
 	return int64(len(m.idMap)), nil
 }
 
+func (m *mockUserRepo) IncrementTokenVersion(ctx context.Context, userID int64) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.TokenVersion++
+	return nil
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestUserService_GetProfile(t *testing.T) {

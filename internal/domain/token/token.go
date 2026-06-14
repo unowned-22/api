@@ -66,6 +66,6 @@ type Manager interface {
 // Services that need role-aware tokens accept this interface.
 type ManagerExtended interface {
 	Manager
-	GenerateWithRole(userID int64, role string) (string, error)
-	ParseWithRole(token string) (int64, string, error)
+	GenerateWithRole(userID int64, role string, tokenVersion int) (string, error)
+	ParseWithRole(token string) (int64, string, int, error)
 }
