@@ -11,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/unowned-22/api/internal/database"
 	"github.com/unowned-22/api/internal/domain/event"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 	"github.com/unowned-22/api/internal/domain/role"
@@ -69,6 +72,7 @@ type authService struct {
 	appURL            string
 	appName           string
 	tokenVersionCache user.TokenVersionCache
+	pool              *pgxpool.Pool
 }
 
 // NewAuthService wires up an AuthService with its required dependencies.
@@ -85,6 +89,7 @@ func NewAuthService(
 	appURL string,
 	appName string,
 	tokenVersionCache user.TokenVersionCache,
+	pool *pgxpool.Pool,
 ) AuthService {
 	return &authService{
 		userRepo:          userRepo,
@@ -99,6 +104,7 @@ func NewAuthService(
 		appURL:            appURL,
 		appName:           appName,
 		tokenVersionCache: tokenVersionCache,
+		pool:              pool,
 	}
 }
 
@@ -131,42 +137,63 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 		CreatedAt: time.Now(),
 	}
 
-	if err := s.userRepo.Create(ctx, u); err != nil {
-		return err
-	}
-
 	verificationToken, err := generateVerificationToken()
 	if err != nil {
 		return fmt.Errorf("failed to generate verification token: %w", err)
 	}
 	expiresAt := time.Now().Add(24 * time.Hour)
-	if err := s.userRepo.SetVerificationToken(ctx, u.ID, verificationToken, expiresAt); err != nil {
-		return fmt.Errorf("failed to persist verification token: %w", err)
+
+	// Declare local interfaces for concrete method invocation
+	txUserRepo, ok := s.userRepo.(interface {
+		CreateTx(ctx context.Context, tx pgx.Tx, u *user.User) error
+		SetVerificationTokenTx(ctx context.Context, tx pgx.Tx, userID int64, token string, expiresAt time.Time) error
+	})
+	if !ok {
+		return fmt.Errorf("user repository does not support transactions")
 	}
 
-	payload, err := json.Marshal(map[string]interface{}{
-		"user_id": u.ID,
-		"email":   u.Email,
-		"token":   verificationToken,
+	txPublisher, ok := s.publisher.(interface {
+		PublishTx(ctx context.Context, tx pgx.Tx, event event.Event) error
 	})
-	if err != nil {
-		logger.Log.WithError(err).Warn("failed to marshal user.registered event")
-	} else {
-		if err := s.publisher.Publish(ctx, event.Event{
+	if !ok {
+		return fmt.Errorf("event publisher does not support transactions")
+	}
+
+	err = database.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+		if err := txUserRepo.CreateTx(ctx, tx, u); err != nil {
+			return err
+		}
+
+		if err := txUserRepo.SetVerificationTokenTx(ctx, tx, u.ID, verificationToken, expiresAt); err != nil {
+			return err
+		}
+
+		payload, err := json.Marshal(map[string]interface{}{
+			"user_id": u.ID,
+			"email":   u.Email,
+			"token":   verificationToken,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to marshal user.registered event: %w", err)
+		}
+
+		if err := txPublisher.PublishTx(ctx, tx, event.Event{
 			Name:    event.UserRegistered,
 			Payload: payload,
 		}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{
-				"email":   u.Email,
-				"user_id": u.ID,
-			}).Warn("failed to publish user.registered event")
+			return err
 		}
 
-		// publish verification_sent audit event
-		auditPayload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID, "email": u.Email})
-		if err := s.publisher.Publish(ctx, event.Event{Name: event.VerificationSent, Payload: auditPayload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.verification_sent")
-		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// publish verification_sent audit event best-effort after transaction commits
+	auditPayload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID, "email": u.Email})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.VerificationSent, Payload: auditPayload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.verification_sent")
 	}
 
 	return nil
@@ -320,7 +347,7 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		browser := userAgent
 		country := ""
 
-		d, err := s.userDeviceRepo.GetByUnique(u.ID, fingerprint, browser, country)
+		d, err := s.userDeviceRepo.GetByUnique(ctx, u.ID, fingerprint, browser, country)
 		if err != nil {
 			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to lookup user device")
 		} else if d == nil {
@@ -336,7 +363,7 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 				LastSeen:    time.Now(),
 				CreatedAt:   time.Now(),
 			}
-			if err := s.userDeviceRepo.Create(newD); err != nil {
+			if err := s.userDeviceRepo.Create(ctx, newD); err != nil {
 				logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to create user device record")
 			} else {
 				isNewDevice = true
@@ -344,7 +371,7 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		} else {
 			// existing device — update last_seen
 
-			if err := s.userDeviceRepo.UpdateLastSeen(d.ID, time.Now()); err != nil {
+			if err := s.userDeviceRepo.UpdateLastSeen(ctx, d.ID, time.Now()); err != nil {
 				logger.Log.WithError(err).WithFields(map[string]interface{}{"device_id": d.ID}).Warn("failed to update device last_seen")
 			}
 		}

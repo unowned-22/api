@@ -51,6 +51,7 @@ func InitServices(
 		cfg.AppURL,
 		cfg.AppName,
 		tokenVersionCache,
+		pool,
 	)
 
 	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)

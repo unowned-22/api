@@ -1,6 +1,9 @@
 package userdevice
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Device represents a known device for a user.
 type Device struct {
@@ -19,9 +22,9 @@ type Device struct {
 // Repository defines persistence operations for user devices.
 type Repository interface {
 	// GetByUnique returns a device matching unique identifying fields or nil + error.
-	GetByUnique(userID int64, fingerprint, browser, country string) (*Device, error)
+	GetByUnique(ctx context.Context, userID int64, fingerprint, browser, country string) (*Device, error)
 	// Create persists a new device record and sets its ID.
-	Create(d *Device) error
+	Create(ctx context.Context, d *Device) error
 	// UpdateLastSeen updates last_seen for an existing device.
-	UpdateLastSeen(id int64, t time.Time) error
+	UpdateLastSeen(ctx context.Context, id int64, t time.Time) error
 }

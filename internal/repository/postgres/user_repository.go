@@ -46,6 +46,29 @@ func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	return nil
 }
 
+// CreateTx inserts a new user record including its role_id and profile fields within a transaction.
+func (r *UserRepository) CreateTx(ctx context.Context, tx pgx.Tx, u *user.User) error {
+	query := `
+		INSERT INTO users (email, password, role_id, full_name, username, phone, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id
+	`
+	err := tx.QueryRow(ctx, query,
+		u.Email, u.Password, u.RoleID, u.FullName, u.Username, u.Phone, u.CreatedAt,
+	).Scan(&u.ID)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if pgErr.ConstraintName == "users_username_key" {
+				return errs.ErrUsernameAlreadyExists
+			}
+			return errs.ErrUserAlreadyExists
+		}
+		return fmt.Errorf("failed to create user in db within tx: %w", err)
+	}
+	return nil
+}
+
 // GetByEmail retrieves a user (with role name) by email address.
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.User, error) {
 	query := `
@@ -114,6 +137,24 @@ func (r *UserRepository) SetVerificationToken(ctx context.Context, userID int64,
 	}
 	if cmd.RowsAffected() != 1 {
 		return fmt.Errorf("no user found to set verification token")
+	}
+	return nil
+}
+
+// SetVerificationTokenTx updates the user's verification token and expiry within a transaction.
+func (r *UserRepository) SetVerificationTokenTx(ctx context.Context, tx pgx.Tx, userID int64, token string, expiresAt time.Time) error {
+	query := `
+		UPDATE users
+		SET verification_token = $1,
+		    verification_token_expires_at = $2
+		WHERE id = $3
+	`
+	cmd, err := tx.Exec(ctx, query, token, expiresAt, userID)
+	if err != nil {
+		return fmt.Errorf("failed to set verification token within tx: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to set verification token within tx")
 	}
 	return nil
 }

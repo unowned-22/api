@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     password                      VARCHAR(255) NOT NULL,
     full_name                     VARCHAR(128) NOT NULL,
     username                      VARCHAR(64)  NOT NULL,
-    phone                         VARCHAR(16)  NOT NULL,
+    phone                         VARCHAR(16)  NULL,
     role_id                       BIGINT,
     email_verified_at             TIMESTAMPTZ,
     verification_token            TEXT,
@@ -42,7 +42,7 @@ ALTER TABLE users
 
 ALTER TABLE users
     ADD CONSTRAINT chk_users_phone
-        CHECK (phone = '' OR phone ~ '^\\+[1-9][0-9]{6,14}$');
+        CHECK (phone IS NULL OR phone = '' OR phone ~ '^\\+[1-9][0-9]{6,14}$');
 
 CREATE INDEX IF NOT EXISTS idx_users_role_id        ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_users_deactivated_at ON users(deactivated_at);
