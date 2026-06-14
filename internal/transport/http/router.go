@@ -81,12 +81,7 @@ func NewRouter(
 	}
 
 	r.Route("/api/v1", func(r chi.Router) {
-		// Global rate limiter for /api/v1
-		r.Use(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst))
-
-		// Public auth routes with endpoint-specific rate limiters.
 		r.Group(func(r chi.Router) {
-			// Register endpoint - rate limit by IP and email
 			r.With(middleware.AuthRateLimitByEmail("register", registerLimiter, emailExtractorFunc)).
 				Post("/auth/register", authHandler.Register)
 
