@@ -109,7 +109,7 @@ func (h *UserRegisteredHandler) Handle(ctx context.Context, payload []byte) erro
 		}
 	}
 
-	verificationURL := strings.TrimRight(h.appURL, "/") + "/verify-email?token=" + eventPayload.Token
+	verificationURL := strings.TrimRight(h.appURL, "/") + "/auth/verify-email?token=" + eventPayload.Token
 
 	htmlContent, textContent, err := mailer.RenderTemplate("verify_email", map[string]interface{}{
 		"AppName":         h.appName,

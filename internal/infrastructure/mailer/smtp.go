@@ -19,7 +19,7 @@ type Config struct {
 	Port     int
 	Username string
 	Password string
-	From     string // e.g. "No Reply <no-reply@example.com>"
+	From     string
 }
 
 type SMTPMailer struct {

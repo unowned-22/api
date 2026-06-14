@@ -809,7 +809,7 @@ func generateVerificationToken() (string, error) {
 }
 
 func (s *authService) sendVerificationEmail(ctx context.Context, email, token string) error {
-	verificationURL := strings.TrimRight(s.appURL, "/") + "/verify-email?token=" + token
+	verificationURL := strings.TrimRight(s.appURL, "/") + "/auth/verify-email?token=" + token
 
 	htmlContent, textContent, err := mailer.RenderTemplate("verify_email", map[string]interface{}{
 		"AppName":         s.appName,
