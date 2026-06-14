@@ -71,7 +71,10 @@ func InitInfrastructure(cfg *config.Config) (
 		var rClient *redis.Client
 		if strings.HasPrefix(cfg.RedisURL, "redis://") || strings.HasPrefix(cfg.RedisURL, "rediss://") {
 			opt, err := redis.ParseURL(cfg.RedisURL)
-			if err == nil {
+			if err != nil {
+				logger.Log.WithError(err).
+					Warn("invalid REDIS_URL")
+			} else {
 				rClient = redis.NewClient(opt)
 			}
 		} else {
