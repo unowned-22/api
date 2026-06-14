@@ -7,6 +7,7 @@ import (
 	domainstorage "github.com/unowned-22/api/internal/domain/storage"
 	"github.com/unowned-22/api/internal/domain/systemsettings"
 	"github.com/unowned-22/api/internal/domain/token"
+	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/domain/usersettings"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	outboxpub "github.com/unowned-22/api/internal/infrastructure/outbox"
@@ -25,7 +26,16 @@ type Services struct {
 }
 
 // InitServices constructs application services from repositories and infra.
-func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, tokenManager token.ManagerExtended, smtp *mailer.SMTPMailer, publisher *queue.AMQPPublisher, storage domainstorage.Storage) *Services {
+func InitServices(
+	cfg *config.Config,
+	pool *pgxpool.Pool,
+	repos *Repositories,
+	tokenManager token.ManagerExtended,
+	smtp *mailer.SMTPMailer,
+	publisher *queue.AMQPPublisher,
+	storage domainstorage.Storage,
+	tokenVersionCache user.TokenVersionCache,
+) *Services {
 	// create an outbox-backed publisher that persists events into the outbox table
 	outboxPublisher := outboxpub.New(repos.Outbox)
 	authSvc := auth.NewAuthService(
@@ -40,6 +50,7 @@ func InitServices(cfg *config.Config, pool *pgxpool.Pool, repos *Repositories, t
 		cfg.RefreshTokenTTL,
 		cfg.AppURL,
 		cfg.AppName,
+		tokenVersionCache,
 	)
 
 	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)

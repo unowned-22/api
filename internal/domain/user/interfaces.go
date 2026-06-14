@@ -36,3 +36,10 @@ type UserService interface {
 	UploadAvatar(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error)
 	UploadCover(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error)
 }
+
+// TokenVersionCache defines the caching contract for user token versions.
+type TokenVersionCache interface {
+	Get(ctx context.Context, userID int64) (int, bool, error)
+	Set(ctx context.Context, userID int64, version int, ttl time.Duration) error
+	Delete(ctx context.Context, userID int64) error
+}

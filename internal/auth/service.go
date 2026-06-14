@@ -57,17 +57,18 @@ type AuthService interface {
 }
 
 type authService struct {
-	userRepo         user.UserRepository
-	refreshTokenRepo token.RefreshTokenRepository
-	userSessionRepo  usersession.UserSessionRepository
-	userDeviceRepo   userdevice.Repository
-	roleRepo         role.RoleRepository
-	tokenManager     token.ManagerExtended
-	mailer           domainmailer.Mailer
-	publisher        event.Publisher
-	refreshTokenTTL  time.Duration
-	appURL           string
-	appName          string
+	userRepo          user.UserRepository
+	refreshTokenRepo  token.RefreshTokenRepository
+	userSessionRepo   usersession.UserSessionRepository
+	userDeviceRepo    userdevice.Repository
+	roleRepo          role.RoleRepository
+	tokenManager      token.ManagerExtended
+	mailer            domainmailer.Mailer
+	publisher         event.Publisher
+	refreshTokenTTL   time.Duration
+	appURL            string
+	appName           string
+	tokenVersionCache user.TokenVersionCache
 }
 
 // NewAuthService wires up an AuthService with its required dependencies.
@@ -83,19 +84,21 @@ func NewAuthService(
 	refreshTokenTTL time.Duration,
 	appURL string,
 	appName string,
+	tokenVersionCache user.TokenVersionCache,
 ) AuthService {
 	return &authService{
-		userRepo:         userRepo,
-		refreshTokenRepo: refreshTokenRepo,
-		userSessionRepo:  userSessionRepo,
-		userDeviceRepo:   userDeviceRepo,
-		roleRepo:         roleRepo,
-		tokenManager:     tokenManager,
-		mailer:           mailer,
-		publisher:        publisher,
-		refreshTokenTTL:  refreshTokenTTL,
-		appURL:           appURL,
-		appName:          appName,
+		userRepo:          userRepo,
+		refreshTokenRepo:  refreshTokenRepo,
+		userSessionRepo:   userSessionRepo,
+		userDeviceRepo:    userDeviceRepo,
+		roleRepo:          roleRepo,
+		tokenManager:      tokenManager,
+		mailer:            mailer,
+		publisher:         publisher,
+		refreshTokenTTL:   refreshTokenTTL,
+		appURL:            appURL,
+		appName:           appName,
+		tokenVersionCache: tokenVersionCache,
 	}
 }
 
@@ -439,6 +442,13 @@ func (s *authService) ChangePassword(ctx context.Context, userID int64, currentP
 		return fmt.Errorf("failed to increment token version: %w", err)
 	}
 
+	// Invalidate cache
+	if s.tokenVersionCache != nil {
+		if err := s.tokenVersionCache.Delete(ctx, userID); err != nil {
+			logger.Log.WithError(err).WithField("user_id", userID).Warn("failed to delete token version from cache")
+		}
+	}
+
 	// Revoke all refresh tokens to force re-login on all devices
 	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("failed to revoke refresh tokens: %w", err)
@@ -673,6 +683,20 @@ func (s *authService) LogoutAll(ctx context.Context, userID int64) error {
 		return err
 	}
 
+	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, userID); err != nil {
+		return err
+	}
+
+	if err := s.userRepo.IncrementTokenVersion(ctx, userID); err != nil {
+		return err
+	}
+
+	if s.tokenVersionCache != nil {
+		if err := s.tokenVersionCache.Delete(ctx, userID); err != nil {
+			logger.Log.WithError(err).WithField("user_id", userID).Warn("failed to delete token version from cache")
+		}
+	}
+
 	// publish logout_all audit event asynchronously
 	go func() {
 		payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
@@ -699,6 +723,16 @@ func (s *authService) DeactivateUser(ctx context.Context, userID int64) error {
 		return err
 	}
 
+	if err := s.userRepo.IncrementTokenVersion(ctx, userID); err != nil {
+		return err
+	}
+
+	if s.tokenVersionCache != nil {
+		if err := s.tokenVersionCache.Delete(ctx, userID); err != nil {
+			logger.Log.WithError(err).WithField("user_id", userID).Warn("failed to delete token version from cache")
+		}
+	}
+
 	// publish account_deactivated audit event asynchronously
 	go func() {
 		payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
@@ -715,6 +749,12 @@ func (s *authService) ReactivateUser(ctx context.Context, userID int64) error {
 	// Clear deactivated_at
 	if err := s.userRepo.SetDeactivatedAt(ctx, userID, nil); err != nil {
 		return err
+	}
+
+	if s.tokenVersionCache != nil {
+		if err := s.tokenVersionCache.Delete(ctx, userID); err != nil {
+			logger.Log.WithError(err).WithField("user_id", userID).Warn("failed to delete token version from cache")
+		}
 	}
 
 	// publish account_activated audit event asynchronously

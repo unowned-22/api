@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS user_devices;
 DROP TABLE IF EXISTS user_settings;
 DROP TABLE IF EXISTS system_settings;
 DROP TABLE IF EXISTS outbox_events;

@@ -435,7 +435,7 @@ func TestAuthService(t *testing.T) {
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
 	sessionRepo := newMockUserSessionRepo()
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil)
 
 	ctx := context.Background()
 
@@ -566,7 +566,7 @@ func TestRevokeSessionPreventsRefresh(t *testing.T) {
 	userRepo := newMockUserRepo()
 	refreshTokenRepo := newMockRefreshTokenRepo()
 	sessionRepo := newMockUserSessionRepo()
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, newMockRoleRepo(), &mockTokenManager{}, &mockMailer{}, &mockEventPublisher{}, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, newMockRoleRepo(), &mockTokenManager{}, &mockMailer{}, &mockEventPublisher{}, 720*time.Hour, "http://localhost:3222", "App", nil)
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "sessions@example.com", Password: "password123"}); err != nil {
@@ -612,7 +612,7 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 	userRepo := newMockUserRepo()
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), nil, newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), nil, newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil)
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
@@ -639,7 +639,7 @@ func TestDeactivateUserRevokesSessionsAndDeniesAuth(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil)
 
 	ctx := context.Background()
 	if err := srv.Register(ctx, RegisterRequest{Email: "disable@example.com", Password: "password123"}); err != nil {
@@ -700,7 +700,7 @@ func TestReactivateUserAllowsLogin(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil)
 
 	ctx := context.Background()
 	if err := srv.Register(ctx, RegisterRequest{Email: "reactivate@example.com", Password: "password123"}); err != nil {
@@ -741,7 +741,7 @@ func TestLoginStoresRefreshTokenHashOnly(t *testing.T) {
 	tm := &mockTokenManager{}
 	mailer := &mockMailer{}
 	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, newMockUserSessionRepo(), nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, newMockUserSessionRepo(), nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil)
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "security@example.com", Password: "password123"}); err != nil {
@@ -787,7 +787,7 @@ func TestLoginSendsNewDeviceNotification(t *testing.T) {
 	mailer := &mockMailer{}
 	deviceRepo := &mockUserDeviceRepo{}
 
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, deviceRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App")
+	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, deviceRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil)
 
 	ctx := context.Background()
 	if err := srv.Register(ctx, RegisterRequest{Email: "notify@example.com", Password: "password123"}); err != nil {

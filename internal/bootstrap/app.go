@@ -50,7 +50,7 @@ func NewApp() (*App, error) {
 	}
 
 	// Initialize infra
-	pool, minioStorage, publisher, smtpMailer, tokenManager, err := InitInfrastructure(cfg)
+	pool, minioStorage, publisher, smtpMailer, tokenManager, tokenVersionCache, err := InitInfrastructure(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -59,13 +59,13 @@ func NewApp() (*App, error) {
 	repos := InitRepositories(pool)
 
 	// Services
-	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage)
+	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache)
 
 	// Handlers
 	handlers := InitHandlers(cfg, svcs, minioStorage)
 
 	// Server and limiters
-	srv, loginLimiter, registerLimiter, forgotLimiter, resendLimiter := NewServer(cfg, handlers, tokenManager, svcs)
+	srv, loginLimiter, registerLimiter, forgotLimiter, resendLimiter := NewServer(cfg, handlers, tokenManager, svcs, tokenVersionCache)
 
 	app := &App{
 		Config:       cfg,
