@@ -279,7 +279,7 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 	}
 
 	// Embed role in the access token.
-	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName)
+	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName, u.TokenVersion)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -364,9 +364,19 @@ func (s *authService) ChangePassword(ctx context.Context, userID int64, currentP
 		return err
 	}
 
+	// Increment token version to invalidate existing JWTs
+	if err := s.userRepo.IncrementTokenVersion(ctx, userID); err != nil {
+		return fmt.Errorf("failed to increment token version: %w", err)
+	}
+
 	// Revoke all refresh tokens to force re-login on all devices
 	if err := s.refreshTokenRepo.RevokeAllByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("failed to revoke refresh tokens: %w", err)
+	}
+
+	// Revoke all user sessions
+	if err := s.userSessionRepo.RevokeAllByUserID(ctx, userID); err != nil {
+		return fmt.Errorf("failed to revoke user sessions: %w", err)
 	}
 
 	// Publish audit event asynchronously
@@ -493,7 +503,7 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string, userA
 		return "", "", errs.ErrUserDeactivated
 	}
 
-	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName)
+	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName, u.TokenVersion)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate access token: %w", err)
 	}

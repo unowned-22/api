@@ -29,17 +29,18 @@ func NewJWTManager(secret, issuer, audience string, accessTTL time.Duration) *JW
 type accessTokenClaims struct {
 	jwt.RegisteredClaims
 	Role string `json:"role,omitempty"`
+	Ver  int    `json:"ver,omitempty"`
 }
 
 // Generate creates a JWT access token containing only the user ID.
 // Satisfies token.Manager; kept for backward compatibility.
 func (m *JWTManager) Generate(userID int64) (string, error) {
-	return m.GenerateWithRole(userID, "")
+	return m.GenerateWithRole(userID, "", 0)
 }
 
 // GenerateWithRole creates a JWT access token that embeds user ID and role.
 // Satisfies token.ManagerExtended.
-func (m *JWTManager) GenerateWithRole(userID int64, role string) (string, error) {
+func (m *JWTManager) GenerateWithRole(userID int64, role string, tokenVersion int) (string, error) {
 	now := time.Now().UTC()
 	claims := accessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -55,6 +56,9 @@ func (m *JWTManager) GenerateWithRole(userID int64, role string) (string, error)
 	if role != "" {
 		claims.Role = role
 	}
+	if tokenVersion != 0 {
+		claims.Ver = tokenVersion
+	}
 
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := t.SignedString([]byte(m.secret))
@@ -67,13 +71,13 @@ func (m *JWTManager) GenerateWithRole(userID int64, role string) (string, error)
 // Parse validates the JWT and returns the user ID.
 // Satisfies token.Manager.
 func (m *JWTManager) Parse(tokenString string) (int64, error) {
-	userID, _, err := m.ParseWithRole(tokenString)
+	userID, _, _, err := m.ParseWithRole(tokenString)
 	return userID, err
 }
 
 // ParseWithRole validates the JWT and returns both user ID and role claim.
 // Satisfies token.ManagerExtended.
-func (m *JWTManager) ParseWithRole(tokenString string) (int64, string, error) {
+func (m *JWTManager) ParseWithRole(tokenString string) (int64, string, int, error) {
 	claims := &accessTokenClaims{}
 	t, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -82,24 +86,24 @@ func (m *JWTManager) ParseWithRole(tokenString string) (int64, string, error) {
 		return []byte(m.secret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}), jwt.WithIssuer(m.issuer), jwt.WithAudience(m.audience))
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to parse token: %w", err)
+		return 0, "", 0, fmt.Errorf("failed to parse token: %w", err)
 	}
 
 	if !t.Valid {
-		return 0, "", fmt.Errorf("invalid token claims")
+		return 0, "", 0, fmt.Errorf("invalid token claims")
 	}
 
 	subStr := claims.Subject
 	if subStr == "" {
-		return 0, "", fmt.Errorf("sub claim is missing or not a string")
+		return 0, "", 0, fmt.Errorf("sub claim is missing or not a string")
 	}
 
 	userID, err := strconv.ParseInt(subStr, 10, 64)
 	if err != nil {
-		return 0, "", fmt.Errorf("failed to parse sub claim as user ID: %w", err)
+		return 0, "", 0, fmt.Errorf("failed to parse sub claim as user ID: %w", err)
 	}
 
-	return userID, claims.Role, nil
+	return userID, claims.Role, claims.Ver, nil
 }
 
 // Compile-time interface compliance checks.

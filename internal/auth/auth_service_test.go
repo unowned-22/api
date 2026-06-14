@@ -56,6 +56,7 @@ func (m *mockUserRepo) Create(ctx context.Context, u *domainUser.User) error {
 	}
 	m.seq++
 	u.ID = m.seq
+	u.TokenVersion = 1
 	if u.RoleID == 2 {
 		u.RoleName = "user"
 	} else if u.RoleID == 1 {
@@ -120,6 +121,15 @@ func (m *mockUserRepo) UpdatePassword(ctx context.Context, userID int64, hashedP
 		return errs.ErrUserNotFound
 	}
 	u.Password = hashedPassword
+	return nil
+}
+
+func (m *mockUserRepo) IncrementTokenVersion(ctx context.Context, userID int64) error {
+	u, ok := m.idMap[userID]
+	if !ok {
+		return errs.ErrUserNotFound
+	}
+	u.TokenVersion++
 	return nil
 }
 
@@ -380,15 +390,15 @@ func (m *mockTokenManager) Parse(tokenStr string) (int64, error) {
 	return 0, errors.New("invalid token")
 }
 
-func (m *mockTokenManager) GenerateWithRole(userID int64, role string) (string, error) {
+func (m *mockTokenManager) GenerateWithRole(userID int64, role string, tokenVersion int) (string, error) {
 	return "mock-token-for-user", nil
 }
 
-func (m *mockTokenManager) ParseWithRole(tokenStr string) (int64, string, error) {
+func (m *mockTokenManager) ParseWithRole(tokenStr string) (int64, string, int, error) {
 	if tokenStr == "mock-token-for-user" {
-		return 1, "user", nil
+		return 1, "user", 1, nil
 	}
-	return 0, "", errors.New("invalid token")
+	return 0, "", 0, errors.New("invalid token")
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────

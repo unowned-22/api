@@ -49,7 +49,7 @@ func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 // GetByEmail retrieves a user (with role name) by email address.
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name,
+		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 	       u.created_at,
 	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
@@ -60,7 +60,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, email).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
@@ -76,7 +76,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 // GetByID retrieves a user (with role name) by primary key.
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name,
+		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 	       u.created_at,
 	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
@@ -87,7 +87,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, id).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
@@ -135,6 +135,23 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID int64, hashe
 	return nil
 }
 
+// IncrementTokenVersion increases the user's token_version to invalidate existing JWTs.
+func (r *UserRepository) IncrementTokenVersion(ctx context.Context, userID int64) error {
+	query := `
+		UPDATE users
+		SET token_version = token_version + 1
+		WHERE id = $1
+	`
+	cmd, err := r.db.Exec(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to increment token_version: %w", err)
+	}
+	if cmd.RowsAffected() != 1 {
+		return fmt.Errorf("no user found to increment token_version")
+	}
+	return nil
+}
+
 // UpdateProfile updates user's profile fields: full_name, username, phone.
 func (r *UserRepository) UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error {
 	query := `
@@ -164,7 +181,7 @@ func (r *UserRepository) UpdateProfile(ctx context.Context, userID int64, fullNa
 // GetByVerificationToken retrieves a user by verification token.
 func (r *UserRepository) GetByVerificationToken(ctx context.Context, token string) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name,
+		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 		       u.created_at,
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
@@ -174,7 +191,7 @@ func (r *UserRepository) GetByVerificationToken(ctx context.Context, token strin
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, token).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
@@ -226,7 +243,7 @@ func (r *UserRepository) SetDeactivatedAt(ctx context.Context, userID int64, t *
 // List returns a page of users ordered by created_at desc.
 func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name,
+		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
 			   u.full_name, u.username, COALESCE(u.phone, ''),
 			   u.created_at,
 			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
@@ -245,7 +262,7 @@ func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*us
 	var out []*user.User
 	for rows.Next() {
 		var u user.User
-		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName,
+		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt); err != nil {
