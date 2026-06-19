@@ -48,6 +48,14 @@ func (m *mockUserService) UploadCover(ctx context.Context, userID int64, file io
 	return "", nil
 }
 
+func (m *mockUserService) DeleteAvatar(ctx context.Context, userID int64) error {
+	return nil
+}
+
+func (m *mockUserService) DeleteCover(ctx context.Context, userID int64) error {
+	return nil
+}
+
 func TestUserHandler_List(t *testing.T) {
 	// prepare handler with mock service
 	svc := &mockUserService{

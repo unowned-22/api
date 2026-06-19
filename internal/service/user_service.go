@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"path"
+	"strings"
 
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/validator"
@@ -170,5 +172,92 @@ func (s *UserService) UploadCover(ctx context.Context, userID int64, file io.Rea
 	return url, nil
 }
 
-// Compile-time check that UserService satisfies the domain contract.
-var _ user.UserService = (*UserService)(nil)
+// DeleteAvatar removes the user's avatar object from storage and clears
+// the avatar URL on the user record.
+func (s *UserService) DeleteAvatar(ctx context.Context, userID int64) error {
+	u, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u == nil || u.AvatarURL == "" {
+		return errs.ErrAvatarNotFound
+	}
+
+	bucket, err := s.resolveMediaBucket(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	key, ok := extractObjectKey(u.AvatarURL, bucket)
+	if ok {
+		if err := s.storage.DeleteObject(ctx, bucket, key); err != nil {
+			return err
+		}
+	}
+
+	return s.repo.UpdateAvatar(ctx, userID, "")
+}
+
+// DeleteCover removes the user's cover object from storage and clears
+// the cover URL on the user record.
+func (s *UserService) DeleteCover(ctx context.Context, userID int64) error {
+	u, err := s.repo.GetByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u == nil || u.CoverURL == "" {
+		return errs.ErrCoverNotFound
+	}
+
+	bucket, err := s.resolveMediaBucket(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	key, ok := extractObjectKey(u.CoverURL, bucket)
+	if ok {
+		if err := s.storage.DeleteObject(ctx, bucket, key); err != nil {
+			return err
+		}
+	}
+
+	return s.repo.UpdateCover(ctx, userID, "")
+}
+
+// resolveMediaBucket returns the bucket avatars/covers are stored in,
+// mirroring the logic used when uploading them.
+func (s *UserService) resolveMediaBucket(ctx context.Context, userID int64) (string, error) {
+	if s.publicBucket != "" {
+		return s.publicBucket, nil
+	}
+	us, err := s.userSettingsRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	if us == nil || us.BucketName == "" {
+		return "", errs.ErrUserStorageNotProvisioned
+	}
+	return us.BucketName, nil
+}
+
+// extractObjectKey pulls the object key out of a stored avatar/cover URL
+// (either a permanent public URL or a presigned URL), given the bucket the
+// object was stored in. Returns ok=false if the bucket segment can't be
+// found, in which case callers should skip the storage delete rather than
+// fail the whole operation (the DB pointer is still cleared).
+func extractObjectKey(rawURL, bucket string) (string, bool) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", false
+	}
+	prefix := "/" + bucket + "/"
+	idx := strings.Index(u.Path, prefix)
+	if idx == -1 {
+		return "", false
+	}
+	key := u.Path[idx+len(prefix):]
+	if key == "" {
+		return "", false
+	}
+	return key, true
+}

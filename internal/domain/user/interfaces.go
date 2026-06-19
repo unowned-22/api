@@ -35,6 +35,8 @@ type UserService interface {
 	UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error
 	UploadAvatar(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error)
 	UploadCover(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error)
+	DeleteAvatar(ctx context.Context, userID int64) error
+	DeleteCover(ctx context.Context, userID int64) error
 }
 
 // TokenVersionCache defines the caching contract for user token versions.

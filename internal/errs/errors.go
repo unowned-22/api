@@ -32,4 +32,12 @@ var (
 	// ErrUserStorageNotProvisioned: use this when the lookup itself indicates a
 	// missing record rather than an incomplete provisioning flow.
 	ErrUserSettingsNotFound = errors.New("user settings not found")
+
+	// ErrAvatarNotFound is returned when a user attempts to delete an avatar
+	// that has not been uploaded.
+	ErrAvatarNotFound = errors.New("avatar not found")
+
+	// ErrCoverNotFound is returned when a user attempts to delete a cover
+	// that has not been uploaded.
+	ErrCoverNotFound = errors.New("cover not found")
 )
