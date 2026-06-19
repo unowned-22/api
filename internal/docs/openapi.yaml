@@ -822,6 +822,19 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
+    delete:
+      tags: [users]
+      summary: Delete avatar image for current user
+      description: Removes the current user's avatar from storage and clears the avatar URL.
+      operationId: usersDeleteAvatar
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Avatar deleted
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
 
   /api/v1/users/me/cover:
     post:
@@ -854,6 +867,19 @@ paths:
         "400": { $ref: '#/components/responses/400BadRequest' }
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+    delete:
+      tags: [users]
+      summary: Delete cover image for current user
+      description: Removes the current user's cover image from storage and clears the cover URL.
+      operationId: usersDeleteCover
+      security:
+        - BearerAuth: []
+      responses:
+        "204":
+          description: Cover deleted
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
 
   /api/v1/admin/users/{id}/settings:

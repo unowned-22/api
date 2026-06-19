@@ -128,6 +128,8 @@ func NewRouter(
 			r.Post("/uploads/presign", uploadHandler.Presign)
 			r.Post("/users/me/avatar", uploadHandler.UploadAvatar)
 			r.Post("/users/me/cover", uploadHandler.UploadCover)
+			r.Delete("/users/me/avatar", uploadHandler.DeleteAvatar)
+			r.Delete("/users/me/cover", uploadHandler.DeleteCover)
 
 			// Role-gated: admin only.
 			r.Group(func(r chi.Router) {

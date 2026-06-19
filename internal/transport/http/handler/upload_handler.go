@@ -172,3 +172,35 @@ func (h *UploadHandler) UploadCover(w http.ResponseWriter, r *http.Request) {
 
 	response.SendSuccess(w, http.StatusOK, map[string]string{"cover_url": url})
 }
+
+// DeleteAvatar handles DELETE /users/me/avatar
+func (h *UploadHandler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	if err := h.userService.DeleteAvatar(r.Context(), userID); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteCover handles DELETE /users/me/cover
+func (h *UploadHandler) DeleteCover(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	if err := h.userService.DeleteCover(r.Context(), userID); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

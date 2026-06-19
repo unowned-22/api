@@ -93,6 +93,16 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "USER_SETTINGS_NOT_FOUND"
 		message = "user settings not found"
 
+	case errors.Is(err, errs.ErrAvatarNotFound):
+		status = http.StatusNotFound
+		code = "AVATAR_NOT_FOUND"
+		message = "avatar not found"
+
+	case errors.Is(err, errs.ErrCoverNotFound):
+		status = http.StatusNotFound
+		code = "COVER_NOT_FOUND"
+		message = "cover not found"
+
 	// ErrUserStorageNotProvisioned is a transient state: the email_verified worker
 	// provisions the bucket asynchronously. Return 503 so clients know to retry.
 	case errors.Is(err, errs.ErrUserStorageNotProvisioned):
