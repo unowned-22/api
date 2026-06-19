@@ -28,9 +28,19 @@ type Config struct {
 	AppName      string `envconfig:"APP_NAME" default:"App"`
 	AppURL       string `envconfig:"APP_URL" default:"http://localhost:3222"`
 
-	RabbitMQURL      string `envconfig:"RABBITMQ_URL" default:"amqp://rbmq:rbmq@rabbitmq:5672/"`
+	RabbitMQURL      string `envconfig:"RABBITMQ_URL"      default:"amqp://rbmq:rbmq@rabbitmq:5672/"`
 	RabbitMQExchange string `envconfig:"RABBITMQ_EXCHANGE" default:"app.events"`
-	RabbitMQQueue    string `envconfig:"RABBITMQ_QUEUE" default:"app.worker"`
+	RabbitMQQueue    string `envconfig:"RABBITMQ_QUEUE"    default:"app.worker"`
+
+	// RabbitMQDeadLetterExchange is the durable direct exchange that receives
+	// messages Nack'd by worker handlers (requeue=false). Defaults to "app.dlx".
+	// Set to empty string to disable DLX declaration (not recommended for production).
+	RabbitMQDeadLetterExchange string `envconfig:"RABBITMQ_DLX"             default:"app.dlx"`
+
+	// RabbitMQDeadLetterRoutingKey is both the routing key used when publishing
+	// to the DLX and the name of the dead-letter queue that is auto-declared.
+	// Defaults to "app.worker.dead".
+	RabbitMQDeadLetterRoutingKey string `envconfig:"RABBITMQ_DLX_ROUTING_KEY" default:"app.worker.dead"`
 
 	DBHost    string `envconfig:"DB_HOST"`
 	DBPort    string `envconfig:"DB_PORT"`
@@ -45,29 +55,29 @@ type Config struct {
 	MinIOUseSSL    bool   `envconfig:"MINIO_USE_SSL"     default:"false"`
 	MinIORegion    string `envconfig:"MINIO_REGION"      default:"us-east-1"`
 	MinIOBucket    string `envconfig:"MINIO_BUCKET"      default:"app-uploads"`
+	// Public endpoint used to construct permanent public URLs for stored objects.
+	StoragePublicEndpoint string `envconfig:"STORAGE_PUBLIC_ENDPOINT" default:"http://s3.localhost"`
 
 	JWTSecret       string        `envconfig:"JWT_SECRET"`
-	JWTIssuer       string        `envconfig:"JWT_ISSUER" default:"api-service"`
+	JWTIssuer       string        `envconfig:"JWT_ISSUER"   default:"api-service"`
 	JWTAudience     string        `envconfig:"JWT_AUDIENCE" default:"client-app"`
-	AccessTokenTTL  time.Duration `envconfig:"ACCESS_TOKEN_TTL" default:"15m"`
+	AccessTokenTTL  time.Duration `envconfig:"ACCESS_TOKEN_TTL"  default:"15m"`
 	RefreshTokenTTL time.Duration `envconfig:"REFRESH_TOKEN_TTL" default:"720h"`
 	RedisURL        string        `envconfig:"REDIS_URL" default:""`
 
-	LoginRateLimit                    int           `envconfig:"LOGIN_RATE_LIMIT" default:"5"`
-	LoginRateLimitWindow              time.Duration `envconfig:"LOGIN_RATE_LIMIT_WINDOW" default:"5m"`
-	RegisterRateLimit                 int           `envconfig:"REGISTER_RATE_LIMIT" default:"3"`
-	RegisterRateLimitWindow           time.Duration `envconfig:"REGISTER_RATE_LIMIT_WINDOW" default:"1h"`
-	ForgotPasswordRateLimit           int           `envconfig:"FORGOT_PASSWORD_RATE_LIMIT" default:"3"`
-	ForgotPasswordRateLimitWindow     time.Duration `envconfig:"FORGOT_PASSWORD_RATE_LIMIT_WINDOW" default:"15m"`
-	ResendVerificationRateLimit       int           `envconfig:"RESEND_VERIFICATION_RATE_LIMIT" default:"3"`
+	LoginRateLimit                    int           `envconfig:"LOGIN_RATE_LIMIT"                      default:"5"`
+	LoginRateLimitWindow              time.Duration `envconfig:"LOGIN_RATE_LIMIT_WINDOW"               default:"5m"`
+	RegisterRateLimit                 int           `envconfig:"REGISTER_RATE_LIMIT"                   default:"3"`
+	RegisterRateLimitWindow           time.Duration `envconfig:"REGISTER_RATE_LIMIT_WINDOW"            default:"1h"`
+	ForgotPasswordRateLimit           int           `envconfig:"FORGOT_PASSWORD_RATE_LIMIT"            default:"3"`
+	ForgotPasswordRateLimitWindow     time.Duration `envconfig:"FORGOT_PASSWORD_RATE_LIMIT_WINDOW"     default:"15m"`
+	ResendVerificationRateLimit       int           `envconfig:"RESEND_VERIFICATION_RATE_LIMIT"        default:"3"`
 	ResendVerificationRateLimitWindow time.Duration `envconfig:"RESEND_VERIFICATION_RATE_LIMIT_WINDOW" default:"15m"`
 }
 
 func Load() (*Config, error) {
-	// 1. Load from .env if it exists
 	_ = godotenv.Load()
 
-	// 2. Load via envconfig into Config struct
 	var cfg Config
 	if err := envconfig.Process("", &cfg); err != nil {
 		return nil, fmt.Errorf("failed to process env variables: %w", err)

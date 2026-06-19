@@ -6,9 +6,8 @@ import "context"
 type Name string
 
 const (
-	UserRegistered         Name = "user.registered"
-	PasswordResetRequested Name = "password.reset.requested"
-	// Audit / security events
+	UserRegistered              Name = "user.registered"
+	PasswordResetRequested      Name = "password.reset.requested"
 	LoginSuccess                Name = "audit.login_success"
 	LoginFailed                 Name = "audit.login_failed"
 	Logout                      Name = "audit.logout"
@@ -23,6 +22,11 @@ const (
 	AccountDeactivated          Name = "audit.account_deactivated"
 	AccountActivated            Name = "audit.account_activated"
 	RefreshTokenReuseDetected   Name = "audit.refresh_token_reuse_detected"
+	// UserEmailVerified is published after successful email verification and triggers
+	// provisioning of the user bucket and user_settings. It is distinct from the
+	// audit.email_verified event so that AuditHandler and provisioning can subscribe
+	// independently.
+	UserEmailVerified Name = "user.email_verified"
 	// EmailSend is used to request an email send via the outbox/worker pipeline.
 	EmailSend Name = "email.send"
 )

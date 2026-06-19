@@ -174,7 +174,7 @@ func (m *mockUserRepo) IncrementTokenVersion(ctx context.Context, userID int64) 
 
 func TestUserService_GetProfile(t *testing.T) {
 	repo := newMockUserRepo()
-	srv := NewUserService(repo, nil, nil)
+	srv := NewUserService(repo, nil, nil, "app-uploads")
 
 	ctx := context.Background()
 

@@ -71,13 +71,16 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 		SecretAccessKey: cfg.MinIOSecretKey,
 		UseSSL:          cfg.MinIOUseSSL,
 		Region:          cfg.MinIORegion,
+		PublicEndpoint:  cfg.StoragePublicEndpoint,
+		PublicBucket:    cfg.MinIOBucket,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize MinIO storage: %w", err)
 	}
 
 	handlers := map[domainevent.Name]domainevent.Handler{
-		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName, minioStorage, systemSettingsRepo, userSettingsRepo),
+		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName),
+		domainevent.UserEmailVerified:      workerHandler.NewEmailVerifiedHandler(minioStorage, systemSettingsRepo, userSettingsRepo),
 		domainevent.PasswordResetRequested: workerHandler.NewPasswordResetHandler(smtpMailer),
 		// Audit handlers
 		domainevent.LoginSuccess:                workerHandler.NewAuditHandler(auditRepo, domainevent.LoginSuccess),

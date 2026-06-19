@@ -228,6 +228,13 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) error {
 		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.email_verified")
 	}
 
+	// publish user.email_verified provisioning event so EmailVerifiedHandler can
+	// create the bucket and user_settings after verification is confirmed.
+	provPayload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.UserEmailVerified, Payload: provPayload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish user.email_verified")
+	}
+
 	return nil
 }
 
@@ -672,14 +679,13 @@ func (s *authService) Logout(ctx context.Context, refreshTokenStr string) error 
 	}
 
 	// publish logout event if we have token info
-	if rt != nil {
-		logoutPayload, _ := json.Marshal(map[string]interface{}{
-			"user_id": rt.UserID,
-		})
-		if err := s.publisher.Publish(ctx, event.Event{Name: event.Logout, Payload: logoutPayload}); err != nil {
-			logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.logout")
-		}
+	logoutPayload, _ := json.Marshal(map[string]interface{}{
+		"user_id": rt.UserID,
+	})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.Logout, Payload: logoutPayload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": rt.UserID}).Warn("failed to publish audit.logout")
 	}
+
 	return nil
 }
 

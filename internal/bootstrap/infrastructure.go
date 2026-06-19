@@ -42,10 +42,28 @@ func InitInfrastructure(cfg *config.Config) (
 		SecretAccessKey: cfg.MinIOSecretKey,
 		UseSSL:          cfg.MinIOUseSSL,
 		Region:          cfg.MinIORegion,
+		PublicEndpoint:  cfg.StoragePublicEndpoint,
+		PublicBucket:    cfg.MinIOBucket,
 	})
 	if err != nil {
 		pool.Close()
 		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to initialize MinIO storage: %w", err)
+	}
+
+	// Ensure public bucket has a public-read policy so avatars/covers are
+	// accessible via constructed public URLs. Use a sensible default policy
+	// that allows GetObject for all principals. Errors are logged but do not
+	// abort startup.
+	if minio != nil {
+		if err := minio.CreateBucket(context.Background(), cfg.MinIOBucket); err != nil {
+			logger.Log.WithError(err).Warnf("failed to create bucket %s", cfg.MinIOBucket)
+		}
+		publicPolicy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` + cfg.MinIOBucket + `/*"]}]}`
+		if err := minio.ApplyBucketPolicy(context.Background(), cfg.MinIOBucket, publicPolicy); err != nil {
+			logger.Log.WithError(err).Warnf("failed to apply public policy to bucket %s", cfg.MinIOBucket)
+		} else {
+			logger.Log.Infof("applied public-read policy to bucket %s", cfg.MinIOBucket)
+		}
 	}
 
 	publisher, err = queue.New(queue.Config{URL: cfg.RabbitMQURL, Exchange: cfg.RabbitMQExchange})

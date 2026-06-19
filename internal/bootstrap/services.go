@@ -55,7 +55,7 @@ func InitServices(
 	)
 
 	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)
-	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings)
+	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings, cfg.MinIOBucket)
 	permissionSvc := service.NewPermissionService(repos.Permission)
 	healthSvc := service.NewHealthService(pool)
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)
