@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -18,6 +19,11 @@ type Config struct {
 	SecretAccessKey string
 	UseSSL          bool
 	Region          string
+	// PublicEndpoint is the externally reachable URL for the storage service
+	// used to construct permanent public object URLs (e.g. https://s3.localhost).
+	PublicEndpoint string
+	// PublicBucket is the bucket name used for public assets (avatars, covers).
+	PublicBucket string
 }
 
 type MinIOStorage struct {
@@ -39,6 +45,17 @@ func NewMinIOStorage(cfg Config) (*MinIOStorage, error) {
 	}
 
 	return &MinIOStorage{client: client, config: cfg}, nil
+}
+
+// BucketExists reports whether the named bucket already exists in MinIO.
+// Satisfies domainstorage.Storage and is used by EmailVerifiedHandler to
+// make provisioning idempotent without catching SDK-specific error types.
+func (s *MinIOStorage) BucketExists(ctx context.Context, bucketName string) (bool, error) {
+	exists, err := s.client.BucketExists(ctx, bucketName)
+	if err != nil {
+		return false, fmt.Errorf("failed to check bucket existence: %w", err)
+	}
+	return exists, nil
 }
 
 func (s *MinIOStorage) CreateBucketIfNotExists(ctx context.Context, bucket string) error {
@@ -106,25 +123,22 @@ func (s *MinIOStorage) PresignedPutURL(ctx context.Context, bucket, key string, 
 }
 
 // ApplyBucketPolicy attempts to set a bucket policy using the MinIO client.
-// If the underlying SDK exposes SetBucketPolicy, this will apply the policy; otherwise it's a no-op.
 func (s *MinIOStorage) ApplyBucketPolicy(ctx context.Context, bucket, policy string) error {
 	if s.client == nil {
 		return fmt.Errorf("minio client not initialized")
 	}
-	// minio.Client provides SetBucketPolicy in supported versions.
-	// Attempt to call it; if it fails, return the error so callers can decide to retry.
 	if err := s.client.SetBucketPolicy(ctx, bucket, policy); err != nil {
 		return fmt.Errorf("failed to set bucket policy: %w", err)
 	}
 	return nil
 }
 
-// CreateBucket creates a bucket (no-op if already exists).
+// CreateBucket creates a bucket only if it does not already exist.
 func (s *MinIOStorage) CreateBucket(ctx context.Context, bucketName string) error {
 	return s.ensureBucketExists(ctx, bucketName)
 }
 
-// PutObject uploads an object and returns its URL.
+// PutObject uploads an object and returns its presigned GET URL.
 func (s *MinIOStorage) PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, contentType string) (string, error) {
 	req := domainstorage.UploadRequest{
 		Bucket:      bucketName,
@@ -136,12 +150,17 @@ func (s *MinIOStorage) PutObject(ctx context.Context, bucketName, objectName str
 	if err := s.Upload(ctx, req); err != nil {
 		return "", err
 	}
-	// Return presigned GET URL with short expiry
-	url, err := s.GetURL(ctx, bucketName, objectName, 15*time.Minute)
-	if err != nil {
-		return "", err
+	// If this object was uploaded into the configured public bucket, return
+	// a permanent public URL. For other buckets (private per-user buckets)
+	// fallback to generating a presigned URL so callers can access the object.
+	if s.config.PublicBucket != "" && bucketName == s.config.PublicBucket {
+		base := strings.TrimSuffix(s.config.PublicEndpoint, "/")
+		publicURL := fmt.Sprintf("%s/%s/%s", base, bucketName, objectName)
+		return publicURL, nil
 	}
-	return url, nil
+
+	// For non-public buckets return a presigned URL (short lived).
+	return s.GetURL(ctx, bucketName, objectName, 15*time.Minute)
 }
 
 // DeleteObject removes an object from a bucket.

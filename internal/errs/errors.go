@@ -18,4 +18,18 @@ var (
 	ErrEmailNotVerified          = errors.New("email not verified")
 	ErrSessionNotFound           = errors.New("session not found")
 	ErrUserDeactivated           = errors.New("user account is deactivated")
+
+	// ErrUserStorageNotProvisioned is returned when the user's MinIO bucket or
+	// user_settings row does not yet exist. This is a transient condition: the
+	// email_verified worker creates the bucket asynchronously after verification,
+	// so the provisioning may still be in flight (or may have failed and ended up
+	// in the DLQ). The transport layer maps this to 503 Service Unavailable so
+	// clients know to retry rather than treat the situation as a permanent error.
+	ErrUserStorageNotProvisioned = errors.New("user storage is not yet provisioned")
+
+	// ErrUserSettingsNotFound is returned when a user_settings row is expected
+	// to exist but cannot be found. Semantically distinct from
+	// ErrUserStorageNotProvisioned: use this when the lookup itself indicates a
+	// missing record rather than an incomplete provisioning flow.
+	ErrUserSettingsNotFound = errors.New("user settings not found")
 )

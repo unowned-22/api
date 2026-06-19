@@ -40,10 +40,6 @@ WHERE role_id IS NULL;
 ALTER TABLE users
     ALTER COLUMN role_id SET NOT NULL;
 
--- ALTER TABLE users
---     ADD CONSTRAINT chk_users_phone
---         CHECK (phone IS NULL OR phone = '' OR phone ~ '^\\+[1-9][0-9]{6,14}$');
-
 CREATE INDEX IF NOT EXISTS idx_users_role_id        ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_users_deactivated_at ON users(deactivated_at);
 
@@ -171,7 +167,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
 
 INSERT INTO system_settings (key, value) VALUES
     ('default_storage_quota_bytes', '1073741824'),
-    ('default_bucket_policy',       '{"versioning": false}'),
+    ('default_bucket_policy',       '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::app-uploads/*"]}]}'),
     ('theme',                       '{"primary_color": "#3B82F6", "mode": "light"}')
 ON CONFLICT (key) DO NOTHING;
 

@@ -3,11 +3,11 @@ package service
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"path"
 
+	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/validator"
 
 	domainstorage "github.com/unowned-22/api/internal/domain/storage"
@@ -20,11 +20,12 @@ type UserService struct {
 	repo             user.UserRepository
 	storage          domainstorage.Storage
 	userSettingsRepo domainusersettings.Repository
+	publicBucket     string
 }
 
 // NewUserService creates a new instance of UserService.
-func NewUserService(repo user.UserRepository, storage domainstorage.Storage, userSettingsRepo domainusersettings.Repository) *UserService {
-	return &UserService{repo: repo, storage: storage, userSettingsRepo: userSettingsRepo}
+func NewUserService(repo user.UserRepository, storage domainstorage.Storage, userSettingsRepo domainusersettings.Repository, publicBucket string) *UserService {
+	return &UserService{repo: repo, storage: storage, userSettingsRepo: userSettingsRepo, publicBucket: publicBucket}
 }
 
 // GetProfile returns the full user record (including role) by ID.
@@ -76,28 +77,34 @@ func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Re
 		return "", fmt.Errorf("avatar exceeds maximum allowed size")
 	}
 
-	// get user settings to find bucket
 	us, err := s.userSettingsRepo.GetByUserID(ctx, userID)
 	if err != nil {
 		return "", err
 	}
 	if us == nil || us.BucketName == "" {
-		return "", errors.New("user bucket not configured")
+		// Bucket provisioning is async (email_verified worker). Return a typed
+		// sentinel so the transport layer can map this to 503 instead of 500.
+		return "", errs.ErrUserStorageNotProvisioned
 	}
 
-	key := path.Join("avatars", "avatar."+ext)
+	// Avatars are stored in the global public bucket under a per-user prefix.
+	bucket := s.publicBucket
+	if bucket == "" {
+		// Fallback to user's bucket if public bucket not configured.
+		bucket = us.BucketName
+	}
 
-	// Ensure we have an io.Reader we can reuse: read into buffer
+	key := path.Join(fmt.Sprintf("user-%d", userID), "avatars", "avatar."+ext)
+
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, file); err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 	if int64(buf.Len()) != size {
-		// size mismatch is not fatal; prefer actual size
 		size = int64(buf.Len())
 	}
 
-	url, err := s.storage.PutObject(ctx, us.BucketName, key, bytes.NewReader(buf.Bytes()), size, contentType)
+	url, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(buf.Bytes()), size, contentType)
 	if err != nil {
 		return "", err
 	}
@@ -128,10 +135,16 @@ func (s *UserService) UploadCover(ctx context.Context, userID int64, file io.Rea
 		return "", err
 	}
 	if us == nil || us.BucketName == "" {
-		return "", errors.New("user bucket not configured")
+		return "", errs.ErrUserStorageNotProvisioned
 	}
 
-	key := path.Join("covers", "cover."+ext)
+	// Covers are stored in the global public bucket under a per-user prefix.
+	bucket := s.publicBucket
+	if bucket == "" {
+		bucket = us.BucketName
+	}
+
+	key := path.Join(fmt.Sprintf("user-%d", userID), "covers", "cover."+ext)
 
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, file); err != nil {
@@ -141,7 +154,7 @@ func (s *UserService) UploadCover(ctx context.Context, userID int64, file io.Rea
 		size = int64(buf.Len())
 	}
 
-	url, err := s.storage.PutObject(ctx, us.BucketName, key, bytes.NewReader(buf.Bytes()), size, contentType)
+	url, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(buf.Bytes()), size, contentType)
 	if err != nil {
 		return "", err
 	}

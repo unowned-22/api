@@ -37,47 +37,70 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 	var code string
 	var message string
 
-	if errors.Is(err, errs.ErrUserNotFound) {
+	switch {
+	case errors.Is(err, errs.ErrUserNotFound):
 		status = http.StatusNotFound
 		code = "USER_NOT_FOUND"
 		message = "user not found"
-	} else if errors.Is(err, errs.ErrUserAlreadyExists) {
+
+	case errors.Is(err, errs.ErrUserAlreadyExists):
 		status = http.StatusConflict
 		code = "USER_ALREADY_EXISTS"
 		message = "user already exists"
-	} else if errors.Is(err, errs.ErrUsernameAlreadyExists) {
+
+	case errors.Is(err, errs.ErrUsernameAlreadyExists):
 		status = http.StatusConflict
 		code = "USERNAME_ALREADY_EXISTS"
 		message = "this username is already taken"
-	} else if errors.Is(err, errs.ErrInvalidCredentials) {
+
+	case errors.Is(err, errs.ErrInvalidCredentials):
 		status = http.StatusUnauthorized
 		code = "INVALID_CREDENTIALS"
 		message = "invalid email or password"
-	} else if errors.Is(err, errs.ErrInvalidRefreshToken) || errors.Is(err, errs.ErrRefreshTokenNotFound) {
+
+	case errors.Is(err, errs.ErrInvalidRefreshToken), errors.Is(err, errs.ErrRefreshTokenNotFound):
 		status = http.StatusUnauthorized
 		code = "INVALID_REFRESH_TOKEN"
 		message = "refresh token is invalid"
-	} else if errors.Is(err, errs.ErrVerificationTokenInvalid) {
+
+	case errors.Is(err, errs.ErrVerificationTokenInvalid):
 		status = http.StatusBadRequest
 		code = "INVALID_VERIFICATION_TOKEN"
 		message = "verification token is invalid or expired"
-	} else if errors.Is(err, errs.ErrEmailAlreadyVerified) {
+
+	case errors.Is(err, errs.ErrEmailAlreadyVerified):
 		status = http.StatusConflict
 		code = "EMAIL_ALREADY_VERIFIED"
 		message = "email already verified"
-	} else if errors.Is(err, errs.ErrRoleNotFound) {
+
+	case errors.Is(err, errs.ErrRoleNotFound):
 		status = http.StatusInternalServerError
 		code = "INTERNAL_SERVER_ERROR"
 		message = "internal server error"
-	} else if errors.Is(err, errs.ErrEmailNotVerified) {
+
+	case errors.Is(err, errs.ErrEmailNotVerified):
 		status = http.StatusForbidden
 		code = "EMAIL_NOT_VERIFIED"
 		message = "please verify your email address before logging in"
-	} else if errors.Is(err, errs.ErrForbidden) {
+
+	case errors.Is(err, errs.ErrForbidden):
 		status = http.StatusForbidden
 		code = "FORBIDDEN"
 		message = "you do not have permission to access this resource"
-	} else {
+
+	case errors.Is(err, errs.ErrUserSettingsNotFound):
+		status = http.StatusNotFound
+		code = "USER_SETTINGS_NOT_FOUND"
+		message = "user settings not found"
+
+	// ErrUserStorageNotProvisioned is a transient state: the email_verified worker
+	// provisions the bucket asynchronously. Return 503 so clients know to retry.
+	case errors.Is(err, errs.ErrUserStorageNotProvisioned):
+		status = http.StatusServiceUnavailable
+		code = "STORAGE_NOT_PROVISIONED"
+		message = "storage is not yet provisioned for this account, please try again shortly"
+
+	default:
 		logger.FromContext(r.Context()).WithError(err).Error("internal server error")
 		status = http.StatusInternalServerError
 		code = "INTERNAL_SERVER_ERROR"
