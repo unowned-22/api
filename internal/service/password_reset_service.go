@@ -178,7 +178,7 @@ func generateResetToken() (string, error) {
 }
 
 func (s *passwordResetService) sendPasswordResetEmail(ctx context.Context, email, token string) error {
-	resetURL := strings.TrimRight(s.appURL, "/") + "/reset-password?token=" + token
+	resetURL := strings.TrimRight(s.appURL, "/") + "/auth/reset-password?token=" + token
 
 	htmlContent, textContent, err := mailer.RenderTemplate("reset_password", map[string]interface{}{
 		"AppName":  s.appName,
