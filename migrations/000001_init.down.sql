@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS stories;
 DROP TABLE IF EXISTS user_devices;
 DROP TABLE IF EXISTS user_settings;
 DROP TABLE IF EXISTS system_settings;

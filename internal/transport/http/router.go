@@ -50,6 +50,7 @@ func NewRouter(
 	adminHandler *handler.AdminHandler,
 	uploadHandler *handler.UploadHandler,
 	healthHandler *handler.HealthHandler,
+	storyHandler *handler.StoryHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
 	permissionService permission.PermissionService,
@@ -130,6 +131,10 @@ func NewRouter(
 			r.Post("/users/me/cover", uploadHandler.UploadCover)
 			r.Delete("/users/me/avatar", uploadHandler.DeleteAvatar)
 			r.Delete("/users/me/cover", uploadHandler.DeleteCover)
+			r.Post("/stories", storyHandler.Publish)
+			r.Get("/stories/me", storyHandler.ListMine)
+			r.Delete("/stories/{id}", storyHandler.Delete)
+			r.Post("/stories/media", uploadHandler.UploadStoryMedia)
 
 			// Role-gated: admin only.
 			r.Group(func(r chi.Router) {

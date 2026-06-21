@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -203,4 +204,79 @@ func (h *UploadHandler) DeleteCover(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// UploadStoryMedia handles POST /stories/media
+func (h *UploadHandler) UploadStoryMedia(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	// enforce max body size 50MB
+	r.Body = http.MaxBytesReader(w, r.Body, 50*1024*1024)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		response.SendBadRequest(w, "invalid multipart request")
+		return
+	}
+
+	var part *multipart.Part
+	for p, pErr := mr.NextPart(); pErr == nil; p, pErr = mr.NextPart() {
+		if p.FormName() == "file" {
+			part = p
+			break
+		}
+	}
+	if part == nil {
+		response.SendBadRequest(w, "file part is required")
+		return
+	}
+
+	contentType := part.Header.Get("Content-Type")
+	allowed := map[string]struct{}{
+		"image/jpeg": {}, "image/png": {}, "image/webp": {}, "image/gif": {},
+		"video/mp4": {}, "video/quicktime": {}, "video/webm": {},
+	}
+	if _, ok := allowed[contentType]; !ok {
+		response.SendBadRequest(w, "unsupported content type")
+		return
+	}
+
+	data, err := io.ReadAll(part)
+	if err != nil {
+		response.SendBadRequest(w, "failed to read file")
+		return
+	}
+
+	// build storage key: stories/{userID}/{uuid}/{filename}
+	key := path.Join("stories", fmt.Sprint(userID), uuid.New().String(), part.FileName())
+
+	// upload via the object storage interface
+	uploadReq := domainstorage.UploadRequest{
+		Bucket:      h.bucket,
+		Key:         key,
+		Body:        bytes.NewReader(data),
+		Size:        int64(len(data)),
+		ContentType: contentType,
+	}
+	if err := h.storage.Upload(r.Context(), uploadReq); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	// generate a longer-lived GET URL (7 days)
+	url, err := h.storage.GetURL(r.Context(), h.bucket, key, 7*24*time.Hour)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	mediaType := "image"
+	if strings.HasPrefix(contentType, "video/") {
+		mediaType = "video"
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.StoryMediaResponse{URL: url, MediaType: mediaType})
 }

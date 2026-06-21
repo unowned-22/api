@@ -68,6 +68,14 @@ type UpdateThemeRequest struct {
 	Theme json.RawMessage `json:"theme" validate:"required"`
 }
 
+// CreateStoryRequest is the HTTP request body for publishing a story.
+type CreateStoryRequest struct {
+	Slides     []json.RawMessage `json:"slides"     validate:"required,min=1,max=20"`
+	Visibility string            `json:"visibility" validate:"required,oneof=everyone friends close"`
+	Duration   int               `json:"duration"   validate:"required,oneof=1 12 24 48"`
+	HiddenFrom []int64           `json:"hidden_from"`
+}
+
 // AdminUpdateQuotaRequest is used by admins to set a user's storage quota.
 type AdminUpdateQuotaRequest struct {
 	StorageQuotaBytes int64 `json:"storage_quota_bytes" validate:"required"`

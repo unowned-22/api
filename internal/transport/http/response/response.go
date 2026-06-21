@@ -103,6 +103,16 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "COVER_NOT_FOUND"
 		message = "cover not found"
 
+	case errors.Is(err, errs.ErrStoryNotFound):
+		status = http.StatusNotFound
+		code = "STORY_NOT_FOUND"
+		message = "story not found"
+
+	case errors.Is(err, errs.ErrInvalidStoryPayload):
+		status = http.StatusBadRequest
+		code = "INVALID_STORY_PAYLOAD"
+		message = "invalid story payload"
+
 	// ErrUserStorageNotProvisioned is a transient state: the email_verified worker
 	// provisions the bucket asynchronously. Return 503 so clients know to retry.
 	case errors.Is(err, errs.ErrUserStorageNotProvisioned):
