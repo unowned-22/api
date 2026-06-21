@@ -13,12 +13,12 @@ import (
 	domainRole "github.com/unowned-22/api/internal/domain/role"
 	domainToken "github.com/unowned-22/api/internal/domain/token"
 	domainUser "github.com/unowned-22/api/internal/domain/user"
-	userdevice "github.com/unowned-22/api/internal/domain/userdevice"
+	"github.com/unowned-22/api/internal/domain/userdevice"
 	"github.com/unowned-22/api/internal/domain/usersession"
 	"github.com/unowned-22/api/internal/errs"
 )
 
-// ── mock: EventPublisher ─────────────────────────────────────────────────────
+// ── mock: EventPublisher ──────────────────────────────────────────────────────
 
 type mockEventPublisher struct {
 	events []domainevent.Event
@@ -35,6 +35,8 @@ func (m *mockEventPublisher) PublishTx(ctx context.Context, tx pgx.Tx, event dom
 
 func (m *mockEventPublisher) Close() error { return nil }
 
+// ── mock: Mailer ──────────────────────────────────────────────────────────────
+
 type mockMailer struct {
 	sendErr error
 	lastMsg domainmailer.Message
@@ -45,26 +47,45 @@ func (m *mockMailer) Send(ctx context.Context, msg domainmailer.Message) error {
 	return m.sendErr
 }
 
-// mockUserDeviceRepo simulates absence of existing devices (so Login treats as new)
+// ── mock: UserDeviceRepository ────────────────────────────────────────────────
+
 type mockUserDeviceRepo struct {
+	devices map[string]*userdevice.Device // key: fingerprint
+	seq     int64
 	created *userdevice.Device
 }
 
-func (m *mockUserDeviceRepo) GetByUnique(ctx context.Context, userID int64, fingerprint, browser, country string) (*userdevice.Device, error) {
-	return nil, nil
+func newMockUserDeviceRepo() *mockUserDeviceRepo {
+	return &mockUserDeviceRepo{devices: make(map[string]*userdevice.Device)}
+}
+
+func (m *mockUserDeviceRepo) GetByFingerprint(ctx context.Context, userID int64, fingerprint string) (*userdevice.Device, error) {
+	d, ok := m.devices[fingerprint]
+	if !ok {
+		return nil, errs.ErrDeviceNotFound
+	}
+	return d, nil
 }
 
 func (m *mockUserDeviceRepo) Create(ctx context.Context, d *userdevice.Device) error {
-	m.created = d
-	d.ID = 1
+	m.seq++
+	d.ID = m.seq
+	cp := *d
+	m.devices[d.Fingerprint] = &cp
+	m.created = &cp
 	return nil
 }
 
 func (m *mockUserDeviceRepo) UpdateLastSeen(ctx context.Context, id int64, t time.Time) error {
+	for _, d := range m.devices {
+		if d.ID == id {
+			d.LastSeenAt = t
+		}
+	}
 	return nil
 }
 
-// ── mock: UserRepository ─────────────────────────────────────────────────────
+// ── mock: UserRepository ──────────────────────────────────────────────────────
 
 type mockUserRepo struct {
 	users map[string]*domainUser.User
@@ -184,7 +205,6 @@ func (m *mockUserRepo) UpdateProfile(ctx context.Context, userID int64, fullName
 	if !ok {
 		return errs.ErrUserNotFound
 	}
-	// ensure username uniqueness
 	for _, other := range m.idMap {
 		if other.ID != userID && other.Username == username {
 			return errs.ErrUsernameAlreadyExists
@@ -219,7 +239,6 @@ func (m *mockUserRepo) List(ctx context.Context, offset int, limit int) ([]*doma
 	for _, u := range m.idMap {
 		out = append(out, u)
 	}
-	// simple stable order by id (not guaranteed) but ok for tests
 	if offset >= len(out) {
 		return []*domainUser.User{}, nil
 	}
@@ -237,7 +256,7 @@ func (m *mockUserRepo) Count(ctx context.Context) (int64, error) {
 // ── mock: RefreshTokenRepository ─────────────────────────────────────────────
 
 type mockRefreshTokenRepo struct {
-	tokens map[string]*domainToken.RefreshToken
+	tokens map[string]*domainToken.RefreshToken // key: token_hash
 	seq    int64
 }
 
@@ -245,7 +264,7 @@ func newMockRefreshTokenRepo() *mockRefreshTokenRepo {
 	return &mockRefreshTokenRepo{tokens: make(map[string]*domainToken.RefreshToken)}
 }
 
-func (m *mockRefreshTokenRepo) CreateRefreshToken(ctx context.Context, t *domainToken.RefreshToken) error {
+func (m *mockRefreshTokenRepo) Create(ctx context.Context, t *domainToken.RefreshToken) error {
 	m.seq++
 	t.ID = m.seq
 	cp := *t
@@ -253,29 +272,40 @@ func (m *mockRefreshTokenRepo) CreateRefreshToken(ctx context.Context, t *domain
 	return nil
 }
 
-func (m *mockRefreshTokenRepo) GetByToken(ctx context.Context, tokenStr string) (*domainToken.RefreshToken, error) {
-	hash := domainToken.HashRefreshToken(tokenStr)
-	t, ok := m.tokens[hash]
+func (m *mockRefreshTokenRepo) GetByHash(ctx context.Context, tokenHash string) (*domainToken.RefreshToken, error) {
+	t, ok := m.tokens[tokenHash]
 	if !ok {
 		return nil, errs.ErrRefreshTokenNotFound
 	}
 	return t, nil
 }
 
-func (m *mockRefreshTokenRepo) RevokeRefreshToken(ctx context.Context, tokenStr string) error {
-	hash := domainToken.HashRefreshToken(tokenStr)
-	t, ok := m.tokens[hash]
-	if !ok {
-		return errs.ErrRefreshTokenNotFound
+func (m *mockRefreshTokenRepo) Rotate(ctx context.Context, oldTokenID int64, newToken *domainToken.RefreshToken) error {
+	// revoke old
+	for _, t := range m.tokens {
+		if t.ID == oldTokenID {
+			t.Status = domainToken.RefreshTokenStatusRevoked
+			t.ReplacedByTokenID = &newToken.ID
+		}
 	}
-	t.Status = domainToken.RefreshTokenStatusRevoked
-	return nil
+	// insert new
+	return m.Create(ctx, newToken)
 }
 
-func (m *mockRefreshTokenRepo) DeleteExpired(ctx context.Context) error {
-	for k, v := range m.tokens {
-		if v.ExpiresAt.Before(time.Now()) {
-			delete(m.tokens, k)
+func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, tokenID int64) error {
+	for _, t := range m.tokens {
+		if t.ID == tokenID {
+			t.Status = domainToken.RefreshTokenStatusRevoked
+			return nil
+		}
+	}
+	return errs.ErrRefreshTokenNotFound
+}
+
+func (m *mockRefreshTokenRepo) RevokeSessionTokens(ctx context.Context, sessionID int64) error {
+	for _, t := range m.tokens {
+		if t.SessionID == sessionID {
+			t.Status = domainToken.RefreshTokenStatusRevoked
 		}
 	}
 	return nil
@@ -290,85 +320,88 @@ func (m *mockRefreshTokenRepo) RevokeAllByUserID(ctx context.Context, userID int
 	return nil
 }
 
+func (m *mockRefreshTokenRepo) GetTokenChain(ctx context.Context, sessionID int64) ([]*domainToken.RefreshToken, error) {
+	var chain []*domainToken.RefreshToken
+	for _, t := range m.tokens {
+		if t.SessionID == sessionID {
+			chain = append(chain, t)
+		}
+	}
+	return chain, nil
+}
+
+func (m *mockRefreshTokenRepo) DeleteExpired(ctx context.Context) error {
+	for k, v := range m.tokens {
+		if v.ExpiresAt.Before(time.Now()) {
+			delete(m.tokens, k)
+		}
+	}
+	return nil
+}
+
 // ── mock: UserSessionRepository ──────────────────────────────────────────────
 
 type mockUserSessionRepo struct {
-	sessions         map[int64]*usersession.UserSession
-	byRefreshTokenID map[int64]*usersession.UserSession
-	seq              int64
+	sessions map[int64]*usersession.UserSession
+	seq      int64
 }
 
 func newMockUserSessionRepo() *mockUserSessionRepo {
-	return &mockUserSessionRepo{
-		sessions:         make(map[int64]*usersession.UserSession),
-		byRefreshTokenID: make(map[int64]*usersession.UserSession),
-	}
+	return &mockUserSessionRepo{sessions: make(map[int64]*usersession.UserSession)}
 }
 
-func (m *mockUserSessionRepo) Create(ctx context.Context, session *usersession.UserSession) error {
+func (m *mockUserSessionRepo) Create(ctx context.Context, s *usersession.UserSession) error {
 	m.seq++
-	session.ID = m.seq
-	cp := *session
-	m.sessions[session.ID] = &cp
-	m.byRefreshTokenID[session.RefreshTokenID] = &cp
+	s.ID = m.seq
+	cp := *s
+	m.sessions[s.ID] = &cp
 	return nil
 }
 
 func (m *mockUserSessionRepo) GetByID(ctx context.Context, id int64) (*usersession.UserSession, error) {
-	session, ok := m.sessions[id]
+	s, ok := m.sessions[id]
 	if !ok {
 		return nil, errs.ErrSessionNotFound
 	}
-	return session, nil
+	return s, nil
 }
 
-func (m *mockUserSessionRepo) GetByRefreshTokenID(ctx context.Context, refreshTokenID int64) (*usersession.UserSession, error) {
-	session, ok := m.byRefreshTokenID[refreshTokenID]
-	if !ok {
-		return nil, errs.ErrSessionNotFound
-	}
-	return session, nil
-}
-
-func (m *mockUserSessionRepo) ListActiveByUserID(ctx context.Context, userID int64) ([]*usersession.UserSession, error) {
-	var sessions []*usersession.UserSession
-	for _, session := range m.sessions {
-		if session.UserID == userID && session.RevokedAt == nil {
-			sessions = append(sessions, session)
+func (m *mockUserSessionRepo) ListActiveByUserID(ctx context.Context, userID int64) ([]*usersession.SessionView, error) {
+	var out []*usersession.SessionView
+	for _, s := range m.sessions {
+		if s.UserID == userID &&
+			s.Status == usersession.SessionStatusActive &&
+			s.ExpiresAt.After(time.Now()) {
+			out = append(out, &usersession.SessionView{UserSession: *s})
 		}
 	}
-	return sessions, nil
+	return out, nil
 }
 
-func (m *mockUserSessionRepo) Update(ctx context.Context, session *usersession.UserSession) error {
-	existing, ok := m.sessions[session.ID]
+func (m *mockUserSessionRepo) Terminate(ctx context.Context, id int64) error {
+	s, ok := m.sessions[id]
 	if !ok {
 		return errs.ErrSessionNotFound
 	}
-	delete(m.byRefreshTokenID, existing.RefreshTokenID)
-	cp := *session
-	m.sessions[session.ID] = &cp
-	m.byRefreshTokenID[session.RefreshTokenID] = &cp
+	s.Status = usersession.SessionStatusRevoked
 	return nil
 }
 
-func (m *mockUserSessionRepo) Revoke(ctx context.Context, id int64) error {
-	session, ok := m.sessions[id]
+func (m *mockUserSessionRepo) TerminateAll(ctx context.Context, userID int64) error {
+	for _, s := range m.sessions {
+		if s.UserID == userID && s.Status != usersession.SessionStatusRevoked {
+			s.Status = usersession.SessionStatusRevoked
+		}
+	}
+	return nil
+}
+
+func (m *mockUserSessionRepo) UpdateLastActivity(ctx context.Context, id int64, t time.Time) error {
+	s, ok := m.sessions[id]
 	if !ok {
 		return errs.ErrSessionNotFound
 	}
-	now := time.Now()
-	session.RevokedAt = &now
-	return nil
-}
-
-func (m *mockUserSessionRepo) RevokeAllByUserID(ctx context.Context, userID int64) error {
-	now := time.Now()
-	for _, session := range m.sessions {
-		if session.UserID == userID && session.RevokedAt == nil {
-			session.RevokedAt = &now
-		}
-	}
+	s.LastActivityAt = t
 	return nil
 }
 
@@ -438,41 +471,72 @@ func (m *mockTokenManager) ParseWithRole(tokenStr string) (int64, string, int, e
 	return 0, "", 0, errors.New("invalid token")
 }
 
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+// newTestService builds a fully wired authService for tests.
+func newTestService(
+	userRepo *mockUserRepo,
+	rtRepo *mockRefreshTokenRepo,
+	sessionRepo *mockUserSessionRepo,
+	deviceRepo userdevice.Repository,
+) AuthService {
+	return NewAuthService(
+		userRepo,
+		rtRepo,
+		sessionRepo,
+		deviceRepo,
+		newMockRoleRepo(),
+		&mockTokenManager{},
+		&mockMailer{},
+		&mockEventPublisher{},
+		720*time.Hour,
+		"http://localhost:3222",
+		"App",
+		nil,
+		nil, // pool: nil — tests use mock repos, no real transaction needed
+	)
+}
+
+// registerAndVerify registers a user and force-marks the email as verified.
+func registerAndVerify(t *testing.T, srv AuthService, userRepo *mockUserRepo, email, password string) *domainUser.User {
+	t.Helper()
+	ctx := context.Background()
+	if err := srv.Register(ctx, RegisterRequest{Email: email, Password: password}); err != nil {
+		t.Fatalf("Register(%s) failed: %v", email, err)
+	}
+	u, err := userRepo.GetByEmail(ctx, email)
+	if err != nil {
+		t.Fatalf("GetByEmail(%s) failed: %v", email, err)
+	}
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+	return u
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestAuthService(t *testing.T) {
 	userRepo := newMockUserRepo()
-	refreshTokenRepo := newMockRefreshTokenRepo()
-	roleRepo := newMockRoleRepo()
-	tm := &mockTokenManager{}
-	mailer := &mockMailer{}
-	publisher := &mockEventPublisher{}
+	rtRepo := newMockRefreshTokenRepo()
 	sessionRepo := newMockUserSessionRepo()
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil, nil)
-
+	srv := newTestService(userRepo, rtRepo, sessionRepo, nil)
 	ctx := context.Background()
 
 	// 1. Register
-	err := srv.Register(ctx, RegisterRequest{Email: "test@example.com", Password: "password123"})
-	if err != nil {
+	if err := srv.Register(ctx, RegisterRequest{Email: "test@example.com", Password: "password123"}); err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
 
-	// Force verify email for the mock user so login succeeds.
-	u, err := userRepo.GetByEmail(ctx, "test@example.com")
-	if err != nil {
-		t.Fatalf("GetByEmail failed: %v", err)
-	}
+	u, _ := userRepo.GetByEmail(ctx, "test@example.com")
 	now := time.Now()
 	u.EmailVerifiedAt = &now
 
 	// 2. Duplicate register
-	err = srv.Register(ctx, RegisterRequest{Email: "test@example.com", Password: "password123"})
-	if !errors.Is(err, errs.ErrUserAlreadyExists) {
+	if err := srv.Register(ctx, RegisterRequest{Email: "test@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserAlreadyExists) {
 		t.Errorf("expected ErrUserAlreadyExists, got %v", err)
 	}
 
-	// 3. Login success — token and refresh token returned
+	// 3. Login success
 	accessToken, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "test@example.com", Password: "password123"})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
@@ -481,8 +545,9 @@ func TestAuthService(t *testing.T) {
 		t.Errorf("unexpected access token: %s", accessToken)
 	}
 	if refreshToken == "" {
-		t.Errorf("expected non-empty refresh token")
+		t.Error("expected non-empty refresh token")
 	}
+
 	sessions, err := srv.ListSessions(ctx, u.ID)
 	if err != nil {
 		t.Fatalf("ListSessions failed: %v", err)
@@ -490,22 +555,21 @@ func TestAuthService(t *testing.T) {
 	if len(sessions) != 1 {
 		t.Fatalf("expected one active session, got %d", len(sessions))
 	}
-	loginSession := sessions[0]
-	originalLastUsedAt := loginSession.LastUsedAt
+	loginSessionID := sessions[0].ID
+	originalLastActivity := sessions[0].LastActivityAt
 
-	// 4. Login invalid password
-	_, _, err = srv.Login(ctx, LoginRequest{Email: "test@example.com", Password: "wrongpassword"})
-	if !errors.Is(err, errs.ErrInvalidCredentials) {
+	// 4. Invalid password
+	if _, _, err = srv.Login(ctx, LoginRequest{Email: "test@example.com", Password: "wrongpassword"}); !errors.Is(err, errs.ErrInvalidCredentials) {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
 
-	// 5. Login unknown user
-	_, _, err = srv.Login(ctx, LoginRequest{Email: "nobody@example.com", Password: "password123"})
-	if !errors.Is(err, errs.ErrInvalidCredentials) {
+	// 5. Unknown user
+	if _, _, err = srv.Login(ctx, LoginRequest{Email: "nobody@example.com", Password: "password123"}); !errors.Is(err, errs.ErrInvalidCredentials) {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
 
-	// 6. Refresh success returns a new access token and a rotated refresh token.
+	// 6. Refresh success → new token, session unchanged
+	time.Sleep(1 * time.Millisecond) // ensure last_activity_at moves
 	newAccessToken, newRefreshToken, err := srv.Refresh(ctx, refreshToken, "new-agent", "127.0.0.2")
 	if err != nil {
 		t.Fatalf("Refresh failed: %v", err)
@@ -514,88 +578,77 @@ func TestAuthService(t *testing.T) {
 		t.Errorf("unexpected refreshed access token: %s", newAccessToken)
 	}
 	if newRefreshToken == "" || newRefreshToken == refreshToken {
-		t.Errorf("expected a new refresh token")
-	}
-	newRT, err := refreshTokenRepo.GetByToken(ctx, newRefreshToken)
-	if err != nil {
-		t.Fatalf("GetByToken for rotated token failed: %v", err)
-	}
-	updatedSession, err := sessionRepo.GetByRefreshTokenID(ctx, newRT.ID)
-	if err != nil {
-		t.Fatalf("GetByRefreshTokenID for rotated session failed: %v", err)
-	}
-	if updatedSession.ID != loginSession.ID {
-		t.Errorf("expected refresh to keep session id %d, got %d", loginSession.ID, updatedSession.ID)
-	}
-	if !updatedSession.LastUsedAt.After(originalLastUsedAt) {
-		t.Errorf("expected last_used_at to be updated during refresh")
-	}
-	if updatedSession.UserAgent != "new-agent" {
-		t.Errorf("expected user agent to update, got %q", updatedSession.UserAgent)
-	}
-	if updatedSession.IPAddress != "127.0.0.2" {
-		t.Errorf("expected ip address to update, got %q", updatedSession.IPAddress)
+		t.Error("expected a new distinct refresh token")
 	}
 
-	// 7. Reusing the old refresh token must fail.
-	_, _, err = srv.Refresh(ctx, refreshToken, "", "")
-	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
+	// Verify new token hash is stored
+	newHash := domainToken.HashRefreshToken(newRefreshToken)
+	newRT, ok := rtRepo.tokens[newHash]
+	if !ok {
+		t.Fatal("new rotated token not found in repo")
+	}
+
+	// Session must be the same stable session
+	updatedSession, err := sessionRepo.GetByID(ctx, loginSessionID)
+	if err != nil {
+		t.Fatalf("GetByID for session failed: %v", err)
+	}
+	if newRT.SessionID != loginSessionID {
+		t.Errorf("expected new token to belong to session %d, got %d", loginSessionID, newRT.SessionID)
+	}
+	if !updatedSession.LastActivityAt.After(originalLastActivity) {
+		t.Error("expected last_activity_at to advance during refresh")
+	}
+
+	// 7. Reusing the old (now-revoked) refresh token must trigger reuse detection
+	if _, _, err = srv.Refresh(ctx, refreshToken, "", ""); !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken for reused token, got %v", err)
 	}
 
-	// 8. Refresh with unknown token
-	_, _, err = srv.Refresh(ctx, "non-existent-token", "", "")
-	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
+	// 8. Unknown token
+	if _, _, err = srv.Refresh(ctx, "non-existent-token", "", ""); !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken, got %v", err)
 	}
 
-	// 9. Logout revokes the active refresh token.
+	// 9. Logout
 	if err = srv.Logout(ctx, newRefreshToken); err != nil {
 		t.Fatalf("Logout failed: %v", err)
 	}
 
-	// 10. Refresh after logout (revoked)
-	_, _, err = srv.Refresh(ctx, newRefreshToken, "", "")
-	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
+	// 10. Refresh after logout
+	if _, _, err = srv.Refresh(ctx, newRefreshToken, "", ""); !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken after logout, got %v", err)
 	}
 
-	// 11. Refresh expired token
+	// 11. Expired token
 	expiredTokenValue := "expired-token"
 	expiredToken := &domainToken.RefreshToken{
-		UserID:    1,
+		SessionID: loginSessionID,
+		UserID:    u.ID,
 		TokenHash: domainToken.HashRefreshToken(expiredTokenValue),
 		ExpiresAt: time.Now().Add(-1 * time.Hour),
 		Status:    domainToken.RefreshTokenStatusActive,
 	}
-	_ = refreshTokenRepo.CreateRefreshToken(ctx, expiredToken)
-	_, _, err = srv.Refresh(ctx, expiredTokenValue, "", "")
-	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
+	_ = rtRepo.Create(ctx, expiredToken)
+	if _, _, err = srv.Refresh(ctx, expiredTokenValue, "", ""); !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken for expired token, got %v", err)
 	}
 }
 
 func TestRevokeSessionPreventsRefresh(t *testing.T) {
 	userRepo := newMockUserRepo()
-	refreshTokenRepo := newMockRefreshTokenRepo()
+	rtRepo := newMockRefreshTokenRepo()
 	sessionRepo := newMockUserSessionRepo()
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, newMockRoleRepo(), &mockTokenManager{}, &mockMailer{}, &mockEventPublisher{}, 720*time.Hour, "http://localhost:3222", "App", nil, nil)
+	srv := newTestService(userRepo, rtRepo, sessionRepo, nil)
 	ctx := context.Background()
 
-	if err := srv.Register(ctx, RegisterRequest{Email: "sessions@example.com", Password: "password123"}); err != nil {
-		t.Fatalf("Register failed: %v", err)
-	}
-	u, err := userRepo.GetByEmail(ctx, "sessions@example.com")
-	if err != nil {
-		t.Fatalf("GetByEmail failed: %v", err)
-	}
-	now := time.Now()
-	u.EmailVerifiedAt = &now
+	u := registerAndVerify(t, srv, userRepo, "sessions@example.com", "password123")
 
 	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "sessions@example.com", Password: "password123", DeviceName: "Test Device"})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
+
 	sessions, err := srv.ListSessions(ctx, u.ID)
 	if err != nil {
 		t.Fatalf("ListSessions failed: %v", err)
@@ -607,8 +660,8 @@ func TestRevokeSessionPreventsRefresh(t *testing.T) {
 	if err := srv.RevokeSession(ctx, sessions[0].ID, u.ID, "user"); err != nil {
 		t.Fatalf("RevokeSession failed: %v", err)
 	}
-	_, _, err = srv.Refresh(ctx, refreshToken, "", "")
-	if !errors.Is(err, errs.ErrInvalidRefreshToken) {
+
+	if _, _, err = srv.Refresh(ctx, refreshToken, "", ""); !errors.Is(err, errs.ErrInvalidRefreshToken) {
 		t.Errorf("expected ErrInvalidRefreshToken after session revoke, got %v", err)
 	}
 
@@ -623,9 +676,7 @@ func TestRevokeSessionPreventsRefresh(t *testing.T) {
 
 func TestRegisterAssignsDefaultRole(t *testing.T) {
 	userRepo := newMockUserRepo()
-	mailer := &mockMailer{}
-	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), nil, newMockRoleRepo(), &mockTokenManager{}, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil, nil)
+	srv := newTestService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), nil)
 	ctx := context.Background()
 
 	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
@@ -646,93 +697,53 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 
 func TestDeactivateUserRevokesSessionsAndDeniesAuth(t *testing.T) {
 	userRepo := newMockUserRepo()
-	refreshTokenRepo := newMockRefreshTokenRepo()
+	rtRepo := newMockRefreshTokenRepo()
 	sessionRepo := newMockUserSessionRepo()
-	roleRepo := newMockRoleRepo()
-	tm := &mockTokenManager{}
-	mailer := &mockMailer{}
-	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil, nil)
-
+	srv := newTestService(userRepo, rtRepo, sessionRepo, nil)
 	ctx := context.Background()
-	if err := srv.Register(ctx, RegisterRequest{Email: "disable@example.com", Password: "password123"}); err != nil {
-		t.Fatalf("Register failed: %v", err)
-	}
-	u, err := userRepo.GetByEmail(ctx, "disable@example.com")
-	if err != nil {
-		t.Fatalf("GetByEmail failed: %v", err)
-	}
-	now := time.Now()
-	u.EmailVerifiedAt = &now
+
+	u := registerAndVerify(t, srv, userRepo, "disable@example.com", "password123")
 
 	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "disable@example.com", Password: "password123"})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	sessions, err := srv.ListSessions(ctx, u.ID)
-	if err != nil {
-		t.Fatalf("ListSessions failed: %v", err)
-	}
+	sessions, _ := srv.ListSessions(ctx, u.ID)
 	if len(sessions) != 1 {
 		t.Fatalf("expected one active session, got %d", len(sessions))
 	}
 
-	// Deactivate user
 	if err := srv.DeactivateUser(ctx, u.ID); err != nil {
 		t.Fatalf("DeactivateUser failed: %v", err)
 	}
 
-	// Sessions should be revoked
-	activeSessions, err := srv.ListSessions(ctx, u.ID)
-	if err != nil {
-		t.Fatalf("ListSessions after deactivate failed: %v", err)
-	}
+	activeSessions, _ := srv.ListSessions(ctx, u.ID)
 	if len(activeSessions) != 0 {
 		t.Fatalf("expected no active sessions after deactivate, got %d", len(activeSessions))
 	}
 
-	// Login must be denied
-	_, _, err = srv.Login(ctx, LoginRequest{Email: "disable@example.com", Password: "password123"})
-	if !errors.Is(err, errs.ErrUserDeactivated) {
+	if _, _, err = srv.Login(ctx, LoginRequest{Email: "disable@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserDeactivated) {
 		t.Errorf("expected ErrUserDeactivated on login after deactivation, got %v", err)
 	}
 
-	// Refresh should be invalid because tokens were revoked
 	_, _, err = srv.Refresh(ctx, refreshToken, "", "")
 	if !errors.Is(err, errs.ErrInvalidRefreshToken) && !errors.Is(err, errs.ErrUserDeactivated) {
-		t.Errorf("expected ErrInvalidRefreshToken or ErrUserDeactivated on refresh after deactivation, got %v", err)
+		t.Errorf("expected ErrInvalidRefreshToken or ErrUserDeactivated after deactivation, got %v", err)
 	}
 }
 
 func TestReactivateUserAllowsLogin(t *testing.T) {
 	userRepo := newMockUserRepo()
-	refreshTokenRepo := newMockRefreshTokenRepo()
-	sessionRepo := newMockUserSessionRepo()
-	roleRepo := newMockRoleRepo()
-	tm := &mockTokenManager{}
-	mailer := &mockMailer{}
-	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil, nil)
-
+	srv := newTestService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), nil)
 	ctx := context.Background()
-	if err := srv.Register(ctx, RegisterRequest{Email: "reactivate@example.com", Password: "password123"}); err != nil {
-		t.Fatalf("Register failed: %v", err)
-	}
-	u, err := userRepo.GetByEmail(ctx, "reactivate@example.com")
-	if err != nil {
-		t.Fatalf("GetByEmail failed: %v", err)
-	}
-	now := time.Now()
-	u.EmailVerifiedAt = &now
 
-	// Deactivate then Reactivate
+	u := registerAndVerify(t, srv, userRepo, "reactivate@example.com", "password123")
+
 	if err := srv.DeactivateUser(ctx, u.ID); err != nil {
 		t.Fatalf("DeactivateUser failed: %v", err)
 	}
-	// ensure login is denied
-	_, _, err = srv.Login(ctx, LoginRequest{Email: "reactivate@example.com", Password: "password123"})
-	if !errors.Is(err, errs.ErrUserDeactivated) {
+	if _, _, err := srv.Login(ctx, LoginRequest{Email: "reactivate@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserDeactivated) {
 		t.Fatalf("expected ErrUserDeactivated after deactivate, got %v", err)
 	}
 
@@ -740,102 +751,83 @@ func TestReactivateUserAllowsLogin(t *testing.T) {
 		t.Fatalf("ReactivateUser failed: %v", err)
 	}
 
-	// login should succeed now
-	_, _, err = srv.Login(ctx, LoginRequest{Email: "reactivate@example.com", Password: "password123"})
-	if err != nil {
+	if _, _, err := srv.Login(ctx, LoginRequest{Email: "reactivate@example.com", Password: "password123"}); err != nil {
 		t.Fatalf("expected login to succeed after reactivate, got %v", err)
 	}
 }
 
 func TestLoginStoresRefreshTokenHashOnly(t *testing.T) {
 	userRepo := newMockUserRepo()
-	refreshTokenRepo := newMockRefreshTokenRepo()
-	roleRepo := newMockRoleRepo()
-	tm := &mockTokenManager{}
-	mailer := &mockMailer{}
-	publisher := &mockEventPublisher{}
-	srv := NewAuthService(userRepo, refreshTokenRepo, newMockUserSessionRepo(), nil, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil, nil)
+	rtRepo := newMockRefreshTokenRepo()
+	srv := newTestService(userRepo, rtRepo, newMockUserSessionRepo(), nil)
 	ctx := context.Background()
 
-	if err := srv.Register(ctx, RegisterRequest{Email: "security@example.com", Password: "password123"}); err != nil {
-		t.Fatalf("Register failed: %v", err)
-	}
-
-	// Force verify email for the mock user so login succeeds.
-	u, err := userRepo.GetByEmail(ctx, "security@example.com")
-	if err != nil {
-		t.Fatalf("GetByEmail failed: %v", err)
-	}
-	now := time.Now()
-	u.EmailVerifiedAt = &now
+	u := registerAndVerify(t, srv, userRepo, "security@example.com", "password123")
+	_ = u
 
 	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "security@example.com", Password: "password123"})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
 
-	if refreshToken == "" {
-		t.Fatal("expected refresh token")
-	}
-
 	hash := domainToken.HashRefreshToken(refreshToken)
-	if _, ok := refreshTokenRepo.tokens[hash]; !ok {
-		t.Fatalf("expected token hash stored in repository")
+	if _, ok := rtRepo.tokens[hash]; !ok {
+		t.Fatal("expected token hash stored in repository")
 	}
-
-	for key := range refreshTokenRepo.tokens {
-		if key == refreshToken {
-			t.Fatal("plain refresh token must not be stored")
-		}
+	if _, ok := rtRepo.tokens[refreshToken]; ok {
+		t.Fatal("plain refresh token must not be stored as key")
 	}
 }
 
-func TestLoginSendsNewDeviceNotification(t *testing.T) {
+func TestLoginNewDeviceCreatesDeviceRecord(t *testing.T) {
 	userRepo := newMockUserRepo()
-	refreshTokenRepo := newMockRefreshTokenRepo()
+	rtRepo := newMockRefreshTokenRepo()
 	sessionRepo := newMockUserSessionRepo()
-	roleRepo := newMockRoleRepo()
-	tm := &mockTokenManager{}
+	deviceRepo := newMockUserDeviceRepo()
 	publisher := &mockEventPublisher{}
-	mailer := &mockMailer{}
-	deviceRepo := &mockUserDeviceRepo{}
 
-	srv := NewAuthService(userRepo, refreshTokenRepo, sessionRepo, deviceRepo, roleRepo, tm, mailer, publisher, 720*time.Hour, "http://localhost:3222", "App", nil, nil)
-
+	srv := NewAuthService(
+		userRepo, rtRepo, sessionRepo, deviceRepo,
+		newMockRoleRepo(), &mockTokenManager{}, &mockMailer{}, publisher,
+		720*time.Hour, "http://localhost:3222", "App", nil, nil,
+	)
 	ctx := context.Background()
-	if err := srv.Register(ctx, RegisterRequest{Email: "notify@example.com", Password: "password123"}); err != nil {
-		t.Fatalf("Register failed: %v", err)
-	}
-	u, _ := userRepo.GetByEmail(ctx, "notify@example.com")
-	now := time.Now()
-	u.EmailVerifiedAt = &now
 
-	_, _, err := srv.Login(ctx, LoginRequest{Email: "notify@example.com", Password: "password123", DeviceName: "MyPhone", UserAgent: "UA/1.0", IPAddress: "1.2.3.4"})
+	u := registerAndVerify(t, srv, userRepo, "notify@example.com", "password123")
+	_ = u
+
+	_, _, err := srv.Login(ctx, LoginRequest{
+		Email:      "notify@example.com",
+		Password:   "password123",
+		DeviceName: "MyPhone",
+		UserAgent:  "UA/1.0",
+		IPAddress:  "1.2.3.4",
+	})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
 
 	if deviceRepo.created == nil {
-		t.Fatalf("expected deviceRepo.Create to be called")
+		t.Fatal("expected deviceRepo.Create to be called for new device")
 	}
 
-	// wait briefly for asynchronous outbox publish
-	waited := time.Now()
-	for time.Since(waited) < 3*time.Second {
-		if len(publisher.events) > 0 {
+	// New-device email is published via outbox
+	deadline := time.Now().Add(3 * time.Second)
+	var found *domainevent.Event
+	for time.Now().Before(deadline) {
+		for i := range publisher.events {
+			if publisher.events[i].Name == domainevent.EmailSend {
+				found = &publisher.events[i]
+				break
+			}
+		}
+		if found != nil {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	var found *domainevent.Event
-	for i := range publisher.events {
-		if publisher.events[i].Name == domainevent.EmailSend {
-			found = &publisher.events[i]
-			break
-		}
-	}
 	if found == nil {
-		t.Fatalf("expected an outbox email.send event to be published, got events: %v", publisher.events)
+		t.Fatalf("expected an outbox email.send event, got events: %v", publisher.events)
 	}
 	var payload map[string]interface{}
 	if err := json.Unmarshal(found.Payload, &payload); err != nil {

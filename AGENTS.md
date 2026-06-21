@@ -8,12 +8,8 @@ This document defines the strict architectural rules and constraints that all AI
 
 To reduce repeated directory scanning, agents may consult this short index describing the repository layout and where to find key concerns.
 
-- `cmd/` — application entrypoints and composition root (`cmd/app/main.go`).
-- `internal/transport/http/` — HTTP handlers, router, DTOs and response helpers.
-
 - `cmd/` — application entrypoints (`cmd/app/main.go`) (thin entrypoint; composition root moved to `internal/bootstrap/`).
 - `internal/bootstrap/` — composition root and dependency wiring (`internal/bootstrap/app.go`, `internal/bootstrap/worker.go`).
-
 - `internal/transport/http/` — HTTP handlers, router, DTOs and response helpers.
 - `internal/service/` — business logic / services.
 - `internal/repository/postgres/` — raw SQL repository implementations (pgx).
@@ -44,7 +40,7 @@ HTTP / CLI -> Service -> Repository -> PostgreSQL
 
 ### Domain Layer (`internal/domain/`)
 
-The Domain layer contains only business entities and interfaces (contracts). It is split into four focused packages — each owns exactly one concept:
+The Domain layer contains only business entities and interfaces (contracts). It is split into focused packages — each owns exactly one concept:
 
 | Package | Contents |
 |---|---|
@@ -52,6 +48,8 @@ The Domain layer contains only business entities and interfaces (contracts). It 
 | `internal/domain/role` | `Role` entity · `RoleRepository` |
 | `internal/domain/permission` | `Permission` entity · `PermissionRepository` · `PermissionService` |
 | `internal/domain/token` | `RefreshToken` entity · `RefreshTokenRepository` · `Manager` · `ManagerExtended` |
+| `internal/domain/userdevice` | `Device` entity · `Repository` |
+| `internal/domain/usersession` | `UserSession` entity · `SessionView` · `UserSessionRepository` |
 
 Cross-domain references use plain scalar types (`int64`, `string`) instead of importing sibling packages. This keeps the dependency graph acyclic — no domain package imports another domain package.
 
@@ -99,10 +97,10 @@ github.com/jackc/pgx/v5/pgxpool
 
 * **ORMs are STRICTLY PROHIBITED**:
 
-    * GORM
-    * Ent
-    * Bun
-    * Any other ORM
+  * GORM
+  * Ent
+  * Bun
+  * Any other ORM
 
 Only raw SQL with pgx is allowed.
 
@@ -238,8 +236,8 @@ Requirements:
 
 * Handle:
 
-    * `SIGINT`
-    * `SIGTERM`
+  * `SIGINT`
+  * `SIGTERM`
 
 * Shutdown timeout:
 
@@ -292,7 +290,43 @@ Important notes:
 - Services must call the `UserRepository` contract to increment `token_version` when performing global session invalidation events (e.g. password change, logout-all, admin force logout).
 - The JWT middleware (`internal/middleware/jwt.go`) MUST use a `UserService` or `UserRepository` to compare the token's `ver` claim with the current `token_version` and return `401 Unauthorized` on mismatch.
 
-`RefreshToken` now tracks lifecycle state (`active`, `revoked`, `expired`) and stores only a hashed refresh token value (`token_hash`). Refresh rotation must invalidate a refresh token immediately after it is used.
+`RefreshToken` tracks lifecycle state (`active`, `revoked`, `expired`) and stores only a hashed refresh token value (`token_hash`). It also carries rotation-chain fields:
+
+| Field | Description |
+|---|---|
+| `session_id` | FK to the stable `user_sessions` row this token belongs to |
+| `parent_token_id` | ID of the token this one replaced (nil for the first token in a chain) |
+| `replaced_by_token_id` | ID of the token that replaced this one (set atomically on rotation) |
+
+Refresh rotation must invalidate a refresh token immediately after it is used (atomic `Rotate` call in the repository).
+
+### Session Model
+
+Sessions are stable records that survive token rotation. A session is created once on login and lives until explicitly terminated or expired.
+
+- `UserSession` lives in `internal/domain/usersession`.
+- `Device` lives in `internal/domain/userdevice` and is resolved or created on each login using `(user_id, fingerprint)` as the unique key.
+- `SessionView` joins `UserSession` with device fields (`device_name`, `browser`, `os`) in a single repository query — the service layer must not issue separate queries to assemble this.
+
+```go
+// UserSessionRepository contract
+type UserSessionRepository interface {
+  Create(ctx context.Context, session *UserSession) error
+  GetByID(ctx context.Context, id int64) (*UserSession, error)
+  ListActiveByUserID(ctx context.Context, userID int64) ([]*SessionView, error)
+  Terminate(ctx context.Context, id int64) error
+  TerminateAll(ctx context.Context, userID int64) error
+  UpdateLastActivity(ctx context.Context, id int64, t time.Time) error
+}
+```
+
+Login flow:
+
+1. Validate credentials and email verification.
+2. Resolve or create the `Device` record (`GetByFingerprint` → `Create`).
+3. Create a `UserSession` linked to that device.
+4. Create the first `RefreshToken` in the rotation chain, linked to the session.
+5. Return access token + raw refresh token.
 
 ### Infrastructure Implementation
 
@@ -328,18 +362,18 @@ The application includes a secure password reset flow implemented according to t
 - Domain: new domain package `internal/domain/passwordreset` defines `Token` and the `Repository` interface (Create, GetByToken, MarkUsed, DeleteByUserID).
 - Repository: implementations live in `internal/repository/postgres` and perform raw SQL against the `password_reset_tokens` table. Repositories translate DB errors into `internal/errs` values.
 - Service: `PasswordResetService` (in `internal/service`) is responsible for:
-    - creating a single active reset token per user (old tokens are deleted),
-    - generating cryptographically secure tokens,
-    - rendering and sending the reset email via the `domain/mailer` contract,
-    - validating tokens (expiry and used-state),
-    - updating the user's hashed password, marking the token used, and revoking all refresh tokens for the user.
+  - creating a single active reset token per user (old tokens are deleted),
+  - generating cryptographically secure tokens,
+  - rendering and sending the reset email via the `domain/mailer` contract,
+  - validating tokens (expiry and used-state),
+  - updating the user's hashed password, marking the token used, terminating all sessions (`UserSessionRepository.TerminateAll`) and revoking all refresh tokens (`RefreshTokenRepository.RevokeAllByUserID`) for the user.
 - Transport: HTTP handlers expose two endpoints:
-    - `POST /api/v1/auth/forgot-password` — accepts `{"email": "..."}` and always responds 200 with a generic message (prevents account enumeration).
-    - `POST /api/v1/auth/reset-password` — accepts `{"token": "...", "new_password": "..."}` and performs the reset.
+  - `POST /api/v1/auth/forgot-password` — accepts `{"email": "..."}` and always responds 200 with a generic message (prevents account enumeration).
+  - `POST /api/v1/auth/reset-password` — accepts `{"token": "...", "new_password": "..."}` and performs the reset.
 
 Security notes:
 - Reset tokens are short-lived and single-use; services must check `expires_at` and `used_at`.
-- On successful password reset, all refresh tokens are revoked using the `RefreshTokenRepository` contract to force re-authentication.
+- On successful password reset, all sessions are terminated and all refresh tokens are revoked to force re-authentication.
 - Email sending failures during token creation are logged but do not cause the API to reveal token state to callers.
 - Administrators may also deactivate accounts (set `deactivated_at`); deactivated accounts must be denied login and token refresh and all sessions/tokens must be revoked.
 
@@ -347,10 +381,12 @@ Security notes:
 
 The system detects reuse of revoked refresh tokens (an indicator of stolen tokens). When detected, services must:
 
-- Immediately revoke all user sessions (`UserSessionRepository.RevokeAllByUserID`).
-- Revoke all refresh tokens for the user (`RefreshTokenRepository.RevokeAllByUserID`).
-- Publish an audit event named `audit.refresh_token_reuse_detected` containing `user_id`, `ip_address`, `user_agent`, and `token_hash`.
+- Immediately revoke all tokens belonging to the **affected session** (`RefreshTokenRepository.RevokeSessionTokens`).
+- Terminate the **affected session only** (`UserSessionRepository.Terminate`). Other sessions for the same user are left intact.
+- Publish an audit event named `audit.refresh_token_reuse_detected` containing `user_id`, `session_id`, `ip_address`, `user_agent`, and `token_hash`.
 - Optionally send a notification email to the affected user.
+
+> **Rationale:** Session-scoped revocation limits blast radius. A stolen token from one device should not force re-authentication on all the user's other devices. Full user-wide revocation remains available via `LogoutAll` / `DeactivateUser`.
 
 Consumers handling audit events should persist `audit.refresh_token_reuse_detected` entries to `audit_logs` for security investigation.
 
@@ -545,6 +581,9 @@ var (
 ErrUserNotFound       = errors.New("user not found")
 ErrInvalidCredentials = errors.New("invalid credentials")
 ErrUserAlreadyExists  = errors.New("user already exists")
+ErrDeviceNotFound     = errors.New("device not found")
+ErrSessionExpired     = errors.New("session has expired")
+ErrSessionRevoked     = errors.New("session has been revoked")
 )
 ```
 
@@ -553,9 +592,9 @@ Requirements:
 * Domain and service layers return domain errors.
 * Transport layer maps errors to:
 
-    * HTTP status codes
-    * API error codes
-    * Human-readable messages
+  * HTTP status codes
+  * API error codes
+  * Human-readable messages
 
 Error mapping must be centralized in:
 
@@ -629,5 +668,6 @@ The following rules are mandatory and must never be violated:
 * Do not place business logic inside HTTP handlers.
 * Do not introduce layer dependency violations.
 * **Keep `internal/docs/openapi.yaml` in sync with every endpoint change.**
+* **Never inject `*pgxpool.Pool` directly into service structs** — the pool is only allowed in repository constructors and `HealthService`.
 
 Any code generated by an AI agent must comply with these rules.

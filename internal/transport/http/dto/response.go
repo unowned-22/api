@@ -50,13 +50,15 @@ type MessageResponse struct {
 }
 
 type SessionResponse struct {
-	ID         int64  `json:"id"`
-	UserID     int64  `json:"user_id"`
-	DeviceName string `json:"device_name"`
-	UserAgent  string `json:"user_agent"`
-	IPAddress  string `json:"ip_address"`
-	CreatedAt  string `json:"created_at"`
-	LastUsedAt string `json:"last_used_at"`
+	ID             int64  `json:"id"`
+	UserID         int64  `json:"user_id"`
+	DeviceName     string `json:"device_name"`
+	Browser        string `json:"browser"`
+	OS             string `json:"os"`
+	Status         string `json:"status"`
+	CreatedAt      string `json:"created_at"`
+	LastActivityAt string `json:"last_activity_at"`
+	ExpiresAt      string `json:"expires_at"`
 }
 
 type SessionListResponse struct {

@@ -5,27 +5,41 @@ import (
 	"time"
 )
 
-// UserSession represents a user device or client connection.
+// SessionStatus defines the lifecycle states for sessions.
+type SessionStatus string
+
+const (
+	SessionStatusActive  SessionStatus = "active"
+	SessionStatusRevoked SessionStatus = "revoked"
+	SessionStatusExpired SessionStatus = "expired"
+)
+
+// UserSession represents a stable session tied to a device.
+// It is never mutated on token rotation — the refresh token chain owns that.
 type UserSession struct {
 	ID             int64
 	UserID         int64
-	RefreshTokenID int64
-	DeviceName     string
-	UserAgent      string
-	IPAddress      string
+	DeviceID       *int64 // nullable: existing sessions may not have a device
+	Status         SessionStatus
 	CreatedAt      time.Time
-	LastUsedAt     time.Time
-	RevokedAt      *time.Time
+	LastActivityAt time.Time
+	ExpiresAt      time.Time
+}
+
+// SessionView extends UserSession with denormalised device fields for list queries.
+type SessionView struct {
+	UserSession
+	DeviceName string
+	Browser    string
+	OS         string
 }
 
 // UserSessionRepository defines the contract for persisting and managing sessions.
-// Implementations live in the infrastructure/repository layer.
 type UserSessionRepository interface {
 	Create(ctx context.Context, session *UserSession) error
 	GetByID(ctx context.Context, id int64) (*UserSession, error)
-	GetByRefreshTokenID(ctx context.Context, refreshTokenID int64) (*UserSession, error)
-	ListActiveByUserID(ctx context.Context, userID int64) ([]*UserSession, error)
-	Update(ctx context.Context, session *UserSession) error
-	Revoke(ctx context.Context, id int64) error
-	RevokeAllByUserID(ctx context.Context, userID int64) error
+	ListActiveByUserID(ctx context.Context, userID int64) ([]*SessionView, error)
+	Terminate(ctx context.Context, id int64) error
+	TerminateAll(ctx context.Context, userID int64) error
+	UpdateLastActivity(ctx context.Context, id int64, t time.Time) error
 }

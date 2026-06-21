@@ -2,64 +2,71 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/domain/userdevice"
+	"github.com/unowned-22/api/internal/errs"
 )
 
-// UserDeviceRepository is the Postgres implementation of userdevice.Repository.
+// UserDeviceRepository is the PostgreSQL implementation of userdevice.Repository.
 type UserDeviceRepository struct {
 	db *pgxpool.Pool
 }
 
-// NewUserDeviceRepository creates a new repository.
+// NewUserDeviceRepository creates a new PostgreSQL implementation of UserDeviceRepository.
 func NewUserDeviceRepository(db *pgxpool.Pool) *UserDeviceRepository {
 	return &UserDeviceRepository{db: db}
 }
 
-// GetByUnique finds a device by user_id + fingerprint + browser + country.
-func (r *UserDeviceRepository) GetByUnique(ctx context.Context, userID int64, fingerprint, browser, country string) (*userdevice.Device, error) {
-
-	query := `SELECT id, user_id, fingerprint, browser, platform, country, city, ip, last_seen, created_at FROM user_devices WHERE user_id=$1 AND fingerprint=$2 AND browser=$3 AND country=$4`
+// GetByFingerprint returns the device matching user_id and fingerprint, or ErrDeviceNotFound.
+func (r *UserDeviceRepository) GetByFingerprint(ctx context.Context, userID int64, fingerprint string) (*userdevice.Device, error) {
+	query := `
+		SELECT id, user_id, fingerprint, device_name, browser, os, ip, first_seen_at, last_seen_at
+		FROM user_devices
+		WHERE user_id = $1 AND fingerprint = $2
+		LIMIT 1
+	`
 	var d userdevice.Device
-	err := r.db.QueryRow(ctx, query, userID, fingerprint, browser, country).
-		Scan(&d.ID, &d.UserID, &d.Fingerprint, &d.Browser, &d.Platform, &d.Country, &d.City, &d.IP, &d.LastSeen, &d.CreatedAt)
+	err := r.db.QueryRow(ctx, query, userID, fingerprint).
+		Scan(&d.ID, &d.UserID, &d.Fingerprint, &d.DeviceName, &d.Browser, &d.OS, &d.IP, &d.FirstSeenAt, &d.LastSeenAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, nil
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errs.ErrDeviceNotFound
 		}
-		return nil, fmt.Errorf("failed to query user_devices: %w", err)
+		return nil, fmt.Errorf("failed to get device by fingerprint: %w", err)
 	}
 	return &d, nil
 }
 
-// Create persists a new device.
+// Create persists a new device record and sets its ID.
 func (r *UserDeviceRepository) Create(ctx context.Context, d *userdevice.Device) error {
-
-	query := `INSERT INTO user_devices (user_id, fingerprint, browser, platform, country, city, ip, last_seen, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`
-	err := r.db.QueryRow(ctx, query, d.UserID, d.Fingerprint, d.Browser, d.Platform, d.Country, d.City, d.IP, d.LastSeen, d.CreatedAt).Scan(&d.ID)
+	query := `
+		INSERT INTO user_devices (user_id, fingerprint, device_name, browser, os, ip, first_seen_at, last_seen_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id
+	`
+	err := r.db.QueryRow(ctx, query,
+		d.UserID, d.Fingerprint, d.DeviceName, d.Browser, d.OS, d.IP, d.FirstSeenAt, d.LastSeenAt,
+	).Scan(&d.ID)
 	if err != nil {
-		return fmt.Errorf("failed to insert user_device: %w", err)
+		return fmt.Errorf("failed to create device: %w", err)
 	}
 	return nil
 }
 
-// UpdateLastSeen updates the last_seen timestamp for a device.
+// UpdateLastSeen updates last_seen_at for an existing device.
 func (r *UserDeviceRepository) UpdateLastSeen(ctx context.Context, id int64, t time.Time) error {
-
-	query := `UPDATE user_devices SET last_seen = $1 WHERE id = $2`
-	cmd, err := r.db.Exec(ctx, query, t, id)
+	query := `UPDATE user_devices SET last_seen_at = $1 WHERE id = $2`
+	_, err := r.db.Exec(ctx, query, t, id)
 	if err != nil {
-		return fmt.Errorf("failed to update last_seen: %w", err)
-	}
-	if cmd.RowsAffected() != 1 {
-		return fmt.Errorf("no device found to update last_seen")
+		return fmt.Errorf("failed to update device last_seen_at: %w", err)
 	}
 	return nil
 }
 
-// Compile-time check
+// Compile-time check that UserDeviceRepository satisfies the domain contract.
 var _ userdevice.Repository = (*UserDeviceRepository)(nil)

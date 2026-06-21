@@ -44,4 +44,9 @@ var (
 	// Stories
 	ErrStoryNotFound       = errors.New("story not found")
 	ErrInvalidStoryPayload = errors.New("invalid story payload")
+
+	// Device / session errors added for session-device refactor.
+	ErrDeviceNotFound = errors.New("device not found")
+	ErrSessionExpired = errors.New("session has expired")
+	ErrSessionRevoked = errors.New("session has been revoked")
 )
