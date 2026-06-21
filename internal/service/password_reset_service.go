@@ -150,7 +150,7 @@ func (s *passwordResetService) ResetPassword(ctx context.Context, token, newPass
 		return err
 	}
 
-	if err := s.userSessionRepo.RevokeAllByUserID(ctx, resetToken.UserID); err != nil {
+	if err := s.userSessionRepo.TerminateAll(ctx, resetToken.UserID); err != nil {
 		return err
 	}
 

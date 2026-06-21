@@ -79,6 +79,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		Email:      req.Email,
 		Password:   req.Password,
 		DeviceName: req.DeviceName,
+		OS:         req.OS,
 		UserAgent:  r.Header.Get("User-Agent"),
 		IPAddress:  getClientIP(r),
 	}
@@ -224,13 +225,15 @@ func (h *AuthHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	sessionDTOs := make([]dto.SessionResponse, len(sessions))
 	for i, s := range sessions {
 		sessionDTOs[i] = dto.SessionResponse{
-			ID:         s.ID,
-			UserID:     s.UserID,
-			DeviceName: s.DeviceName,
-			UserAgent:  s.UserAgent,
-			IPAddress:  s.IPAddress,
-			CreatedAt:  s.CreatedAt.Format(time.RFC3339),
-			LastUsedAt: s.LastUsedAt.Format(time.RFC3339),
+			ID:             s.ID,
+			UserID:         s.UserID,
+			DeviceName:     s.DeviceName,
+			Browser:        s.Browser,
+			OS:             s.OS,
+			Status:         string(s.Status),
+			CreatedAt:      s.CreatedAt.Format(time.RFC3339),
+			LastActivityAt: s.LastActivityAt.Format(time.RFC3339),
+			ExpiresAt:      s.ExpiresAt.Format(time.RFC3339),
 		}
 	}
 

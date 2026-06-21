@@ -103,7 +103,7 @@ http://localhost:8080/swagger/openapi.yaml
 
 The spec is embedded into the binary from `internal/docs/openapi.yaml` — no separate build step required.
 
-> **Note for contributors:** every new or changed endpoint must be reflected in `internal/docs/openapi.yaml` in the same PR. See `AGENTS.md` § 5 for the full checklist.
+> **Note for contributors:** every new or changed endpoint must be reflected in `internal/docs/openapi.yaml` in the same PR. See `AGENTS.md` § 6 for the full checklist.
 
 Swagger UI is **not** available when `APP_ENV=production`.
 
@@ -196,14 +196,23 @@ curl -X POST http://localhost:8080/api/v1/auth/register \
 
 ### 2. Authenticate (Login)
 
-Request a JWT access token and refresh token:
+Request a JWT access token and refresh token. The `device_name` and `os` fields are optional but recommended — they are used to identify the session in the session list.
+
+| Field | Required | Description |
+|---|---|---|
+| `email` | Yes | registered email |
+| `password` | Yes | account password |
+| `device_name` | No | human-readable device label, e.g. `"Chrome on macOS"` |
+| `os` | No | operating system, e.g. `"macOS 14"` |
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "user@example.com",
-    "password": "securepassword123"
+    "password": "securepassword123",
+    "device_name": "Chrome on macOS",
+    "os": "macOS 14"
   }'
 ```
 
@@ -220,13 +229,15 @@ Copy the `access_token` and `refresh_token` values from the response:
 }
 ```
 
+> **First login from a new device** triggers a notification email to the account owner.
+
 ---
 
 ### 3. Refresh Access Token
 
 Use a valid refresh token to get a new access token and a rotated refresh token. The old refresh token becomes invalid immediately after use.
 
-> Refresh tokens are stored securely in the database as a SHA-256 hash (`token_hash`). The raw token is never persisted.
+> Refresh tokens are stored securely in the database as a SHA-256 hash (`token_hash`). The raw token is never persisted. Each token belongs to a stable **session** — rotating the token does not create a new session.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/refresh \
@@ -249,9 +260,9 @@ curl -X POST http://localhost:8080/api/v1/auth/refresh \
 
 ---
 
-### 4. Logout (Revoke Refresh Token)
+### 4. Logout (Revoke Session)
 
-Revoke a refresh token:
+Revoke the current session and all its associated refresh tokens:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/logout \
@@ -275,12 +286,36 @@ curl -X POST http://localhost:8080/api/v1/auth/logout \
 
 ### 5. List Active Sessions (Protected Route)
 
-Use the JWT access token in the `Authorization` header:
+Returns all active, non-expired sessions for the authenticated user, with device information.
 
 ```bash
 curl -X GET http://localhost:8080/api/v1/auth/sessions \
   -H "Authorization: Bearer <PASTE_YOUR_ACCESS_TOKEN_HERE>"
 ```
+
+#### Successful Response
+
+```json
+{
+  "data": {
+    "sessions": [
+      {
+        "id": 42,
+        "user_id": 1,
+        "device_name": "Chrome on macOS",
+        "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "os": "macOS 14",
+        "status": "active",
+        "created_at": "2026-06-13T10:15:30Z",
+        "last_activity_at": "2026-06-13T11:20:00Z",
+        "expires_at": "2026-07-13T10:15:30Z"
+      }
+    ]
+  }
+}
+```
+
+---
 
 ### 5. Global Logout (Revoke All Sessions)
 
@@ -296,49 +331,7 @@ curl -X POST http://localhost:8080/api/v1/auth/logout-all \
 ```json
 {
   "data": {
-    "message": "all sessions revoked successfully"
-  }
-}
-```
-
-## Account disabling (Admin)
-
-Administrators or system processes can disable (deactivate) user accounts without deleting their data. When an account is deactivated:
-
-- Login is denied.
-- Refreshing access tokens is denied.
-- All active sessions and refresh tokens are revoked.
-- Protected endpoints return authorization errors for that user.
-
-To programmatically deactivate a user, call the service method `DeactivateUser`, which sets a `deactivated_at` timestamp and revokes sessions and tokens.
-
-### Refresh token reuse detection
-
-The service detects when a revoked refresh token is used again (possible token theft). On detection the system:
-
-- Revokes all active sessions and refresh tokens for the affected user.
-- Records a security audit event `audit.refresh_token_reuse_detected`.
-- Optionally notifies the user by email.
-
-If you see this event for a user, advise them to reset their password immediately.
-
-
-#### Successful Response
-
-```json
-{
-  "data": {
-    "sessions": [
-      {
-        "id": 42,
-        "user_id": 1,
-        "device_name": "Chrome on macOS",
-        "user_agent": "Mozilla/5.0",
-        "ip_address": "203.0.113.10",
-        "created_at": "2026-06-13T10:15:30Z",
-        "last_used_at": "2026-06-13T11:20:00Z"
-      }
-    ]
+    "message": "logged out from all devices"
   }
 }
 ```
@@ -347,7 +340,7 @@ If you see this event for a user, advise them to reset their password immediatel
 
 ### 6. Revoke Session (Protected Route)
 
-Revoke a session and its associated refresh token. Users can revoke their own sessions; administrators can revoke any session.
+Revoke a specific session and its associated refresh tokens. Users can revoke their own sessions; administrators can revoke any session.
 
 ```bash
 curl -X DELETE http://localhost:8080/api/v1/auth/sessions/42 \
@@ -483,7 +476,33 @@ curl -X POST http://localhost:8080/api/v1/auth/reset-password \
 }
 ```
 
-> **Note:** The `forgot-password` endpoint intentionally returns 200 OK regardless of whether the email exists to avoid leaking valid accounts. Reset tokens are short-lived and marked as used after a successful reset. All refresh tokens for the user are revoked on password change.
+> **Note:** The `forgot-password` endpoint intentionally returns 200 OK regardless of whether the email exists to avoid leaking valid accounts. Reset tokens are short-lived and marked as used after a successful reset. All sessions and refresh tokens for the user are revoked on password change.
+
+---
+
+## Account disabling (Admin)
+
+Administrators or system processes can disable (deactivate) user accounts without deleting their data. When an account is deactivated:
+
+- Login is denied.
+- Refreshing access tokens is denied.
+- All active sessions and refresh tokens are revoked.
+- Protected endpoints return authorization errors for that user.
+
+To programmatically deactivate a user, call the service method `DeactivateUser`, which sets a `deactivated_at` timestamp and terminates all sessions and refresh tokens.
+
+### Refresh token reuse detection
+
+The service detects when a revoked refresh token is used again (possible token theft). On detection the system:
+
+- Revokes all refresh tokens belonging to the **affected session**.
+- Terminates the **affected session only** — other sessions for the same user remain active.
+- Records a security audit event `audit.refresh_token_reuse_detected`.
+- Optionally notifies the user by email.
+
+> Only the compromised session is revoked, not all devices. This limits the impact of a stolen token while preserving the user's other active sessions. Use `LogoutAll` to force re-authentication across all devices.
+
+If you see this event for a user, advise them to review their active sessions and consider changing their password.
 
 ---
 
@@ -495,16 +514,16 @@ The API protects critical authentication endpoints against brute-force and crede
 
 Rate limits are applied per IP address and per email address (where applicable). Limits are configurable via environment variables:
 
-| Endpoint                                  | Limit | Default | Env Variable | Window Env Variable |
-|-------------------------------------------|---|---|---|---|
-| **POST /api/v1/auth/login**               | Per IP + Email | 5 attempts | `LOGIN_RATE_LIMIT` | `LOGIN_RATE_LIMIT_WINDOW` (default: 5m) |
-| **POST /api/v1/auth/register**            | Per IP + Email | 3 registrations | `REGISTER_RATE_LIMIT` | `REGISTER_RATE_LIMIT_WINDOW` (default: 1h) |
-| **POST /api/v1/auth/forgot-password**     | Per IP + Email | 3 requests | `FORGOT_PASSWORD_RATE_LIMIT` | `FORGOT_PASSWORD_RATE_LIMIT_WINDOW` (default: 15m) |
+| Endpoint | Limit | Default | Env Variable | Window Env Variable |
+|---|---|---|---|---|
+| **POST /api/v1/auth/login** | Per IP + Email | 5 attempts | `LOGIN_RATE_LIMIT` | `LOGIN_RATE_LIMIT_WINDOW` (default: 5m) |
+| **POST /api/v1/auth/register** | Per IP + Email | 3 registrations | `REGISTER_RATE_LIMIT` | `REGISTER_RATE_LIMIT_WINDOW` (default: 1h) |
+| **POST /api/v1/auth/forgot-password** | Per IP + Email | 3 requests | `FORGOT_PASSWORD_RATE_LIMIT` | `FORGOT_PASSWORD_RATE_LIMIT_WINDOW` (default: 15m) |
 | **POST /api/v1/auth/resend-verification** | Per IP + Email | 3 requests | `RESEND_VERIFICATION_RATE_LIMIT` | `RESEND_VERIFICATION_RATE_LIMIT_WINDOW` (default: 15m) |
-| **GET  /api/v1/auth/verify-email**        | Per IP | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
-| **POST /api/v1/auth/reset-password**      | Per IP | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
-| **POST /api/v1/auth/refresh**             | Global | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
-| **POST /api/v1/auth/logout**              | Global | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
+| **GET  /api/v1/auth/verify-email** | Per IP | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
+| **POST /api/v1/auth/reset-password** | Per IP | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
+| **POST /api/v1/auth/refresh** | Global | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
+| **POST /api/v1/auth/logout** | Global | Shared global limiter | `RATE_LIMIT` | `RATE_LIMIT_WINDOW` (default: 10 requests / 1h) |
 
 ### Rate Limit Response
 
