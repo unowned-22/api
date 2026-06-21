@@ -28,10 +28,10 @@ type UploadHandler struct {
 	userService user.UserService
 }
 
-func NewUploadHandler(storage domainstorage.ObjectStorage, bucket string, userService user.UserService) *UploadHandler {
+func NewUploadHandler(storage domainstorage.ObjectStorage, publicBucket string, userService user.UserService) *UploadHandler {
 	return &UploadHandler{
 		storage:     storage,
-		bucket:      bucket,
+		bucket:      publicBucket,
 		expiresIn:   15 * time.Minute,
 		userService: userService,
 	}
@@ -253,7 +253,7 @@ func (h *UploadHandler) UploadStoryMedia(w http.ResponseWriter, r *http.Request)
 	// build storage key: stories/{userID}/{uuid}/{filename}
 	key := path.Join("stories", fmt.Sprint(userID), uuid.New().String(), part.FileName())
 
-	// upload via the object storage interface
+	// upload into the PUBLIC bucket (app-uploads) under stories/ prefix; store only the key in DB
 	uploadReq := domainstorage.UploadRequest{
 		Bucket:      h.bucket,
 		Key:         key,
@@ -266,11 +266,24 @@ func (h *UploadHandler) UploadStoryMedia(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// generate a longer-lived GET URL (7 days)
-	url, err := h.storage.GetURL(r.Context(), h.bucket, key, 7*24*time.Hour)
-	if err != nil {
-		response.SendError(w, r, err)
-		return
+	// return a short-lived presigned URL for immediate preview (15 minutes).
+	// The higher-level PresignURL is exposed via domainstorage.Storage; try
+	// a type assertion first and fall back to GetURL if not available.
+	var url string
+	if s, ok := h.storage.(domainstorage.Storage); ok {
+		u, err := s.PresignURL(r.Context(), h.bucket, key, 15*time.Minute)
+		if err != nil {
+			response.SendError(w, r, err)
+			return
+		}
+		url = u
+	} else {
+		u, err := h.storage.GetURL(r.Context(), h.bucket, key, 15*time.Minute)
+		if err != nil {
+			response.SendError(w, r, err)
+			return
+		}
+		url = u
 	}
 
 	mediaType := "image"
@@ -278,5 +291,5 @@ func (h *UploadHandler) UploadStoryMedia(w http.ResponseWriter, r *http.Request)
 		mediaType = "video"
 	}
 
-	response.SendSuccess(w, http.StatusOK, dto.StoryMediaResponse{URL: url, MediaType: mediaType})
+	response.SendSuccess(w, http.StatusOK, dto.StoryMediaResponse{URL: url, Key: key, MediaType: mediaType})
 }

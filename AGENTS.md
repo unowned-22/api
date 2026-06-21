@@ -390,6 +390,19 @@ The system detects reuse of revoked refresh tokens (an indicator of stolen token
 
 Consumers handling audit events should persist `audit.refresh_token_reuse_detected` entries to `audit_logs` for security investigation.
 
+---
+
+Stories feature notes
+---------------------
+
+The project includes an experimental Stories feature implemented under `internal/domain/story`, `internal/service`, and `internal/repository/postgres/story_repository.go`.
+
+- Storage model: one DB row per user for stories; slides are stored as JSON; media keys are stored (private MinIO bucket) and presigned URLs are generated on read.
+- Feed & visibility: `ListFeed` currently filters out stories where the viewer is explicitly listed in `hidden_from_user_ids`. The `friends` and `close` visibility modes are not implemented because the social graph model (follows/friends/close) is not part of the codebase yet — these modes are currently treated equivalently to `everyone`.
+- TODO: implement social graph (`follows`/`friends` table and rules) and extend `ListFeed` SQL to apply friends/close filters.
+
+Agents making changes to Story code should preserve the one-row-per-user model and the private-media presign pattern unless a migration plan and data-backfill are provided.
+
 ## Transactional Outbox Pattern
 
 The application uses a Transactional Outbox to reliably publish domain events to external brokers (RabbitMQ) while keeping domain state changes and event persistence atomic.
