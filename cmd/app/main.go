@@ -42,6 +42,12 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
+		err = runMigrateUp()
+		if err != nil {
+			return err
+		}
+
 		return app.Run()
 	},
 }

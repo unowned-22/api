@@ -71,3 +71,18 @@ type UserSettingsResponse struct {
 	Theme             json.RawMessage `json:"theme"`
 	UpdatedAt         string          `json:"updated_at"`
 }
+
+type StoryResponse struct {
+	ID         int64             `json:"id"`
+	Visibility string            `json:"visibility"`
+	Duration   int               `json:"duration"`
+	HiddenFrom []int64           `json:"hidden_from"`
+	Slides     []json.RawMessage `json:"slides"`
+	CreatedAt  string            `json:"created_at"`
+	ExpiresAt  string            `json:"expires_at"`
+}
+
+type StoryMediaResponse struct {
+	URL       string `json:"url"`
+	MediaType string `json:"media_type"`
+}

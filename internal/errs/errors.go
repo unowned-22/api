@@ -40,4 +40,8 @@ var (
 	// ErrCoverNotFound is returned when a user attempts to delete a cover
 	// that has not been uploaded.
 	ErrCoverNotFound = errors.New("cover not found")
+
+	// Stories
+	ErrStoryNotFound       = errors.New("story not found")
+	ErrInvalidStoryPayload = errors.New("invalid story payload")
 )
