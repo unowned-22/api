@@ -6,28 +6,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/unowned-22/api/internal/domain/friendship"
 	"github.com/unowned-22/api/internal/domain/story"
 	"github.com/unowned-22/api/internal/errs"
 )
 
 type StoryService struct {
-	repo story.StoryRepository
+	repo          story.StoryRepository
+	friendshipSvc friendship.Service
 }
 
-func NewStoryService(repo story.StoryRepository) *StoryService {
-	return &StoryService{repo: repo}
-}
-
-func (s *StoryService) Feed(ctx context.Context, userID int64) ([]*story.Story, error) {
-	return s.repo.ListFeed(ctx, userID)
-}
-
-func (s *StoryService) AddView(ctx context.Context, viewerID int64, storyID int64, slideIndex *int) error {
-	return s.repo.AddView(ctx, viewerID, storyID, slideIndex)
-}
-
-func (s *StoryService) ListViewsByViewer(ctx context.Context, viewerID int64) (map[int64]map[int]bool, error) {
-	return s.repo.ListViewsByViewer(ctx, viewerID)
+func NewStoryService(repo story.StoryRepository, friendshipSvc friendship.Service) *StoryService {
+	return &StoryService{repo: repo, friendshipSvc: friendshipSvc}
 }
 
 func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []byte, visibility string, durationHours int, hiddenFrom []int64) (*story.Story, error) {
@@ -73,22 +63,6 @@ func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []b
 		}
 	}
 
-	// Enforce global per-user slide limit (20) by inspecting existing story
-	existing, err := s.repo.ListActiveByUser(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing stories: %w", err)
-	}
-	existingCount := 0
-	if len(existing) > 0 {
-		var exSlides []json.RawMessage
-		if err := json.Unmarshal(existing[0].Slides, &exSlides); err == nil {
-			existingCount = len(exSlides)
-		}
-	}
-	if existingCount+len(slides) > 20 {
-		return nil, errs.ErrInvalidStoryPayload
-	}
-
 	now := time.Now().UTC()
 	expiresAt := now.Add(time.Duration(durationHours) * time.Hour)
 
@@ -102,7 +76,7 @@ func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []b
 		ExpiresAt:         expiresAt,
 	}
 
-	if err := s.repo.Upsert(ctx, st); err != nil {
+	if err := s.repo.Create(ctx, st); err != nil {
 		return nil, fmt.Errorf("failed to persist story: %w", err)
 	}
 
@@ -113,23 +87,30 @@ func (s *StoryService) ListMyStories(ctx context.Context, userID int64) ([]*stor
 	return s.repo.ListActiveByUser(ctx, userID)
 }
 
-func (s *StoryService) Like(ctx context.Context, viewerID int64, storyID int64) error {
-	return s.repo.AddLike(ctx, viewerID, storyID)
-}
-
-func (s *StoryService) Unlike(ctx context.Context, viewerID int64, storyID int64) error {
-	return s.repo.RemoveLike(ctx, viewerID, storyID)
-}
-
-func (s *StoryService) Reply(ctx context.Context, viewerID int64, storyID int64, message string) error {
-	if message == "" {
-		return errs.ErrInvalidStoryPayload
+// ListVisibleStories returns stories of an author visible to viewer according to visibility rules.
+func (s *StoryService) ListVisibleStories(ctx context.Context, viewerID, authorID int64) ([]*story.Story, error) {
+	sts, err := s.repo.ListActiveByUser(ctx, authorID)
+	if err != nil {
+		return nil, err
 	}
-	return s.repo.AddReply(ctx, viewerID, storyID, message)
-}
-
-func (s *StoryService) ListReplies(ctx context.Context, storyID int64) ([]*story.Reply, error) {
-	return s.repo.ListReplies(ctx, storyID)
+	out := make([]*story.Story, 0)
+	for _, st := range sts {
+		switch st.Visibility {
+		case story.VisibilityEveryone:
+			out = append(out, st)
+		case story.VisibilityFriends:
+			isFriend, ferr := s.friendshipSvc.IsFriend(ctx, viewerID, authorID)
+			if ferr != nil {
+				return nil, ferr
+			}
+			if isFriend {
+				out = append(out, st)
+			}
+		case story.VisibilityClose:
+			// TODO: close-friends list not implemented in this task.
+		}
+	}
+	return out, nil
 }
 
 func (s *StoryService) Delete(ctx context.Context, userID int64, storyID int64) error {

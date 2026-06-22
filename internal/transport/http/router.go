@@ -51,6 +51,7 @@ func NewRouter(
 	uploadHandler *handler.UploadHandler,
 	healthHandler *handler.HealthHandler,
 	storyHandler *handler.StoryHandler,
+	friendshipHandler *handler.FriendshipHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
 	permissionService permission.PermissionService,
@@ -140,6 +141,16 @@ func NewRouter(
 			r.Post("/stories/{id}/unlike", storyHandler.Unlike)
 			r.Post("/stories/{id}/reply", storyHandler.Reply)
 			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/media", uploadHandler.UploadStoryMedia)
+
+			// Friends / subscriptions
+			r.Post("/friends/requests", friendshipHandler.SendRequest)
+			r.Post("/friends/requests/{id}/accept", friendshipHandler.Accept)
+			r.Post("/friends/requests/{id}/reject", friendshipHandler.Reject)
+			r.Post("/friends/requests/{id}/cancel", friendshipHandler.Cancel)
+			r.Delete("/friends/{id}", friendshipHandler.Remove)
+			r.Get("/friends", friendshipHandler.ListFriends)
+			r.Get("/friends/requests/incoming", friendshipHandler.ListIncoming)
+			r.Get("/friends/requests/outgoing", friendshipHandler.ListOutgoing)
 
 			// Role-gated: admin only.
 			r.Group(func(r chi.Router) {

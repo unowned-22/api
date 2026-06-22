@@ -29,6 +29,10 @@ const (
 	UserEmailVerified Name = "user.email_verified"
 	// EmailSend is used to request an email send via the outbox/worker pipeline.
 	EmailSend Name = "email.send"
+
+	// Friend events
+	FriendRequestReceived Name = "friend.request_received"
+	FriendRequestAccepted Name = "friend.request_accepted"
 )
 
 // Event is a unit of publication.
