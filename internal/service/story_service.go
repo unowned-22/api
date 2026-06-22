@@ -20,6 +20,18 @@ func NewStoryService(repo story.StoryRepository, friendshipSvc friendship.Servic
 	return &StoryService{repo: repo, friendshipSvc: friendshipSvc}
 }
 
+func (s *StoryService) Feed(ctx context.Context, userID int64) ([]*story.Story, error) {
+	return s.repo.ListFeed(ctx, userID)
+}
+
+func (s *StoryService) AddView(ctx context.Context, viewerID int64, storyID int64, slideIndex *int) error {
+	return s.repo.AddView(ctx, viewerID, storyID, slideIndex)
+}
+
+func (s *StoryService) ListViewsByViewer(ctx context.Context, viewerID int64) (map[int64]map[int]bool, error) {
+	return s.repo.ListViewsByViewer(ctx, viewerID)
+}
+
 func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []byte, visibility string, durationHours int, hiddenFrom []int64) (*story.Story, error) {
 	// validate visibility
 	switch visibility {
@@ -76,7 +88,7 @@ func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []b
 		ExpiresAt:         expiresAt,
 	}
 
-	if err := s.repo.Create(ctx, st); err != nil {
+	if err := s.repo.Upsert(ctx, st); err != nil {
 		return nil, fmt.Errorf("failed to persist story: %w", err)
 	}
 
@@ -111,6 +123,25 @@ func (s *StoryService) ListVisibleStories(ctx context.Context, viewerID, authorI
 		}
 	}
 	return out, nil
+}
+
+func (s *StoryService) Like(ctx context.Context, viewerID int64, storyID int64) error {
+	return s.repo.AddLike(ctx, viewerID, storyID)
+}
+
+func (s *StoryService) Unlike(ctx context.Context, viewerID int64, storyID int64) error {
+	return s.repo.RemoveLike(ctx, viewerID, storyID)
+}
+
+func (s *StoryService) Reply(ctx context.Context, viewerID int64, storyID int64, message string) error {
+	if message == "" {
+		return errs.ErrInvalidStoryPayload
+	}
+	return s.repo.AddReply(ctx, viewerID, storyID, message)
+}
+
+func (s *StoryService) ListReplies(ctx context.Context, storyID int64) ([]*story.Reply, error) {
+	return s.repo.ListReplies(ctx, storyID)
 }
 
 func (s *StoryService) Delete(ctx context.Context, userID int64, storyID int64) error {
