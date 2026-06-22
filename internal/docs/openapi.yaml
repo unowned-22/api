@@ -34,6 +34,149 @@ tags:
   - name: friends
     description: Friend requests, friendships and subscriptions
 
+paths:
+  /stories/feed:
+    get:
+      tags: [uploads]
+      summary: Get feed of visible stories for the authenticated user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of story rows
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StoryResponse'
+
+  /stories/me:
+    get:
+      tags: [uploads]
+      summary: Get my stories
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Array of story rows for the current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StoryResponse'
+
+  /stories:
+    post:
+      tags: [uploads]
+      summary: Publish or append slides to current user's story
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slides:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/StorySlide'
+                visibility:
+                  type: string
+                duration:
+                  type: integer
+                hidden_from:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: Published story row
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/StoryResponse'
+
+  /stories/{id}/view:
+    post:
+      tags: [uploads]
+      summary: Record a view for a story (or a slide)
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slide_index:
+                  type: integer
+      responses:
+        '204':
+          description: View recorded
+
+  /stories/{id}:
+    delete:
+      tags: [uploads]
+      summary: Delete a story row
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        '204':
+          description: Deleted
+
+  /stories/media:
+    post:
+      tags: [uploads]
+      summary: Upload a story media blob and get a storage key + preview URL
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Upload result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/StoryMediaResponse'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -461,6 +604,63 @@ components:
           enum: [default_storage_quota_bytes, default_bucket_policy, theme]
         value:
           type: object
+
+    # ── Stories ──────────────────────────────────────────────────────────────
+    StorySlide:
+      type: object
+      properties:
+        id:
+          type: string
+        background:
+          type: object
+        elements:
+          type: array
+          items:
+            type: object
+        text:
+          type: string
+        seen:
+          type: boolean
+
+    StoryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        author_name:
+          type: string
+        author_avatar:
+          type: string
+        visibility:
+          type: string
+        duration:
+          type: integer
+        hidden_from:
+          type: array
+          items:
+            type: integer
+        slides:
+          type: array
+          items:
+            $ref: '#/components/schemas/StorySlide'
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    StoryMediaResponse:
+      type: object
+      properties:
+        key:
+          type: string
+        url:
+          type: string
+        media_type:
+          type: string
 
     # ── Admin ───────────────────────────────────────────────────────────────────
     Permission:

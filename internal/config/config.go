@@ -64,6 +64,9 @@ type Config struct {
 	ForgotPasswordRateLimitWindow     time.Duration `envconfig:"FORGOT_PASSWORD_RATE_LIMIT_WINDOW"     default:"15m"`
 	ResendVerificationRateLimit       int           `envconfig:"RESEND_VERIFICATION_RATE_LIMIT"        default:"3"`
 	ResendVerificationRateLimitWindow time.Duration `envconfig:"RESEND_VERIFICATION_RATE_LIMIT_WINDOW" default:"15m"`
+
+	// Stories cleanup interval in minutes for background job removing expired stories
+	StoriesCleanupIntervalMinutes int `envconfig:"STORIES_CLEANUP_INTERVAL_MINUTES" default:"10"`
 }
 
 func Load() (*Config, error) {

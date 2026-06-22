@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
+	stor "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/middleware"
 	ws "github.com/unowned-22/api/internal/transport/ws"
@@ -94,6 +95,25 @@ func NewApp() (*App, error) {
 		worker := outboxworker.NewWorker(app.Repositories.Outbox, app.publisher, outboxworker.RetryPolicy{MaxRetries: 5, Interval: 1 * time.Second}, 50)
 		go worker.Start(ctxWorker)
 		app.outboxCancel = cancelWorker
+	}
+
+	// Start cleanup goroutine for expired stories (best-effort background job)
+	if app.Repositories != nil && app.Storage != nil {
+		if stor, ok := app.Storage.(*stor.MinIOStorage); ok {
+			ctxCleanup, cancelCleanup := context.WithCancel(context.Background())
+			StartCleanupExpired(ctxCleanup, app.Repositories.Story, stor, cfg.MinIOBucket, time.Duration(cfg.StoriesCleanupIntervalMinutes)*time.Minute)
+			// attach cancel to shutdown via outboxCancel slot
+			if app.outboxCancel == nil {
+				app.outboxCancel = cancelCleanup
+			} else {
+				// wrap both cancels
+				prev := app.outboxCancel
+				app.outboxCancel = func() {
+					prev()
+					cancelCleanup()
+				}
+			}
+		}
 	}
 
 	return app, nil

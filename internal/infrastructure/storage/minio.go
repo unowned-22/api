@@ -103,6 +103,13 @@ func (s *MinIOStorage) GetURL(ctx context.Context, bucket, key string, expires t
 		return "", err
 	}
 
+	// If this is the configured public bucket and a public endpoint is set,
+	// return a permanent public URL instead of a presigned URL.
+	if s.config.PublicBucket != "" && bucket == s.config.PublicBucket && strings.TrimSpace(s.config.PublicEndpoint) != "" {
+		base := strings.TrimSuffix(s.config.PublicEndpoint, "/")
+		return fmt.Sprintf("%s/%s/%s", base, bucket, key), nil
+	}
+
 	reqParams := make(url.Values)
 	url, err := s.client.PresignedGetObject(ctx, bucket, key, expires, reqParams)
 	if err != nil {
@@ -170,5 +177,10 @@ func (s *MinIOStorage) DeleteObject(ctx context.Context, bucketName, objectName 
 
 // PresignURL returns a presigned GET URL for the object.
 func (s *MinIOStorage) PresignURL(ctx context.Context, bucketName, objectName string, expiry time.Duration) (string, error) {
+	// For public bucket return permanent public URL (no query params).
+	if s.config.PublicBucket != "" && bucketName == s.config.PublicBucket && strings.TrimSpace(s.config.PublicEndpoint) != "" {
+		base := strings.TrimSuffix(s.config.PublicEndpoint, "/")
+		return fmt.Sprintf("%s/%s/%s", base, bucketName, objectName), nil
+	}
 	return s.GetURL(ctx, bucketName, objectName, expiry)
 }
