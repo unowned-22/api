@@ -25,7 +25,12 @@ func (r *UserSettingsRepository) Create(ctx context.Context, s *usersettings.Use
 		INSERT INTO user_settings (user_id, storage_quota_bytes, storage_used_bytes, bucket_name, theme, notification_preferences, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, NOW())
     `
-	if _, err := r.db.Exec(ctx, query, s.UserID, s.StorageQuotaBytes, s.StorageUsedBytes, s.BucketName, s.Theme, s.NotificationPreferences); err != nil {
+	// Ensure notification_preferences is not null to satisfy DB NOT NULL constraint.
+	prefs := s.NotificationPreferences
+	if len(prefs) == 0 {
+		prefs = json.RawMessage(`{}`)
+	}
+	if _, err := r.db.Exec(ctx, query, s.UserID, s.StorageQuotaBytes, s.StorageUsedBytes, s.BucketName, s.Theme, prefs); err != nil {
 		return fmt.Errorf("failed to create user_settings: %w", err)
 	}
 	return nil

@@ -1,1 +1,0 @@
--- no-op: reverting data backfill is not required

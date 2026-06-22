@@ -27,7 +27,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	adminHandler := handler.NewAdminHandler(svcs.User, svcs.Permission, svcs.Auth, svcs.SystemSettings, svcs.UserSettings)
 	healthHandler := handler.NewHealthHandler(svcs.Health)
 	uploadHandler := handler.NewUploadHandler(storage, cfg.MinIOBucket, svcs.User)
-	storyHandler := handler.NewStoryHandler(svcs.Story)
+	storyHandler := handler.NewStoryHandler(svcs.Story, storage, cfg.MinIOBucket, svcs.User)
 	friendshipHandler := handler.NewFriendshipHandler(svcs.Friendship)
 	notificationHandler := handler.NewNotificationHandler(svcs.Notification, hub)
 

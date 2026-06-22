@@ -99,11 +99,12 @@ func (h *EmailVerifiedHandler) Handle(ctx context.Context, payload []byte) error
 	// Persist initial user settings.
 	if h.userSettingsRepo != nil {
 		us := &domainusersettings.UserSettings{
-			UserID:            p.UserID,
-			StorageQuotaBytes: quotaBytes,
-			StorageUsedBytes:  0,
-			BucketName:        bucketName,
-			Theme:             json.RawMessage(`{}`),
+			UserID:                  p.UserID,
+			StorageQuotaBytes:       quotaBytes,
+			StorageUsedBytes:        0,
+			BucketName:              bucketName,
+			Theme:                   json.RawMessage(`{}`),
+			NotificationPreferences: json.RawMessage(`{}`),
 		}
 		if err := h.userSettingsRepo.Create(ctx, us); err != nil {
 			return fmt.Errorf("email_verified_handler: failed to create user_settings: %w", err)

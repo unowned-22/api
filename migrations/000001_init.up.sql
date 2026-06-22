@@ -46,6 +46,9 @@ CREATE INDEX IF NOT EXISTS idx_users_deactivated_at ON users(deactivated_at);
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT      NOT NULL,
+    session_id BIGINT,
+    parent_token_id BIGINT,
+    replaced_by_token_id BIGINT,
     token_hash TEXT        NOT NULL UNIQUE,
     expires_at TIMESTAMPTZ NOT NULL,
     status     VARCHAR(20) NOT NULL DEFAULT 'active',
@@ -124,12 +127,16 @@ CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_t
 CREATE TABLE IF NOT EXISTS user_sessions (
     id               BIGSERIAL    PRIMARY KEY,
     user_id          BIGINT       NOT NULL REFERENCES users(id)          ON DELETE CASCADE,
-    refresh_token_id BIGINT       NOT NULL REFERENCES refresh_tokens(id) ON DELETE CASCADE,
-    device_name      VARCHAR(255) NOT NULL,
-    user_agent       TEXT         NOT NULL,
-    ip_address       VARCHAR(45)  NOT NULL,
+    refresh_token_id BIGINT       NULL REFERENCES refresh_tokens(id) ON DELETE CASCADE,
+    device_id        BIGINT NULL,
+    device_name      VARCHAR(255) NULL,
+    status           text NOT NULL DEFAULT 'active',
+    user_agent       TEXT         NULL,
+    ip_address       VARCHAR(45)  NULL,
     created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    last_used_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    last_used_at     TIMESTAMPTZ  NULL DEFAULT NOW(),
+    last_activity_at timestamptz NOT NULL,
+    expires_at       timestamptz NOT NULL,
     revoked_at       TIMESTAMPTZ
 );
 
@@ -177,6 +184,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     storage_used_bytes  BIGINT      NOT NULL DEFAULT 0,
     bucket_name         VARCHAR(128),
     theme               JSONB       NOT NULL DEFAULT '{}',
+    notification_preferences JSONB  NOT NULL DEFAULT '{}',
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -185,13 +193,13 @@ CREATE TABLE user_devices (
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   fingerprint TEXT NOT NULL,
   browser TEXT NOT NULL,
-  platform TEXT,
-  country TEXT,
-  city TEXT,
   ip TEXT,
-  last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  device_name TEXT,
+  os TEXT,
+  first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (user_id, fingerprint, browser, country)
+  UNIQUE (user_id, fingerprint, browser)
 );
 
 CREATE TABLE stories (
@@ -205,4 +213,78 @@ CREATE TABLE stories (
  expires_at           TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE story_views (
+     id BIGSERIAL PRIMARY KEY,
+     viewer_id BIGINT NOT NULL,
+     story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+     slide_index INT,
+     viewed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS story_likes (
+   id BIGSERIAL PRIMARY KEY,
+   story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+    viewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    UNIQUE (story_id, viewer_id)
+);
+
+CREATE TABLE IF NOT EXISTS story_replies (
+     id BIGSERIAL PRIMARY KEY,
+     story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+    viewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+);
+
+CREATE TABLE friendships (
+     id            BIGSERIAL PRIMARY KEY,
+     requester_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     addressee_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     status        VARCHAR(16) NOT NULL DEFAULT 'pending',
+     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+     CONSTRAINT chk_friendship_not_self CHECK (requester_id <> addressee_id)
+);
+
+CREATE TABLE notifications (
+   id          BIGSERIAL PRIMARY KEY,
+   user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+   actor_id    BIGINT REFERENCES users(id) ON DELETE SET NULL,
+   type        VARCHAR(64) NOT NULL,
+   entity_type VARCHAR(64),
+   entity_id   BIGINT,
+   payload     JSONB,
+   is_read     BOOLEAN NOT NULL DEFAULT FALSE,
+   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX idx_stories_user_id_expires_at ON stories (user_id, expires_at);
+CREATE UNIQUE INDEX story_views_unique_idx ON story_views(viewer_id, story_id, slide_index);
+CREATE UNIQUE INDEX uq_friendships_pair ON friendships (requester_id, addressee_id);
+CREATE INDEX idx_friendships_addressee_pending ON friendships (addressee_id, status);
+CREATE INDEX idx_friendships_requester_pending ON friendships (requester_id, status);
+CREATE INDEX idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);
+
+ALTER TABLE stories
+    ADD CONSTRAINT stories_user_id_unique UNIQUE (user_id);
+
+ALTER TABLE refresh_tokens
+    ADD CONSTRAINT fk_refresh_tokens_parent
+        FOREIGN KEY (parent_token_id) REFERENCES refresh_tokens(id)
+            DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE refresh_tokens
+    ADD CONSTRAINT fk_refresh_tokens_replaced_by
+        FOREIGN KEY (replaced_by_token_id) REFERENCES refresh_tokens(id)
+            DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE refresh_tokens
+    ADD CONSTRAINT fk_refresh_tokens_session
+        FOREIGN KEY (session_id) REFERENCES user_sessions(id)
+            DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE user_sessions
+    ADD CONSTRAINT fk_user_sessions_device
+        FOREIGN KEY (device_id) REFERENCES user_devices(id)
+            DEFERRABLE INITIALLY DEFERRED;
