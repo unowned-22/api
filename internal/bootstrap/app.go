@@ -15,6 +15,7 @@ import (
 	stor "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/middleware"
+	ws "github.com/unowned-22/api/internal/transport/ws"
 	outboxworker "github.com/unowned-22/api/internal/worker/outbox"
 )
 
@@ -62,8 +63,9 @@ func NewApp() (*App, error) {
 	// Services
 	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache)
 
-	// Handlers
-	handlers := InitHandlers(cfg, svcs, minioStorage)
+	// Handlers + WS hub
+	hub := ws.NewHub()
+	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
 
 	// Server and limiters
 	srv, loginLimiter, registerLimiter, forgotLimiter, resendLimiter := NewServer(cfg, handlers, tokenManager, svcs, tokenVersionCache)

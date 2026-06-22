@@ -4,6 +4,7 @@ import (
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/transport/http/handler"
+	ws "github.com/unowned-22/api/internal/transport/ws"
 )
 
 type Handlers struct {
@@ -15,10 +16,11 @@ type Handlers struct {
 	Upload        *handler.UploadHandler
 	Story         *handler.StoryHandler
 	Friendship    *handler.FriendshipHandler
+	Notification  *handler.NotificationHandler
 }
 
 // InitHandlers wires HTTP handlers from services and infra.
-func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStorage) *Handlers {
+func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStorage, hub *ws.Hub) *Handlers {
 	authHandler := handler.NewAuthHandler(svcs.Auth)
 	passwordResetHandler := handler.NewPasswordResetHandler(svcs.PasswordReset)
 	userHandler := handler.NewUserHandler(svcs.User, svcs.UserSettings)
@@ -27,6 +29,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	uploadHandler := handler.NewUploadHandler(storage, cfg.MinIOBucket, svcs.User)
 	storyHandler := handler.NewStoryHandler(svcs.Story)
 	friendshipHandler := handler.NewFriendshipHandler(svcs.Friendship)
+	notificationHandler := handler.NewNotificationHandler(svcs.Notification, hub)
 
 	return &Handlers{
 		Auth:          authHandler,
@@ -37,5 +40,6 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 		Upload:        uploadHandler,
 		Story:         storyHandler,
 		Friendship:    friendshipHandler,
+		Notification:  notificationHandler,
 	}
 }

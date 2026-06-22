@@ -47,6 +47,28 @@ func (s *userSettingsService) UpdateMyTheme(ctx context.Context, userID int64, t
 	return s.repo.UpdateTheme(ctx, userID, theme)
 }
 
+func (s *userSettingsService) GetNotificationPreferences(ctx context.Context, userID int64) (json.RawMessage, error) {
+	prefs, err := s.repo.GetNotificationPreferences(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if prefs == nil || len(prefs) == 0 {
+		// default preferences: fail-open (true)
+		def := json.RawMessage([]byte(`{"story_published": true, "friend_request_received": true, "friend_request_accepted": true}`))
+		return def, nil
+	}
+	return prefs, nil
+}
+
+func (s *userSettingsService) UpdateMyNotificationPreferences(ctx context.Context, userID int64, prefs json.RawMessage) error {
+	// validate JSON
+	var tmp interface{}
+	if err := json.Unmarshal(prefs, &tmp); err != nil {
+		return fmt.Errorf("invalid notification preferences JSON: %w", err)
+	}
+	return s.repo.UpdateNotificationPreferences(ctx, userID, prefs)
+}
+
 func (s *userSettingsService) GetUserSettings(ctx context.Context, userID int64) (*usersettings.UserSettings, error) {
 	return s.repo.GetByUserID(ctx, userID)
 }

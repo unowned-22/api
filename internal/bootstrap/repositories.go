@@ -18,6 +18,7 @@ type Repositories struct {
 	SystemSettings *postgresRepo.SystemSettingsRepository
 	UserSettings   *postgresRepo.UserSettingsRepository
 	UserDevice     *postgresRepo.UserDeviceRepository
+	Notification   *postgresRepo.NotificationRepository
 	Outbox         domout.Repository
 	Story          *postgresRepo.StoryRepository
 	Friendship     *postgresRepo.FriendshipRepository
@@ -36,6 +37,7 @@ func InitRepositories(pool *pgxpool.Pool) *Repositories {
 		SystemSettings: postgresRepo.NewSystemSettingsRepository(pool),
 		UserSettings:   postgresRepo.NewUserSettingsRepository(pool),
 		UserDevice:     postgresRepo.NewUserDeviceRepository(pool),
+		Notification:   postgresRepo.NewNotificationRepository(pool),
 		Outbox:         outboxRepo.NewRepository(pool),
 		Story:          postgresRepo.NewStoryRepository(pool),
 		Friendship:     postgresRepo.NewFriendshipRepository(pool),
