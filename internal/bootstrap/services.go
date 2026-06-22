@@ -24,6 +24,7 @@ type Services struct {
 	SystemSettings systemsettings.Service
 	UserSettings   usersettings.Service
 	Story          *service.StoryService
+	Friendship     *service.FriendshipService
 }
 
 // InitServices constructs application services from repositories and infra.
@@ -61,7 +62,8 @@ func InitServices(
 	healthSvc := service.NewHealthService(pool)
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)
 	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)
-	storySvc := service.NewStoryService(repos.Story)
+	friendshipSvc := service.NewFriendshipService(repos.Friendship, outboxPublisher)
+	storySvc := service.NewStoryService(repos.Story, friendshipSvc)
 
 	return &Services{
 		Auth:           authSvc,
@@ -72,5 +74,6 @@ func InitServices(
 		SystemSettings: systemSettingsSvc,
 		UserSettings:   userSettingsSvc,
 		Story:          storySvc,
+		Friendship:     friendshipSvc,
 	}
 }

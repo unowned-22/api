@@ -6,16 +6,18 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/unowned-22/api/internal/domain/friendship"
 	"github.com/unowned-22/api/internal/domain/story"
 	"github.com/unowned-22/api/internal/errs"
 )
 
 type StoryService struct {
-	repo story.StoryRepository
+	repo          story.StoryRepository
+	friendshipSvc friendship.Service
 }
 
-func NewStoryService(repo story.StoryRepository) *StoryService {
-	return &StoryService{repo: repo}
+func NewStoryService(repo story.StoryRepository, friendshipSvc friendship.Service) *StoryService {
+	return &StoryService{repo: repo, friendshipSvc: friendshipSvc}
 }
 
 func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []byte, visibility string, durationHours int, hiddenFrom []int64) (*story.Story, error) {
@@ -83,6 +85,32 @@ func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []b
 
 func (s *StoryService) ListMyStories(ctx context.Context, userID int64) ([]*story.Story, error) {
 	return s.repo.ListActiveByUser(ctx, userID)
+}
+
+// ListVisibleStories returns stories of an author visible to viewer according to visibility rules.
+func (s *StoryService) ListVisibleStories(ctx context.Context, viewerID, authorID int64) ([]*story.Story, error) {
+	sts, err := s.repo.ListActiveByUser(ctx, authorID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*story.Story, 0)
+	for _, st := range sts {
+		switch st.Visibility {
+		case story.VisibilityEveryone:
+			out = append(out, st)
+		case story.VisibilityFriends:
+			isFriend, ferr := s.friendshipSvc.IsFriend(ctx, viewerID, authorID)
+			if ferr != nil {
+				return nil, ferr
+			}
+			if isFriend {
+				out = append(out, st)
+			}
+		case story.VisibilityClose:
+			// TODO: close-friends list not implemented in this task.
+		}
+	}
+	return out, nil
 }
 
 func (s *StoryService) Delete(ctx context.Context, userID int64, storyID int64) error {

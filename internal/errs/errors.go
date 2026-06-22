@@ -49,4 +49,12 @@ var (
 	ErrDeviceNotFound = errors.New("device not found")
 	ErrSessionExpired = errors.New("session has expired")
 	ErrSessionRevoked = errors.New("session has been revoked")
+
+	// Friendship errors
+	ErrFriendshipNotFound     = errors.New("friendship not found")
+	ErrFriendshipAlreadyExist = errors.New("friendship already exists or pending")
+	ErrCannotFriendYourself   = errors.New("cannot send friendship request to yourself")
+	ErrNotAddressee           = errors.New("only addressee can perform this action")
+	ErrNotRequester           = errors.New("only requester can perform this action")
+	ErrNotFriend              = errors.New("users are not friends")
 )

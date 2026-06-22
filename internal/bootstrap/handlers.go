@@ -14,6 +14,7 @@ type Handlers struct {
 	Health        *handler.HealthHandler
 	Upload        *handler.UploadHandler
 	Story         *handler.StoryHandler
+	Friendship    *handler.FriendshipHandler
 }
 
 // InitHandlers wires HTTP handlers from services and infra.
@@ -25,6 +26,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	healthHandler := handler.NewHealthHandler(svcs.Health)
 	uploadHandler := handler.NewUploadHandler(storage, cfg.MinIOBucket, svcs.User)
 	storyHandler := handler.NewStoryHandler(svcs.Story)
+	friendshipHandler := handler.NewFriendshipHandler(svcs.Friendship)
 
 	return &Handlers{
 		Auth:          authHandler,
@@ -34,5 +36,6 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 		Health:        healthHandler,
 		Upload:        uploadHandler,
 		Story:         storyHandler,
+		Friendship:    friendshipHandler,
 	}
 }
