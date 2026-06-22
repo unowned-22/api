@@ -132,10 +132,15 @@ func NewRouter(
 			r.Post("/users/me/cover", uploadHandler.UploadCover)
 			r.Delete("/users/me/avatar", uploadHandler.DeleteAvatar)
 			r.Delete("/users/me/cover", uploadHandler.DeleteCover)
-			r.Post("/stories", storyHandler.Publish)
+			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories", storyHandler.Publish)
 			r.Get("/stories/me", storyHandler.ListMine)
+			r.Get("/stories/feed", storyHandler.Feed)
 			r.Delete("/stories/{id}", storyHandler.Delete)
-			r.Post("/stories/media", uploadHandler.UploadStoryMedia)
+			r.Post("/stories/{id}/view", storyHandler.View)
+			r.Post("/stories/{id}/like", storyHandler.Like)
+			r.Post("/stories/{id}/unlike", storyHandler.Unlike)
+			r.Post("/stories/{id}/reply", storyHandler.Reply)
+			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/media", uploadHandler.UploadStoryMedia)
 
 			// Friends / subscriptions
 			r.Post("/friends/requests", friendshipHandler.SendRequest)

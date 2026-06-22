@@ -75,16 +75,20 @@ type UserSettingsResponse struct {
 }
 
 type StoryResponse struct {
-	ID         int64             `json:"id"`
-	Visibility string            `json:"visibility"`
-	Duration   int               `json:"duration"`
-	HiddenFrom []int64           `json:"hidden_from"`
-	Slides     []json.RawMessage `json:"slides"`
-	CreatedAt  string            `json:"created_at"`
-	ExpiresAt  string            `json:"expires_at"`
+	ID           int64             `json:"id"`
+	UserID       int64             `json:"user_id"`
+	AuthorName   string            `json:"author_name"`
+	AuthorAvatar string            `json:"author_avatar"`
+	Visibility   string            `json:"visibility"`
+	Duration     int               `json:"duration"`
+	HiddenFrom   []int64           `json:"hidden_from"`
+	Slides       []json.RawMessage `json:"slides"`
+	CreatedAt    string            `json:"created_at"`
+	ExpiresAt    string            `json:"expires_at"`
 }
 
 type StoryMediaResponse struct {
 	URL       string `json:"url"`
+	Key       string `json:"key"`
 	MediaType string `json:"media_type"`
 }

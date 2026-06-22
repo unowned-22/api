@@ -66,6 +66,9 @@ func InitInfrastructure(cfg *config.Config) (
 		}
 	}
 
+	// Private bucket removed; stories and other uploads are stored in the
+	// public bucket under appropriate prefixes (e.g. stories/, avatars/).
+
 	publisher, err = queue.New(queue.Config{URL: cfg.RabbitMQURL, Exchange: cfg.RabbitMQExchange})
 	if err != nil {
 		pool.Close()
