@@ -33,6 +33,8 @@ const (
 	// Friend events
 	FriendRequestReceived Name = "friend.request_received"
 	FriendRequestAccepted Name = "friend.request_accepted"
+	// StoryPublished is emitted when a user publishes a story
+	StoryPublished Name = "story.published"
 )
 
 // Event is a unit of publication.

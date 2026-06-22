@@ -4,6 +4,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/auth"
 	"github.com/unowned-22/api/internal/config"
+	"github.com/unowned-22/api/internal/domain/notification"
 	domainstorage "github.com/unowned-22/api/internal/domain/storage"
 	"github.com/unowned-22/api/internal/domain/systemsettings"
 	"github.com/unowned-22/api/internal/domain/token"
@@ -25,6 +26,7 @@ type Services struct {
 	UserSettings   usersettings.Service
 	Story          *service.StoryService
 	Friendship     *service.FriendshipService
+	Notification   notification.Service
 }
 
 // InitServices constructs application services from repositories and infra.
@@ -64,6 +66,7 @@ func InitServices(
 	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)
 	friendshipSvc := service.NewFriendshipService(repos.Friendship, outboxPublisher)
 	storySvc := service.NewStoryService(repos.Story, friendshipSvc)
+	notifSvc := service.NewNotificationService(repos.Notification)
 
 	return &Services{
 		Auth:           authSvc,
@@ -75,5 +78,6 @@ func InitServices(
 		UserSettings:   userSettingsSvc,
 		Story:          storySvc,
 		Friendship:     friendshipSvc,
+		Notification:   notifSvc,
 	}
 }

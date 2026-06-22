@@ -13,7 +13,7 @@ import (
 type Config struct {
 	AppPort            string `envconfig:"APP_PORT" default:"8080"`
 	AppEnv             string `envconfig:"APP_ENV" default:"development"`
-	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS" default:"http://localhost:3222"`
+	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS"`
 
 	RateLimitRPS       float64 `envconfig:"RATE_LIMIT_RPS" default:"10"`
 	RateLimitBurst     int     `envconfig:"RATE_LIMIT_BURST" default:"20"`
@@ -28,18 +28,10 @@ type Config struct {
 	AppName      string `envconfig:"APP_NAME" default:"App"`
 	AppURL       string `envconfig:"APP_URL" default:"http://localhost:3222"`
 
-	RabbitMQURL      string `envconfig:"RABBITMQ_URL"      default:"amqp://rbmq:rbmq@rabbitmq:5672/"`
-	RabbitMQExchange string `envconfig:"RABBITMQ_EXCHANGE" default:"app.events"`
-	RabbitMQQueue    string `envconfig:"RABBITMQ_QUEUE"    default:"app.worker"`
-
-	// RabbitMQDeadLetterExchange is the durable direct exchange that receives
-	// messages Nack'd by worker handlers (requeue=false). Defaults to "app.dlx".
-	// Set to empty string to disable DLX declaration (not recommended for production).
-	RabbitMQDeadLetterExchange string `envconfig:"RABBITMQ_DLX"             default:"app.dlx"`
-
-	// RabbitMQDeadLetterRoutingKey is both the routing key used when publishing
-	// to the DLX and the name of the dead-letter queue that is auto-declared.
-	// Defaults to "app.worker.dead".
+	RabbitMQURL                  string `envconfig:"RABBITMQ_URL"`
+	RabbitMQExchange             string `envconfig:"RABBITMQ_EXCHANGE" default:"app.events"`
+	RabbitMQQueue                string `envconfig:"RABBITMQ_QUEUE"    default:"app.worker"`
+	RabbitMQDeadLetterExchange   string `envconfig:"RABBITMQ_DLX"             default:"app.dlx"`
 	RabbitMQDeadLetterRoutingKey string `envconfig:"RABBITMQ_DLX_ROUTING_KEY" default:"app.worker.dead"`
 
 	DBHost    string `envconfig:"DB_HOST"`
@@ -49,18 +41,17 @@ type Config struct {
 	DBName    string `envconfig:"DB_NAME"`
 	DBSSLMode string `envconfig:"DB_SSL_MODE" default:"disable"`
 
-	MinIOEndpoint  string `envconfig:"MINIO_ENDPOINT"    default:"minio:9000"`
-	MinIOAccessKey string `envconfig:"MINIO_ACCESS_KEY"  default:"studio-minio"`
-	MinIOSecretKey string `envconfig:"MINIO_SECRET_KEY"  default:"studio-minio"`
-	MinIOUseSSL    bool   `envconfig:"MINIO_USE_SSL"     default:"false"`
-	MinIORegion    string `envconfig:"MINIO_REGION"      default:"us-east-1"`
-	MinIOBucket    string `envconfig:"MINIO_BUCKET"      default:"app-uploads"`
-	// Public endpoint used to construct permanent public URLs for stored objects.
-	StoragePublicEndpoint string `envconfig:"STORAGE_PUBLIC_ENDPOINT" default:"http://s3.localhost"`
+	MinIOEndpoint         string `envconfig:"MINIO_ENDPOINT"`
+	MinIOAccessKey        string `envconfig:"MINIO_ACCESS_KEY"`
+	MinIOSecretKey        string `envconfig:"MINIO_SECRET_KEY"`
+	MinIOUseSSL           bool   `envconfig:"MINIO_USE_SSL"`
+	MinIORegion           string `envconfig:"MINIO_REGION"`
+	MinIOBucket           string `envconfig:"MINIO_BUCKET"`
+	StoragePublicEndpoint string `envconfig:"STORAGE_PUBLIC_ENDPOINT"`
 
 	JWTSecret       string        `envconfig:"JWT_SECRET"`
-	JWTIssuer       string        `envconfig:"JWT_ISSUER"   default:"api-service"`
-	JWTAudience     string        `envconfig:"JWT_AUDIENCE" default:"client-app"`
+	JWTIssuer       string        `envconfig:"JWT_ISSUER"`
+	JWTAudience     string        `envconfig:"JWT_AUDIENCE"`
 	AccessTokenTTL  time.Duration `envconfig:"ACCESS_TOKEN_TTL"  default:"15m"`
 	RefreshTokenTTL time.Duration `envconfig:"REFRESH_TOKEN_TTL" default:"720h"`
 	RedisURL        string        `envconfig:"REDIS_URL" default:""`

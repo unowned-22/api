@@ -369,6 +369,72 @@ components:
         theme:
           type: object
 
+    # ── Notifications ───────────────────────────────────────────────────────
+    NotificationPreferencesRequest:
+      type: object
+      description: JSON object with boolean flags per notification type. Missing keys default to true.
+      example:
+        story_published: true
+        friend_request_received: true
+        friend_request_accepted: true
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        user_id:
+          type: integer
+          format: int64
+          example: 2
+        actor_id:
+          type: integer
+          format: int64
+          example: 1
+        type:
+          type: string
+          example: story_published
+        entity_type:
+          type: string
+          example: story
+        entity_id:
+          type: integer
+          format: int64
+          example: 42
+        payload:
+          type: object
+          description: Event-specific payload for client rendering
+        is_read:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-13T12:00:00Z"
+
+    NotificationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          format: int64
+          example: 5
+        totalPages:
+          type: integer
+          example: 1
+
     AdminUpdateQuotaRequest:
       type: object
       required: [storage_quota_bytes]
@@ -801,6 +867,164 @@ paths:
                     $ref: '#/components/schemas/UserSettings'
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/notifications:
+    get:
+      tags: [users]
+      summary: List current user's notifications
+      description: Returns paginated list of notifications for the authenticated user.
+      operationId: notificationsList
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            example: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+      responses:
+        "200":
+          description: Notifications list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/notifications/unread-count:
+    get:
+      tags: [users]
+      summary: Get unread notifications count
+      operationId: notificationsUnreadCount
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      unread:
+                        type: integer
+                        format: int64
+                        example: 3
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/notifications/{id}/read:
+    post:
+      tags: [users]
+      summary: Mark a notification as read
+      operationId: notificationsMarkRead
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: ok
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/notifications/read-all:
+    post:
+      tags: [users]
+      summary: Mark all notifications as read
+      operationId: notificationsMarkAllRead
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+              example:
+                data:
+                  message: ok
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /ws/notifications:
+    get:
+      tags: [users]
+      summary: WebSocket upgrade for realtime notifications
+      description: |
+        Upgrade to a WebSocket connection to receive realtime notifications. Use the same
+        Bearer token used for HTTP endpoints in the `Authorization` header when performing the upgrade.
+        Messages are sent from server to client and follow the `Notification` schema.
+      operationId: wsNotificationsSubscribe
+      security:
+        - BearerAuth: []
+      responses:
+        "101":
+          description: Switching Protocols — WebSocket established
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    /api/v1/users/me/settings/notifications:
+      patch:
+        tags: [users]
+        summary: Update current user's notification preferences
+        description: Update per-type notification preferences. Missing keys are treated as `true` (fail-open).
+        operationId: usersUpdateNotificationPreferences
+        security:
+          - BearerAuth: []
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferencesRequest'
+        responses:
+          "200":
+            description: Preferences updated
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+                example:
+                  data:
+                    message: notification preferences updated
+          "400": { $ref: '#/components/responses/400BadRequest' }
+          "401": { $ref: '#/components/responses/401Unauthorized' }
+          "422": { $ref: '#/components/responses/422Validation' }
+          "500": { $ref: '#/components/responses/500Internal' }
 
     patch:
       tags: [users]

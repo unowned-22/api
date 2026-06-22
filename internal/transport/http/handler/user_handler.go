@@ -180,3 +180,24 @@ func (h *UserHandler) UpdateMySettings(w http.ResponseWriter, r *http.Request) {
 
 	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "theme updated"})
 }
+
+// UpdateMyNotificationPreferences updates the authenticated user's notification preferences.
+func (h *UserHandler) UpdateMyNotificationPreferences(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	var raw json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		response.SendBadRequest(w, "invalid request body")
+		return
+	}
+
+	if err := h.settingsService.UpdateMyNotificationPreferences(r.Context(), userID, raw); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "notification preferences updated"})
+}

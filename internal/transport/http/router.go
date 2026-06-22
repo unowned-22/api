@@ -52,6 +52,7 @@ func NewRouter(
 	healthHandler *handler.HealthHandler,
 	storyHandler *handler.StoryHandler,
 	friendshipHandler *handler.FriendshipHandler,
+	notificationHandler *handler.NotificationHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
 	permissionService permission.PermissionService,
@@ -122,6 +123,7 @@ func NewRouter(
 			r.Put("/users/me/password", authHandler.ChangePassword)
 			r.Get("/users/me/settings", userHandler.GetMySettings)
 			r.Patch("/users/me/settings", userHandler.UpdateMySettings)
+			r.Patch("/users/me/settings/notifications", userHandler.UpdateMyNotificationPreferences)
 			// List users (requires users.read permission)
 			r.With(middleware.RequirePermission(permissionService, userService, "users.read")).Get("/users", userHandler.List)
 			r.Get("/auth/sessions", authHandler.ListSessions)
@@ -136,6 +138,13 @@ func NewRouter(
 			r.Get("/stories/me", storyHandler.ListMine)
 			r.Delete("/stories/{id}", storyHandler.Delete)
 			r.Post("/stories/media", uploadHandler.UploadStoryMedia)
+
+			// Notifications
+			r.Get("/notifications", notificationHandler.List)
+			r.Get("/notifications/unread-count", notificationHandler.UnreadCount)
+			r.Post("/notifications/{id}/read", notificationHandler.MarkRead)
+			r.Post("/notifications/read-all", notificationHandler.MarkAllRead)
+			r.Get("/ws/notifications", notificationHandler.Subscribe)
 
 			// Friends / subscriptions
 			r.Post("/friends/requests", friendshipHandler.SendRequest)
