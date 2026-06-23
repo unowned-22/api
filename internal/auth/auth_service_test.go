@@ -253,6 +253,15 @@ func (m *mockUserRepo) Count(ctx context.Context) (int64, error) {
 	return int64(len(m.idMap)), nil
 }
 
+func (m *mockUserRepo) GetByUsername(ctx context.Context, username string) (*domainUser.User, error) {
+	for _, u := range m.idMap {
+		if u.Username == username {
+			return u, nil
+		}
+	}
+	return nil, errs.ErrUserNotFound
+}
+
 // ── mock: RefreshTokenRepository ─────────────────────────────────────────────
 
 type mockRefreshTokenRepo struct {

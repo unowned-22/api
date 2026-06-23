@@ -200,3 +200,12 @@ func (r *FriendshipRepository) GetFriendIDs(ctx context.Context, userID int64) (
 	}
 	return out, nil
 }
+
+func (r *FriendshipRepository) CountFriends(ctx context.Context, userID int64) (int64, error) {
+	query := `SELECT COUNT(*) FROM friendships WHERE (requester_id = $1 OR addressee_id = $1) AND status = 'accepted'`
+	var cnt int64
+	if err := r.db.QueryRow(ctx, query, userID).Scan(&cnt); err != nil {
+		return 0, fmt.Errorf("failed to count friends: %w", err)
+	}
+	return cnt, nil
+}

@@ -16,6 +16,7 @@ type Handlers struct {
 	Upload        *handler.UploadHandler
 	Story         *handler.StoryHandler
 	Friendship    *handler.FriendshipHandler
+	Profile       *handler.ProfileHandler
 	Notification  *handler.NotificationHandler
 }
 
@@ -29,6 +30,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	uploadHandler := handler.NewUploadHandler(storage, cfg.MinIOBucket, svcs.User)
 	storyHandler := handler.NewStoryHandler(svcs.Story, storage, cfg.MinIOBucket, svcs.User)
 	friendshipHandler := handler.NewFriendshipHandler(svcs.Friendship)
+	profileHandler := handler.NewProfileHandler(svcs.Profile)
 	notificationHandler := handler.NewNotificationHandler(svcs.Notification, hub)
 
 	return &Handlers{
@@ -40,6 +42,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 		Upload:        uploadHandler,
 		Story:         storyHandler,
 		Friendship:    friendshipHandler,
+		Profile:       profileHandler,
 		Notification:  notificationHandler,
 	}
 }

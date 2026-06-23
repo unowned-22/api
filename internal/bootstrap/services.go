@@ -26,6 +26,7 @@ type Services struct {
 	UserSettings   usersettings.Service
 	Story          *service.StoryService
 	Friendship     *service.FriendshipService
+	Profile        *service.ProfileService
 	Notification   notification.Service
 }
 
@@ -67,6 +68,7 @@ func InitServices(
 	friendshipSvc := service.NewFriendshipService(repos.Friendship, outboxPublisher)
 	storySvc := service.NewStoryService(repos.Story, friendshipSvc)
 	notifSvc := service.NewNotificationService(repos.Notification)
+	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
 
 	return &Services{
 		Auth:           authSvc,
@@ -78,6 +80,7 @@ func InitServices(
 		UserSettings:   userSettingsSvc,
 		Story:          storySvc,
 		Friendship:     friendshipSvc,
+		Profile:        profileSvc,
 		Notification:   notifSvc,
 	}
 }

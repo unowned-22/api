@@ -255,17 +255,17 @@ func (h *StoryHandler) Reply(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, _ := strconv.ParseInt(idStr, 10, 64)
 	var payload struct {
-		message string `json:"message"`
+		Message string `json:"message"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		response.SendBadRequest(w, "invalid request body")
 		return
 	}
-	if payload.message == "" {
+	if payload.Message == "" {
 		response.SendBadRequest(w, "message is required")
 		return
 	}
-	if err := h.storyService.Reply(r.Context(), userID, id, payload.message); err != nil {
+	if err := h.storyService.Reply(r.Context(), userID, id, payload.Message); err != nil {
 		response.SendError(w, r, err)
 		return
 	}

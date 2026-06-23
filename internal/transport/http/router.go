@@ -52,6 +52,7 @@ func NewRouter(
 	healthHandler *handler.HealthHandler,
 	storyHandler *handler.StoryHandler,
 	friendshipHandler *handler.FriendshipHandler,
+	profileHandler *handler.ProfileHandler,
 	notificationHandler *handler.NotificationHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
@@ -162,6 +163,9 @@ func NewRouter(
 			r.Get("/friends", friendshipHandler.ListFriends)
 			r.Get("/friends/requests/incoming", friendshipHandler.ListIncoming)
 			r.Get("/friends/requests/outgoing", friendshipHandler.ListOutgoing)
+
+			// Public profile by username
+			r.Get("/users/{username}", profileHandler.GetByUsername)
 
 			// Role-gated: admin only.
 			r.Group(func(r chi.Router) {

@@ -39,6 +39,8 @@ type Repository interface {
 	IsFriend(ctx context.Context, userA, userB int64) (bool, error)
 	IsSubscriber(ctx context.Context, requesterID, addresseeID int64) (bool, error)
 	GetFriendIDs(ctx context.Context, userID int64) ([]int64, error)
+	// CountFriends returns the total number of accepted friends for a user.
+	CountFriends(ctx context.Context, userID int64) (int64, error)
 }
 
 type Service interface {

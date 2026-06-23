@@ -38,9 +38,20 @@ func (m *mockRepo) GetByID(ctx context.Context, id int64) (*story.Story, error) 
 }
 func (m *mockRepo) Delete(ctx context.Context, id int64) error { return nil }
 
+// Additional methods required by the StoryRepository interface
+func (m *mockRepo) AddLike(ctx context.Context, viewerID int64, storyID int64) error    { return nil }
+func (m *mockRepo) RemoveLike(ctx context.Context, viewerID int64, storyID int64) error { return nil }
+func (m *mockRepo) AddReply(ctx context.Context, viewerID int64, storyID int64, message string) error {
+	return nil
+}
+func (m *mockRepo) ListReplies(ctx context.Context, storyID int64) ([]*story.Reply, error) {
+	return nil, nil
+}
+func (m *mockRepo) ListExpired(ctx context.Context) ([]*story.Story, error) { return nil, nil }
+
 func TestPublish_AppendsWithinLimit(t *testing.T) {
 	m := &mockRepo{}
-	svc := NewStoryService(m)
+	svc := NewStoryService(m, nil)
 
 	// one existing slide
 	existingSlides, _ := json.Marshal([]map[string]any{{"id": "s1"}})
@@ -61,7 +72,7 @@ func TestPublish_AppendsWithinLimit(t *testing.T) {
 
 func TestPublish_ExceedsLimit(t *testing.T) {
 	m := &mockRepo{}
-	svc := NewStoryService(m)
+	svc := NewStoryService(m, nil)
 
 	// existing 19 slides
 	ex := make([]map[string]any, 19)
@@ -87,7 +98,7 @@ func TestPublish_ExceedsLimit(t *testing.T) {
 
 func TestPublish_InvalidVisibility(t *testing.T) {
 	m := &mockRepo{}
-	svc := NewStoryService(m)
+	svc := NewStoryService(m, nil)
 
 	slides, _ := json.Marshal([]map[string]any{{"id": "x"}})
 	_, err := svc.Publish(context.Background(), 1, slides, "invalid-vis", 24, nil)

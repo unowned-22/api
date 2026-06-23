@@ -12,6 +12,8 @@ type UserRepository interface {
 	Create(ctx context.Context, user *User) error
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	GetByID(ctx context.Context, id int64) (*User, error)
+	// GetByUsername returns a user by their unique username.
+	GetByUsername(ctx context.Context, username string) (*User, error)
 	// List returns a slice of users for pagination (offset,limit)
 	List(ctx context.Context, offset int, limit int) ([]*User, error)
 	// Count returns total number of users matching the query (currently all users)
