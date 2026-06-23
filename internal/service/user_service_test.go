@@ -170,6 +170,15 @@ func (m *mockUserRepo) IncrementTokenVersion(ctx context.Context, userID int64) 
 	return nil
 }
 
+func (m *mockUserRepo) GetByUsername(ctx context.Context, username string) (*user.User, error) {
+	for _, u := range m.idMap {
+		if u.Username == username {
+			return u, nil
+		}
+	}
+	return nil, errs.ErrUserNotFound
+}
+
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 func TestUserService_GetProfile(t *testing.T) {

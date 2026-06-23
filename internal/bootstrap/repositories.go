@@ -22,6 +22,7 @@ type Repositories struct {
 	Outbox         domout.Repository
 	Story          *postgresRepo.StoryRepository
 	Friendship     *postgresRepo.FriendshipRepository
+	UserPrivacy    *postgresRepo.UserPrivacyRepository
 }
 
 // InitRepositories wires repository implementations using the provided pool.
@@ -41,5 +42,6 @@ func InitRepositories(pool *pgxpool.Pool) *Repositories {
 		Outbox:         outboxRepo.NewRepository(pool),
 		Story:          postgresRepo.NewStoryRepository(pool),
 		Friendship:     postgresRepo.NewFriendshipRepository(pool),
+		UserPrivacy:    postgresRepo.NewUserPrivacyRepository(pool),
 	}
 }

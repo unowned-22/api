@@ -90,6 +90,16 @@ func (m *mockFriendRepo) GetFriendIDs(ctx context.Context, userID int64) ([]int6
 	return nil, nil
 }
 
+func (m *mockFriendRepo) CountFriends(ctx context.Context, userID int64) (int64, error) {
+	var cnt int64
+	for _, f := range m.data {
+		if (f.RequesterID == userID || f.AddresseeID == userID) && f.Status == friendship.StatusAccepted {
+			cnt++
+		}
+	}
+	return cnt, nil
+}
+
 // mock publisher
 type mockPub struct {
 	last event.Event

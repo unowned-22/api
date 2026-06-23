@@ -52,6 +52,7 @@ func NewRouter(
 	healthHandler *handler.HealthHandler,
 	storyHandler *handler.StoryHandler,
 	friendshipHandler *handler.FriendshipHandler,
+	profileHandler *handler.ProfileHandler,
 	notificationHandler *handler.NotificationHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
@@ -114,6 +115,9 @@ func NewRouter(
 			r.Post("/auth/logout", authHandler.Logout)
 		})
 
+		r.With(middleware.WSJWTAuth(tokenManager, userService, tokenVersionCache)).
+			Get("/ws/notifications", notificationHandler.Subscribe)
+
 		// Authenticated routes.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth(tokenManager, userService, tokenVersionCache))
@@ -149,17 +153,20 @@ func NewRouter(
 			r.Get("/notifications/unread-count", notificationHandler.UnreadCount)
 			r.Post("/notifications/{id}/read", notificationHandler.MarkRead)
 			r.Post("/notifications/read-all", notificationHandler.MarkAllRead)
-			r.Get("/ws/notifications", notificationHandler.Subscribe)
 
 			// Friends / subscriptions
 			r.Post("/friends/requests", friendshipHandler.SendRequest)
 			r.Post("/friends/requests/{id}/accept", friendshipHandler.Accept)
 			r.Post("/friends/requests/{id}/reject", friendshipHandler.Reject)
 			r.Post("/friends/requests/{id}/cancel", friendshipHandler.Cancel)
-			r.Delete("/friends/{id}", friendshipHandler.Remove)
-			r.Get("/friends", friendshipHandler.ListFriends)
 			r.Get("/friends/requests/incoming", friendshipHandler.ListIncoming)
 			r.Get("/friends/requests/outgoing", friendshipHandler.ListOutgoing)
+			r.Get("/friends/suggestions", friendshipHandler.ListSuggestions)
+			r.Get("/friends", friendshipHandler.ListFriends)
+			r.Delete("/friends/{id}", friendshipHandler.Remove)
+
+			// Public profile by username
+			r.Get("/users/{username}", profileHandler.GetByUsername)
 
 			// Role-gated: admin only.
 			r.Group(func(r chi.Router) {

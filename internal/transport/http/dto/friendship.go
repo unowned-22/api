@@ -12,3 +12,10 @@ type FriendshipResponse struct {
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 }
+
+type UserSuggestionResponse struct {
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
+	FullName  string `json:"full_name"`
+	AvatarURL string `json:"avatar_url"`
+}

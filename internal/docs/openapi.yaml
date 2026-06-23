@@ -33,6 +33,8 @@ tags:
     description: Liveness and readiness probes
   - name: friends
     description: Friend requests, friendships and subscriptions
+  - name: stories
+    description: Ephemeral photo/video stories, feed, views, likes and replies
 
 components:
   securitySchemes:
@@ -287,6 +289,47 @@ components:
           format: date-time
           example: "2026-06-12T09:53:01Z"
 
+    PublicProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        username:
+          type: string
+          example: jane.smith
+        full_name:
+          type: string
+          example: Jane Smith
+        avatar_url:
+          type: string
+          example: https://cdn.example.com/avatars/1.png
+        cover_url:
+          type: string
+          example: https://cdn.example.com/covers/1.png
+        email:
+          type: string
+          format: email
+          nullable: true
+          example: user@example.com
+        phone:
+          type: string
+          nullable: true
+          example: "+79991234567"
+        friends_count:
+          type: integer
+          format: int64
+          nullable: true
+          example: 123
+        relation:
+          type: string
+          example: friends
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-12T09:53:01Z"
+
     UserSummary:
       type: object
       properties:
@@ -463,41 +506,89 @@ components:
           type: object
 
     # ── Stories ──────────────────────────────────────────────────────────────
+    # Note: the backend stores `slides` as opaque JSON (json.RawMessage) — it
+    # does not validate their internal shape beyond the array length. The
+    # structure below reflects what the official web editor currently sends/
+    # expects, not a server-enforced contract.
     StorySlide:
       type: object
+      description: >-
+        Opaque slide payload as produced by the story editor. Any `url` field
+        pointing at uploaded media should be the storage `key` returned by
+        `POST /stories/media`, not a local blob URL; the server replaces it
+        with a short-lived presigned URL on read.
       properties:
         id:
           type: string
         background:
           type: object
+          nullable: true
+          description: 'One of: {kind: color|gradient, value}, {kind: pattern, value, preview}, {kind: media, url, mediaType: image|video, preview?}'
+        filterId:
+          type: string
+        adjustments:
+          type: object
+          description: contrast/warmth/saturation/sharpness/noise/vignette tuning, each 0-200 (warmth -100..100)
         elements:
           type: array
           items:
             type: object
+            description: 'A text, sticker, image or drawing element; shape varies by `type`.'
         text:
           type: string
+          description: Convenience field some clients read when a slide has no image background.
         seen:
           type: boolean
+          description: Server-added on read (`/stories/feed`, `/stories/me`); not part of the stored slide.
+
+    CreateStoryRequest:
+      type: object
+      required: [slides, visibility, duration]
+      properties:
+        slides:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/StorySlide'
+        visibility:
+          type: string
+          enum: [everyone, friends, close]
+        duration:
+          type: integer
+          description: Story lifetime in hours.
+          enum: [1, 12, 24, 48]
+        hidden_from:
+          type: array
+          items:
+            type: integer
+            format: int64
+          description: User IDs excluded from seeing this story even if `visibility` would otherwise allow it.
 
     StoryResponse:
       type: object
       properties:
         id:
           type: integer
+          format: int64
         user_id:
           type: integer
+          format: int64
         author_name:
           type: string
         author_avatar:
           type: string
         visibility:
           type: string
+          enum: [everyone, friends, close]
         duration:
           type: integer
+          enum: [1, 12, 24, 48]
         hidden_from:
           type: array
           items:
             type: integer
+            format: int64
         slides:
           type: array
           items:
@@ -514,47 +605,13 @@ components:
       properties:
         key:
           type: string
+          description: Storage object key — persist this in the slide JSON sent to `POST /stories`.
         url:
           type: string
+          description: Short-lived (15 minute) presigned URL for immediate preview only; do not persist it.
         media_type:
           type: string
-
-    # ── Friendship schemas ───────────────────────────────────────────────────
-    SendFriendRequest:
-      type: object
-      required: [addressee_id]
-      properties:
-        addressee_id:
-          type: integer
-          format: int64
-          example: 2
-
-    Friendship:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-          example: 123
-        requester_id:
-          type: integer
-          format: int64
-          example: 1
-        addressee_id:
-          type: integer
-          format: int64
-          example: 2
-        status:
-          type: string
-          example: pending
-        created_at:
-          type: string
-          format: date-time
-          example: "2026-06-13T10:15:30Z"
-        updated_at:
-          type: string
-          format: date-time
-          example: "2026-06-13T10:15:30Z"
+          enum: [image, video]
 
     # ── Admin ───────────────────────────────────────────────────────────────────
     Permission:
@@ -631,6 +688,55 @@ components:
           example:
             postgres:
               status: ok
+
+    SendFriendRequest:
+      type: object
+      required: [addressee_id]
+      properties:
+        addressee_id:
+          type: integer
+          format: int64
+          example: 2
+
+    Friendship:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 123
+        requester_id:
+          type: integer
+          format: int64
+          example: 1
+        addressee_id:
+          type: integer
+          format: int64
+          example: 2
+        status:
+          type: string
+          example: pending
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-06-13T10:15:30Z"
+        updated_at:
+          type: string
+          format: date-time
+          example: "2026-06-13T10:15:30Z"
+
+    UserSuggestion:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        username:
+          type: string
+        full_name:
+          type: string
+        avatar_url:
+          type: string
 
   # ── Reusable responses ───────────────────────────────────────────────────────
   responses:
@@ -750,8 +856,6 @@ components:
             error:
               code: INTERNAL_SERVER_ERROR
               message: internal server error
-    
-
 
 # ────────────────────────────────────────────────────────────────────────────────
 # PATHS
@@ -1154,6 +1258,35 @@ paths:
       responses:
         "204":
           description: Avatar deleted
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+  
+  /api/v1/users/{username}:
+    get:
+      tags: [users]
+      summary: Get public profile by username
+      description: Returns a user's public profile according to their privacy settings. Requires authentication.
+      operationId: usersGetByUsername
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PublicProfile'
+        "400": { $ref: '#/components/responses/400BadRequest' }
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
@@ -2162,6 +2295,51 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
 
+  /api/v1/friends/suggestions:
+    get:
+      tags: [friends]
+      summary: List friend suggestions
+      description: Returns users ordered by mutual friend count (desc). Falls back to random users when no mutual friends exist.
+      operationId: friendsListSuggestions
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of user suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/UserSuggestion'
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      totalPages:
+                        type: integer
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
     patch:
       tags: [admin]
       summary: Update a system setting
@@ -2197,6 +2375,12 @@ paths:
     get:
       tags: [uploads]
       summary: Get feed of visible stories for the authenticated user
+      description: |
+        Returns stories from people visible to the current user (respecting each
+        story's `visibility` and `hidden_from` list), excluding the user's own
+        story rows. Each slide is annotated with a best-effort `seen` flag based
+        on the viewer's recorded views, and any media `background.url` storage
+        keys are replaced with short-lived (15 minute) presigned URLs.
       security:
         - BearerAuth: []
       responses:

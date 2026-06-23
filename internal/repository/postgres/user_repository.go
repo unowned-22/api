@@ -245,6 +245,33 @@ func (r *UserRepository) GetByVerificationToken(ctx context.Context, token strin
 	return &u, nil
 }
 
+// GetByUsername retrieves a user (with role name) by username.
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*user.User, error) {
+	query := `
+		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
+			   u.full_name, u.username, COALESCE(u.phone, ''),
+			   u.created_at,
+			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
+			   u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
+		FROM users u
+		JOIN roles r ON r.id = u.role_id
+		WHERE u.username = $1
+	`
+	var u user.User
+	err := r.db.QueryRow(ctx, query, username).
+		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
+			&u.FullName, &u.Username, &u.Phone,
+			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
+			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errs.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to get user by username from db: %w", err)
+	}
+	return &u, nil
+}
+
 // MarkEmailVerified sets the email verified timestamp and clears the verification token.
 func (r *UserRepository) MarkEmailVerified(ctx context.Context, userID int64) error {
 	query := `
