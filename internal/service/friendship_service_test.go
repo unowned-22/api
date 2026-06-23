@@ -100,6 +100,10 @@ func (m *mockFriendRepo) CountFriends(ctx context.Context, userID int64) (int64,
 	return cnt, nil
 }
 
+func (m *mockFriendRepo) ListSuggestions(ctx context.Context, userID int64, page pagination.Query) ([]*friendship.Suggestion, int64, error) {
+	return nil, 0, nil
+}
+
 // mock publisher
 type mockPub struct {
 	last event.Event

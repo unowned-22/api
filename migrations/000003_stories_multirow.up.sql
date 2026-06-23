@@ -6,6 +6,13 @@ BEGIN
     ) THEN
         ALTER TABLE stories DROP CONSTRAINT stories_user_id_key;
     END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'stories_user_id_unique' AND conrelid = 'stories'::regclass
+    ) THEN
+        ALTER TABLE stories DROP CONSTRAINT stories_user_id_unique;
+    END IF;
 END
 $$;
 

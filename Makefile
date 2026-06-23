@@ -1,7 +1,6 @@
 APP_NAME=app
 CMD_DIR=./cmd/app
 BIN_DIR=./bin
-DOCKER_APP_PATH=./app
 VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD)
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -83,7 +82,3 @@ migrate-create: ## Create migration
 
 worker: ## Run worker
 	go run $(CMD_DIR) worker
-
-start: ## Docker start command after build
-	$(DOCKER_APP_PATH) migrate up && \
-	$(DOCKER_APP_PATH) worker &

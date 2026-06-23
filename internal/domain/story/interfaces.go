@@ -22,7 +22,7 @@ type StoryRepository interface {
 	AddLike(ctx context.Context, viewerID int64, storyID int64) error
 	RemoveLike(ctx context.Context, viewerID int64, storyID int64) error
 	AddReply(ctx context.Context, viewerID int64, storyID int64, message string) error
-	ListReplies(ctx context.Context, storyID int64) ([]*Reply, error)
+	ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*Reply, error)
 }
 
 type StoryService interface {
@@ -37,5 +37,5 @@ type StoryService interface {
 	Like(ctx context.Context, viewerID int64, storyID int64) error
 	Unlike(ctx context.Context, viewerID int64, storyID int64) error
 	Reply(ctx context.Context, viewerID int64, storyID int64, message string) error
-	ListReplies(ctx context.Context, storyID int64) ([]*Reply, error)
+	ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*Reply, error)
 }

@@ -13,9 +13,10 @@ import (
 )
 
 type mockRepo struct {
-	createCalled bool
-	lastCreate   *story.Story
-	listReturn   []*story.Story
+	createCalled  bool
+	lastCreate    *story.Story
+	listReturn    []*story.Story
+	getByIDReturn *story.Story
 }
 
 func (m *mockRepo) Create(ctx context.Context, s *story.Story) error {
@@ -36,6 +37,9 @@ func (m *mockRepo) ListViewsByViewer(ctx context.Context, viewerID int64) (map[i
 	return nil, nil
 }
 func (m *mockRepo) GetByID(ctx context.Context, id int64) (*story.Story, error) {
+	if m.getByIDReturn != nil {
+		return m.getByIDReturn, nil
+	}
 	return nil, errs.ErrStoryNotFound
 }
 func (m *mockRepo) Delete(ctx context.Context, id int64) error { return nil }
@@ -46,7 +50,7 @@ func (m *mockRepo) RemoveLike(ctx context.Context, viewerID int64, storyID int64
 func (m *mockRepo) AddReply(ctx context.Context, viewerID int64, storyID int64, message string) error {
 	return nil
 }
-func (m *mockRepo) ListReplies(ctx context.Context, storyID int64) ([]*story.Reply, error) {
+func (m *mockRepo) ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*story.Reply, error) {
 	return nil, nil
 }
 func (m *mockRepo) ListExpired(ctx context.Context) ([]*story.Story, error) { return nil, nil }
@@ -71,14 +75,14 @@ func (m *mockFriendshipSvc) SendRequest(ctx context.Context, requesterID, addres
 func (m *mockFriendshipSvc) Accept(ctx context.Context, userID int64, friendshipID int64) (*friendship.Friendship, error) {
 	return nil, nil
 }
-func (m *mockFriendshipSvc) Reject(ctx context.Context, userID int64, friendshipID int64) error {
+func (m *mockFriendshipSvc) Reject(ctx context.Context, userID int64, friendshipID int64) (*friendship.Friendship, error) {
 	return nil, nil
 }
 func (m *mockFriendshipSvc) Cancel(ctx context.Context, userID int64, friendshipID int64) error {
-	return nil, nil
+	return nil
 }
 func (m *mockFriendshipSvc) Remove(ctx context.Context, userID int64, friendshipID int64) error {
-	return nil, nil
+	return nil
 }
 func (m *mockFriendshipSvc) ListFriends(ctx context.Context, userID int64, page pagination.Query) ([]*friendship.Friendship, int64, error) {
 	return nil, 0, nil
@@ -102,7 +106,7 @@ func (m *mockFriendshipSvc) IsFriend(ctx context.Context, userA, userB int64) (b
 
 func TestPublish_AppendsWithinLimit(t *testing.T) {
 	m := &mockRepo{}
-	svc := NewStoryService(m, nil)
+	svc := NewStoryService(m, nil, nil)
 
 	// one existing slide
 	existingSlides, _ := json.Marshal([]map[string]any{{"id": "s1"}})
@@ -123,7 +127,7 @@ func TestPublish_AppendsWithinLimit(t *testing.T) {
 
 func TestPublish_ExceedsLimit(t *testing.T) {
 	m := &mockRepo{}
-	svc := NewStoryService(m, nil)
+	svc := NewStoryService(m, nil, nil)
 
 	// existing 19 slides
 	ex := make([]map[string]any, 19)
@@ -149,7 +153,7 @@ func TestPublish_ExceedsLimit(t *testing.T) {
 
 func TestPublish_InvalidVisibility(t *testing.T) {
 	m := &mockRepo{}
-	svc := NewStoryService(m, nil)
+	svc := NewStoryService(m, nil, nil)
 
 	slides, _ := json.Marshal([]map[string]any{{"id": "x"}})
 	_, err := svc.Publish(context.Background(), 1, slides, "invalid-vis", 24, nil)
@@ -174,7 +178,7 @@ func TestListVisibleStories_CoversVisibilities(t *testing.T) {
 	// mock friendship service: viewer is friend with author 20
 	mf := &mockFriendshipSvc{friends: map[int64]bool{20: true}}
 	m := &mockRepo{}
-	svc := NewStoryService(m, mf)
+	svc := NewStoryService(m, mf, nil)
 
 	// Everyone should see author's stories
 	m.listReturn = []*story.Story{sEveryone}
@@ -204,5 +208,37 @@ func TestListVisibleStories_CoversVisibilities(t *testing.T) {
 	}
 	if len(out) != 1 {
 		t.Fatalf("expected 1 story for close visibility when close friend, got %d", len(out))
+	}
+}
+
+func TestAccessControl_DeniesUnauthorized(t *testing.T) {
+	// viewer is user 2 (not friend)
+	viewer := int64(2)
+
+	// story owned by author 10 with friends visibility
+	now := time.Now()
+	sFriends := &story.Story{ID: 101, UserID: 10, Visibility: story.VisibilityFriends, Slides: []byte("[]"), CreatedAt: now, ExpiresAt: now.Add(1 * time.Hour)}
+
+	mf := &mockFriendshipSvc{friends: map[int64]bool{}}
+	m := &mockRepo{getByIDReturn: sFriends}
+	svc := NewStoryService(m, mf, nil)
+
+	if err := svc.Like(context.Background(), viewer, sFriends.ID); err != errs.ErrForbidden {
+		t.Fatalf("expected ErrForbidden for liking friends-only story by non-friend, got: %v", err)
+	}
+	if err := svc.Reply(context.Background(), viewer, sFriends.ID, "hi"); err != errs.ErrForbidden {
+		t.Fatalf("expected ErrForbidden for replying to friends-only story by non-friend, got: %v", err)
+	}
+	if err := svc.AddView(context.Background(), viewer, sFriends.ID, nil); err != errs.ErrForbidden {
+		t.Fatalf("expected ErrForbidden for viewing friends-only story by non-friend, got: %v", err)
+	}
+
+	// close visibility: owner 30 has IsCloseFriend true only for friend 1 per mock.
+	sClose := &story.Story{ID: 202, UserID: 30, Visibility: story.VisibilityClose, Slides: []byte("[]"), CreatedAt: now, ExpiresAt: now.Add(1 * time.Hour)}
+	m2 := &mockRepo{getByIDReturn: sClose}
+	svc2 := NewStoryService(m2, mf, nil)
+	// viewer 2 is not close friend
+	if err := svc2.Like(context.Background(), viewer, sClose.ID); err != errs.ErrForbidden {
+		t.Fatalf("expected ErrForbidden for liking close-only story by non-close friend, got: %v", err)
 	}
 }

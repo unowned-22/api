@@ -142,10 +142,10 @@ func NewRouter(
 			r.Get("/stories/me", storyHandler.ListMine)
 			r.Get("/stories/feed", storyHandler.Feed)
 			r.Delete("/stories/{id}", storyHandler.Delete)
-			r.Post("/stories/{id}/view", storyHandler.View)
-			r.Post("/stories/{id}/like", storyHandler.Like)
-			r.Post("/stories/{id}/unlike", storyHandler.Unlike)
-			r.Post("/stories/{id}/reply", storyHandler.Reply)
+			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/{id}/view", storyHandler.View)
+			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/{id}/like", storyHandler.Like)
+			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/{id}/unlike", storyHandler.Unlike)
+			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/{id}/reply", storyHandler.Reply)
 			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/media", uploadHandler.UploadStoryMedia)
 
 			// Notifications

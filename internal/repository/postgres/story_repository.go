@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/domain/story"
@@ -67,35 +68,35 @@ func (r *StoryRepository) ListActiveByUser(ctx context.Context, userID int64) ([
 // returns stories with expires_at > now().
 func (r *StoryRepository) ListFeed(ctx context.Context, viewerID int64) ([]*story.Story, error) {
 	query := `
-		SELECT s.id, s.user_id, s.visibility, s.duration_hours, s.hidden_from_user_ids, s.slides, s.created_at, s.expires_at
-		FROM stories s
-		WHERE s.expires_at > now()
-		  AND (s.hidden_from_user_ids IS NULL OR NOT (s.hidden_from_user_ids @> $1::bigint[]))
-		  AND (
-			  s.visibility = 'everyone'
-			  OR (
-				  s.visibility = 'friends'
-				  AND EXISTS (
-					  SELECT 1 FROM friendships f
-					  WHERE f.status = 'accepted'
-						AND (
-							(f.requester_id = s.user_id AND f.addressee_id = $1)
-							OR (f.addressee_id = s.user_id AND f.requester_id = $1)
-						)
-				  )
-			  )
-			  OR (
-				  s.visibility = 'close'
-				  AND EXISTS (
-					  SELECT 1 FROM close_friends cf
-					  WHERE cf.owner_id = s.user_id AND cf.friend_id = $1
-				  )
-			  )
-			  OR s.user_id = $1
-		  )
-		ORDER BY s.created_at DESC
-	`
-	rows, err := r.db.Query(ctx, query, []int64{viewerID})
+       SELECT s.id, s.user_id, s.visibility, s.duration_hours, s.hidden_from_user_ids, s.slides, s.created_at, s.expires_at
+       FROM stories s
+       WHERE s.expires_at > now()
+         AND (s.hidden_from_user_ids IS NULL OR NOT (s.hidden_from_user_ids @> ARRAY[$1::bigint]))
+         AND (
+            s.visibility = 'everyone'
+            OR (
+               s.visibility = 'friends'
+               AND EXISTS (
+                  SELECT 1 FROM friendships f
+                  WHERE f.status = 'accepted'
+                   AND (
+                      (f.requester_id = s.user_id AND f.addressee_id = $1)
+                      OR (f.addressee_id = s.user_id AND f.requester_id = $1)
+                   )
+               )
+            )
+            OR (
+               s.visibility = 'close'
+               AND EXISTS (
+                  SELECT 1 FROM close_friends cf
+                  WHERE cf.owner_id = s.user_id AND cf.friend_id = $1
+               )
+            )
+            OR s.user_id = $1
+         )
+       ORDER BY s.created_at DESC
+    `
+	rows, err := r.db.Query(ctx, query, viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list feed stories: %w", err)
 	}
@@ -237,8 +238,9 @@ func (r *StoryRepository) AddReply(ctx context.Context, viewerID int64, storyID 
 }
 
 // ListReplies returns recent replies for a story.
-func (r *StoryRepository) ListReplies(ctx context.Context, storyID int64) ([]*story.Reply, error) {
+func (r *StoryRepository) ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*story.Reply, error) {
 	query := `SELECT id, story_id, viewer_id, message, created_at FROM story_replies WHERE story_id = $1 ORDER BY created_at ASC`
+	// viewerID is currently unused by the repository; keep signature for service-level access checks
 	rows, err := r.db.Query(ctx, query, storyID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list replies: %w", err)
