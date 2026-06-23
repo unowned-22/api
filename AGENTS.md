@@ -265,8 +265,8 @@ Authentication must be implemented through the `token.Manager` abstraction defin
 ```go
 // Manager is the primary contract — used by services and middleware.
 type Manager interface {
-  Generate(userID int64) (string, error)
-  Parse(token string) (int64, error)
+Generate(userID int64) (string, error)
+Parse(token string) (int64, error)
 }
 
 // ManagerExtended embeds Manager and adds role + version-aware token support.
@@ -275,11 +275,11 @@ type Manager interface {
 // current `token_version` value. Implementations MUST surface the token
 // version during generation and parsing so middleware can reject stale JWTs.
 type ManagerExtended interface {
-  Manager
-  // GenerateWithRole creates a token embedding role and the user's token version.
-  GenerateWithRole(userID int64, role string, tokenVersion int) (string, error)
-  // ParseWithRole returns userID, role, and tokenVersion extracted from the token.
-  ParseWithRole(token string) (int64, string, int, error)
+Manager
+// GenerateWithRole creates a token embedding role and the user's token version.
+GenerateWithRole(userID int64, role string, tokenVersion int) (string, error)
+// ParseWithRole returns userID, role, and tokenVersion extracted from the token.
+ParseWithRole(token string) (int64, string, int, error)
 }
 ```
 
@@ -311,12 +311,12 @@ Sessions are stable records that survive token rotation. A session is created on
 ```go
 // UserSessionRepository contract
 type UserSessionRepository interface {
-  Create(ctx context.Context, session *UserSession) error
-  GetByID(ctx context.Context, id int64) (*UserSession, error)
-  ListActiveByUserID(ctx context.Context, userID int64) ([]*SessionView, error)
-  Terminate(ctx context.Context, id int64) error
-  TerminateAll(ctx context.Context, userID int64) error
-  UpdateLastActivity(ctx context.Context, id int64, t time.Time) error
+Create(ctx context.Context, session *UserSession) error
+GetByID(ctx context.Context, id int64) (*UserSession, error)
+ListActiveByUserID(ctx context.Context, userID int64) ([]*SessionView, error)
+Terminate(ctx context.Context, id int64) error
+TerminateAll(ctx context.Context, userID int64) error
+UpdateLastActivity(ctx context.Context, id int64, t time.Time) error
 }
 ```
 
@@ -395,13 +395,21 @@ Consumers handling audit events should persist `audit.refresh_token_reuse_detect
 Stories feature notes
 ---------------------
 
-The project includes an experimental Stories feature implemented under `internal/domain/story`, `internal/service`, and `internal/repository/postgres/story_repository.go`.
+The project includes a Stories feature implemented under `internal/domain/story`, `internal/service`, `internal/repository/postgres/story_repository.go`, and exposed via `internal/transport/http/handler/story_handler.go`.
 
-- Storage model: one DB row per user for stories; slides are stored as JSON; media keys are stored (private MinIO bucket) and presigned URLs are generated on read.
-- Feed & visibility: `ListFeed` currently filters out stories where the viewer is explicitly listed in `hidden_from_user_ids`. The `friends` and `close` visibility modes are not implemented because the social graph model (follows/friends/close) is not part of the codebase yet — these modes are currently treated equivalently to `everyone`.
-- TODO: implement social graph (`follows`/`friends` table and rules) and extend `ListFeed` SQL to apply friends/close filters.
+- Storage model: one DB row per published story (not per user); slides are stored as opaque JSON (`json.RawMessage` end-to-end — neither the repository nor the service validates slide internals beyond array length). Media is uploaded separately via `POST /api/v1/stories/media` into a private bucket; only the storage key is persisted in the slide JSON, and short-lived (15 minute) presigned URLs are generated on every read (`presignSlides` in the handler).
+- Endpoints: `POST /api/v1/stories` (publish), `GET /api/v1/stories/me`, `GET /api/v1/stories/feed`, `DELETE /api/v1/stories/{id}`, `POST /api/v1/stories/{id}/view`, `POST /api/v1/stories/{id}/like`, `POST /api/v1/stories/{id}/unlike`, `POST /api/v1/stories/{id}/reply`, `POST /api/v1/stories/media`. Keep `internal/docs/openapi.yaml` in sync with this list per §6.
 
-Agents making changes to Story code should preserve the one-row-per-user model and the private-media presign pattern unless a migration plan and data-backfill are provided.
+> **⚠️ KNOWN BUILD-BREAKING GAP (as of this writing) — fix before merging anything else in this area:**
+> - `internal/domain/story/interfaces.go` declares `StoryService.Feed`, `AddView`, `ListViewsByViewer`, `Like`, `Unlike`, `Reply`, and `ListReplies`, and `story_handler.go` calls all of them — but `internal/service/story_service.go` only implements `Publish`, `ListMyStories`, `ListVisibleStories`, and `Delete`. `*StoryService` does **not** satisfy the `story.StoryService` interface, so the service package will not compile until the missing methods are added (they should mostly delegate straight to the already-implemented repository methods of the same name).
+> - `Publish` calls `s.repo.Create(ctx, st)`, but `StoryRepository` only declares/implements `Upsert(ctx, s)` — there is no `Create` method. This call site needs to be fixed to `s.repo.Upsert(...)`.
+> - The repository layer (`story_repository.go`) is complete and already implements every method the domain interfaces require (`Upsert`, `ListActiveByUser`, `ListFeed`, `ListExpired`, `AddView`, `ListViewsByViewer`, `GetByID`, `Delete`, `AddLike`, `RemoveLike`, `AddReply`, `ListReplies`) — the gap is entirely in the service layer.
+
+- Visibility enforcement — **currently not applied on the live feed path**: the handler's `Feed` calls `StoryService.Feed`, which is expected to call `repo.ListFeed`. That SQL query only filters out expired stories and rows where the viewer is explicitly listed in `hidden_from_user_ids` — it does **not** look at `visibility` at all. In practice this means `friends` and `close` stories are currently shown to *any* authenticated viewer in the feed, exactly like `everyone`, unless the author explicitly muted that viewer via `hidden_from`.
+- There is a second, unused method `StoryService.ListVisibleStories(ctx, viewerID, authorID)` that *does* implement correct per-author visibility filtering (checks `friendshipSvc.IsFriend` for `friends`, and has a `// TODO: close-friends list not implemented` stub that excludes `close` stories entirely rather than falling back to `everyone`). It is not part of the `story.StoryService` interface and is not called anywhere — it's dead code today. Whoever fixes the build-breaking gap above should decide whether `Feed`/`ListFeed` should be rewritten to use this per-author filtering logic (recommended) instead of leaving visibility unenforced.
+- TODO: implement a close-friends list (table + rules) so `VisibilityClose` has somewhere to look; until then, treat `close` as "broken/unimplemented", not as a synonym for `everyone`.
+
+Agents making changes to Story code should: (1) fix the build-breaking gap above first, (2) decide and document how `friends`/`close` visibility is enforced in the feed query before shipping it as a real feature, (3) preserve the per-story-row model and the private-media presign pattern unless a migration plan and data-backfill are provided.
 
 ## Transactional Outbox Pattern
 
@@ -648,7 +656,7 @@ Checklist for any endpoint change:
 - [ ] Request body schema added/updated in `components/schemas/`.
 - [ ] All possible response codes documented (including `400`, `401`, `403`, `422`, `429`, `500` where applicable).
 - [ ] `operationId` is unique and matches the handler name in snake_case (e.g. `authLogin`, `usersMe`).
-- [ ] `tags:` matches one of the existing tag groups (`auth`, `password-reset`, `users`, `admin`, `uploads`, `health`) or a new tag is added to the top-level `tags:` list.
+- [ ] `tags:` matches one of the existing tag groups (`auth`, `password-reset`, `users`, `admin`, `uploads`, `health`, `friends`, `stories`) or a new tag is added to the top-level `tags:` list.
 - [ ] `security: - BearerAuth: []` is present on every protected endpoint.
 - [ ] The `servers:` block still points to the correct local development URL.
 

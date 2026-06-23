@@ -678,3 +678,140 @@ Troubleshooting
 - 500 Internal Server Error: upstream storage error or missing user storage configuration.
 
 If you want presigned uploads instead of server-mediated uploads, use the presign endpoints documented in the OpenAPI spec (if enabled) and upload directly to the object storage provider.
+
+---
+
+## Stories
+
+Ephemeral photo/video/text stories, similar to Instagram/Snapchat stories. A story is a row containing 1–20 slides (opaque client-defined JSON), a `visibility` (`everyone` | `friends` | `close`), a lifetime `duration` in hours (`1` | `12` | `24` | `48`), and an optional `hidden_from` list of user IDs who should never see it regardless of `visibility`.
+
+> **Known limitation:** `friends`/`close` visibility is **not currently enforced** on the feed — see `AGENTS.md` → "Stories feature notes" for the implementation gap. Treat every story as effectively public to any authenticated user until that's fixed, when deciding what to put in one.
+
+### 1. Upload story media
+
+Upload a single image or video first; you'll get back a storage `key` to reference from the slide JSON when publishing.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/stories/media \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@/path/to/photo.jpg"
+```
+
+Allowed content types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`, `video/mp4`, `video/quicktime`, `video/webm`. Max size: 50 MB.
+
+#### Successful Response
+
+```json
+{
+  "data": {
+    "key": "stories/1/3f2a1b9e-.../photo.jpg",
+    "url": "https://storage.example.com/...presigned...",
+    "media_type": "image"
+  }
+}
+```
+
+`key` is what you persist in the slide JSON below; `url` is only a 15-minute preview link — don't store it.
+
+### 2. Publish a story
+
+```bash
+curl -X POST http://localhost:8080/api/v1/stories \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slides": [
+      {
+        "id": "s1",
+        "background": { "kind": "media", "url": "stories/1/3f2a1b9e-.../photo.jpg", "mediaType": "image" },
+        "elements": []
+      }
+    ],
+    "visibility": "friends",
+    "duration": 24,
+    "hidden_from": []
+  }'
+```
+
+#### Successful Response
+
+```json
+{
+  "data": {
+    "id": 17,
+    "visibility": "friends",
+    "duration": 24,
+    "hidden_from": [],
+    "slides": [ { "id": "s1", "background": { "kind": "media", "url": "https://storage.example.com/...presigned..." }, "elements": [] } ],
+    "created_at": "2026-06-20T10:00:00Z",
+    "expires_at": "2026-06-21T10:00:00Z"
+  }
+}
+```
+
+### 3. List my stories / the feed
+
+```bash
+curl -X GET http://localhost:8080/api/v1/stories/me \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+curl -X GET http://localhost:8080/api/v1/stories/feed \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Both return `{ "data": [ <story>, ... ] }` using the same shape as the publish response, with each slide additionally annotated with `seen: true/false` based on the viewer's recorded views.
+
+### 4. Record a view
+
+Call this once per slide as the viewer scrolls through a story (omit `slide_index` to mark the whole story seen):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/stories/17/view \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"slide_index": 0}'
+```
+
+Returns `204 No Content`.
+
+### 5. Like / unlike a story
+
+```bash
+curl -X POST http://localhost:8080/api/v1/stories/17/like \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+curl -X POST http://localhost:8080/api/v1/stories/17/unlike \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Both return `204 No Content`.
+
+### 6. Reply to a story
+
+Sends a direct message to the story's author.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/stories/17/reply \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "love this!"}'
+```
+
+Returns `204 No Content`.
+
+### 7. Delete a story
+
+Only the author can delete their own story.
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/stories/17 \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Returns `204 No Content`.
+
+Troubleshooting
+- 400 Bad Request: invalid slide payload, `visibility`/`duration` outside the allowed enums, or more than 20 slides.
+- 401 Unauthorized: missing or invalid bearer token.
+- 404 Not Found: story ID doesn't exist (or already expired/deleted) for `view`/`like`/`unlike`/`reply`/`delete`.
+- 413 Payload Too Large: media file exceeds 50 MB.

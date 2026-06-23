@@ -114,6 +114,9 @@ func NewRouter(
 			r.Post("/auth/logout", authHandler.Logout)
 		})
 
+		r.With(middleware.WSJWTAuth(tokenManager, userService, tokenVersionCache)).
+			Get("/ws/notifications", notificationHandler.Subscribe)
+
 		// Authenticated routes.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.JWTAuth(tokenManager, userService, tokenVersionCache))
@@ -149,7 +152,6 @@ func NewRouter(
 			r.Get("/notifications/unread-count", notificationHandler.UnreadCount)
 			r.Post("/notifications/{id}/read", notificationHandler.MarkRead)
 			r.Post("/notifications/read-all", notificationHandler.MarkAllRead)
-			r.Get("/ws/notifications", notificationHandler.Subscribe)
 
 			// Friends / subscriptions
 			r.Post("/friends/requests", friendshipHandler.SendRequest)
