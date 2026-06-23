@@ -209,3 +209,70 @@ func (r *FriendshipRepository) CountFriends(ctx context.Context, userID int64) (
 	}
 	return cnt, nil
 }
+
+func (r *FriendshipRepository) ListSuggestions(ctx context.Context, userID int64, page pagination.Query) ([]*friendship.Suggestion, int64, error) {
+	offset := page.Offset()
+	limit := page.Limit
+
+	query := `WITH excluded_ids AS (
+		SELECT CASE WHEN requester_id = $1 THEN addressee_id ELSE requester_id END AS uid
+		FROM friendships
+		WHERE requester_id = $1 OR addressee_id = $1
+	),
+	my_friend_ids AS (
+		SELECT CASE WHEN requester_id = $1 THEN addressee_id ELSE requester_id END AS fid
+		FROM friendships
+		WHERE (requester_id = $1 OR addressee_id = $1) AND status = 'accepted'
+	)
+	SELECT
+		u.id,
+		u.username,
+		COALESCE(u.full_name, '') AS full_name,
+		COALESCE(u.avatar_url, '') AS avatar_url,
+		COUNT(mf.fid) AS mutual_count
+	FROM users u
+	LEFT JOIN my_friend_ids mf ON EXISTS (
+		SELECT 1 FROM friendships f2
+		WHERE f2.status = 'accepted'
+		  AND (
+			  (f2.requester_id = u.id AND f2.addressee_id = mf.fid) OR
+			  (f2.addressee_id = u.id AND f2.requester_id = mf.fid)
+		  )
+	)
+	WHERE u.id != $1
+	  AND u.deactivated_at IS NULL
+	  AND u.id NOT IN (SELECT uid FROM excluded_ids)
+	GROUP BY u.id, u.username, u.full_name, u.avatar_url
+	ORDER BY mutual_count DESC, RANDOM()
+	LIMIT $2 OFFSET $3`
+
+	rows, err := r.db.Query(ctx, query, userID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list suggestions: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*friendship.Suggestion, 0)
+	for rows.Next() {
+		var s friendship.Suggestion
+		if err := rows.Scan(&s.ID, &s.Username, &s.FullName, &s.AvatarURL, &s.MutualCount); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan suggestion row: %w", err)
+		}
+		out = append(out, &s)
+	}
+
+	// count total
+	cntQ := `WITH excluded_ids AS (
+		SELECT CASE WHEN requester_id = $1 THEN addressee_id ELSE requester_id END AS uid
+		FROM friendships
+		WHERE requester_id = $1 OR addressee_id = $1
+	)
+	SELECT COUNT(1) FROM users u WHERE u.id != $1 AND u.deactivated_at IS NULL AND u.id NOT IN (SELECT uid FROM excluded_ids)`
+
+	var total int64
+	if err := r.db.QueryRow(ctx, cntQ, userID).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("failed to count suggestions: %w", err)
+	}
+
+	return out, total, nil
+}

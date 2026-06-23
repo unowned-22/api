@@ -159,10 +159,11 @@ func NewRouter(
 			r.Post("/friends/requests/{id}/accept", friendshipHandler.Accept)
 			r.Post("/friends/requests/{id}/reject", friendshipHandler.Reject)
 			r.Post("/friends/requests/{id}/cancel", friendshipHandler.Cancel)
-			r.Delete("/friends/{id}", friendshipHandler.Remove)
-			r.Get("/friends", friendshipHandler.ListFriends)
 			r.Get("/friends/requests/incoming", friendshipHandler.ListIncoming)
 			r.Get("/friends/requests/outgoing", friendshipHandler.ListOutgoing)
+			r.Get("/friends/suggestions", friendshipHandler.ListSuggestions)
+			r.Get("/friends", friendshipHandler.ListFriends)
+			r.Delete("/friends/{id}", friendshipHandler.Remove)
 
 			// Public profile by username
 			r.Get("/users/{username}", profileHandler.GetByUsername)

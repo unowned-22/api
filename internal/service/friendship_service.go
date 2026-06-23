@@ -148,3 +148,7 @@ func (s *FriendshipService) ListOutgoingRequests(ctx context.Context, userID int
 func (s *FriendshipService) IsFriend(ctx context.Context, userA, userB int64) (bool, error) {
 	return s.repo.IsFriend(ctx, userA, userB)
 }
+
+func (s *FriendshipService) ListSuggestions(ctx context.Context, userID int64, page pagination.Query) ([]*friendship.Suggestion, int64, error) {
+	return s.repo.ListSuggestions(ctx, userID, page)
+}

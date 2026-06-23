@@ -196,6 +196,35 @@ func (h *FriendshipHandler) ListOutgoing(w http.ResponseWriter, r *http.Request)
 	response.SendSuccess(w, http.StatusOK, pagination.BuildResponse(out, q.Page, q.Limit, total))
 }
 
+// GET /api/v1/friends/suggestions
+func (h *FriendshipHandler) ListSuggestions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	q := pagination.ParseQuery(r)
+
+	items, total, err := h.svc.ListSuggestions(r.Context(), userID, q)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	out := make([]dto.UserSuggestionResponse, 0, len(items))
+	for _, s := range items {
+		out = append(out, dto.UserSuggestionResponse{
+			ID:        s.ID,
+			Username:  s.Username,
+			FullName:  s.FullName,
+			AvatarURL: s.AvatarURL,
+		})
+	}
+
+	response.SendSuccess(w, http.StatusOK, pagination.BuildResponse(out, q.Page, q.Limit, total))
+}
+
 func (h *FriendshipHandler) toFieldErrors(fields []validator.FieldError) []response.ValidationFieldError {
 	out := make([]response.ValidationFieldError, 0, len(fields))
 	for _, f := range fields {
