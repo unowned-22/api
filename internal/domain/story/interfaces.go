@@ -3,7 +3,9 @@ package story
 import "context"
 
 type StoryRepository interface {
-	Upsert(ctx context.Context, s *Story) error
+	Create(ctx context.Context, s *Story) error
+	// IsCloseFriend returns true if friendID is in ownerID's close friends list.
+	IsCloseFriend(ctx context.Context, ownerID, friendID int64) (bool, error)
 	ListActiveByUser(ctx context.Context, userID int64) ([]*Story, error)
 	// ListFeed returns active stories visible to the given user. Filtering by
 	// friends/close visibility is applied by the repository when possible.

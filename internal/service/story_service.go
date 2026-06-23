@@ -88,7 +88,7 @@ func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []b
 		ExpiresAt:         expiresAt,
 	}
 
-	if err := s.repo.Upsert(ctx, st); err != nil {
+	if err := s.repo.Create(ctx, st); err != nil {
 		return nil, fmt.Errorf("failed to persist story: %w", err)
 	}
 
@@ -119,7 +119,13 @@ func (s *StoryService) ListVisibleStories(ctx context.Context, viewerID, authorI
 				out = append(out, st)
 			}
 		case story.VisibilityClose:
-			// TODO: close-friends list not implemented in this task.
+			isClose, cerr := s.repo.IsCloseFriend(ctx, authorID, viewerID)
+			if cerr != nil {
+				return nil, cerr
+			}
+			if isClose {
+				out = append(out, st)
+			}
 		}
 	}
 	return out, nil
