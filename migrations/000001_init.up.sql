@@ -4,10 +4,6 @@ CREATE TABLE IF NOT EXISTS roles (
     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-INSERT INTO roles (name)
-VALUES ('admin'), ('moderator'), ('user')
-ON CONFLICT (name) DO NOTHING;
-
 CREATE TABLE IF NOT EXISTS users (
     id                            BIGSERIAL    PRIMARY KEY,
     email                         VARCHAR(255) NOT NULL UNIQUE,
@@ -15,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name                     VARCHAR(128) NOT NULL,
     username                      VARCHAR(64)  NOT NULL,
     phone                         VARCHAR(16)  NULL,
-    role_id                       BIGINT,
+    role_id                       BIGINT       NOT NULL,
     email_verified_at             TIMESTAMPTZ,
     verification_token            TEXT,
     verification_token_expires_at TIMESTAMPTZ,
@@ -26,22 +22,6 @@ CREATE TABLE IF NOT EXISTS users (
     created_at                    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at                    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-
-ALTER TABLE users ADD CONSTRAINT users_username_key UNIQUE (username);
-
-ALTER TABLE users
-    ADD CONSTRAINT fk_users_role
-    FOREIGN KEY (role_id) REFERENCES roles(id);
-
-UPDATE users
-SET role_id = (SELECT id FROM roles WHERE name = 'user')
-WHERE role_id IS NULL;
-
-ALTER TABLE users
-    ALTER COLUMN role_id SET NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_users_role_id        ON users(role_id);
-CREATE INDEX IF NOT EXISTS idx_users_deactivated_at ON users(deactivated_at);
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id         BIGSERIAL   PRIMARY KEY,
@@ -55,8 +35,6 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
-CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 
 CREATE TABLE IF NOT EXISTS permissions (
     id          BIGSERIAL    PRIMARY KEY,
@@ -75,43 +53,6 @@ CREATE TABLE IF NOT EXISTS role_permissions (
         FOREIGN KEY (permission_id) REFERENCES permissions(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_role_permissions_permission_id ON role_permissions(permission_id);
-
-INSERT INTO permissions (name, description)
-VALUES
-    ('users.read',   'Read user data'),
-    ('users.create', 'Create users'),
-    ('users.update', 'Update user data'),
-    ('users.delete', 'Delete users'),
-    ('roles.read',   'Read roles'),
-    ('roles.update', 'Update roles'),
-    ('admin.access', 'Access administration endpoints')
-ON CONFLICT (name) DO NOTHING;
-
--- admin gets all permissions
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r
-CROSS JOIN permissions p
-WHERE r.name = 'admin'
-ON CONFLICT (role_id, permission_id) DO NOTHING;
-
--- moderator gets read + update users
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r
-JOIN permissions p ON p.name IN ('users.read', 'users.update')
-WHERE r.name = 'moderator'
-ON CONFLICT (role_id, permission_id) DO NOTHING;
-
--- user gets read users
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r
-JOIN permissions p ON p.name = 'users.read'
-WHERE r.name = 'user'
-ON CONFLICT (role_id, permission_id) DO NOTHING;
-
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -120,9 +61,6 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     used_at    TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token   ON password_reset_tokens(token);
-CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);  -- 000007
 
 CREATE TABLE IF NOT EXISTS user_sessions (
     id               BIGSERIAL    PRIMARY KEY,
@@ -140,9 +78,6 @@ CREATE TABLE IF NOT EXISTS user_sessions (
     revoked_at       TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id          ON user_sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_sessions_refresh_token_id ON user_sessions(refresh_token_id);
-
 CREATE TABLE IF NOT EXISTS audit_logs (
     id         BIGSERIAL   PRIMARY KEY,
     user_id    BIGINT,
@@ -152,9 +87,6 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     metadata   JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id    ON audit_logs(user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
 
 CREATE TABLE IF NOT EXISTS outbox_events (
     id           UUID        PRIMARY KEY,
@@ -171,12 +103,6 @@ CREATE TABLE IF NOT EXISTS system_settings (
     value      JSONB        NOT NULL,
     updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
-
-INSERT INTO system_settings (key, value) VALUES
-    ('default_storage_quota_bytes', '1073741824'),
-    ('default_bucket_policy',       '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::app-uploads/*"]}]}'),
-    ('theme',                       '{"primary_color": "#3B82F6", "mode": "light"}')
-ON CONFLICT (key) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS user_settings (
     user_id             BIGINT      PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -258,6 +184,7 @@ CREATE TABLE notifications (
    is_read     BOOLEAN NOT NULL DEFAULT FALSE,
    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
 CREATE TABLE IF NOT EXISTS close_friends (
      id        BIGSERIAL PRIMARY KEY,
      owner_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -268,21 +195,154 @@ CREATE TABLE IF NOT EXISTS close_friends (
 );
 
 CREATE TABLE IF NOT EXISTS user_privacy_settings (
- user_id          BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    user_id          BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     show_email       VARCHAR(16) NOT NULL DEFAULT 'nobody',
     show_phone       VARCHAR(16) NOT NULL DEFAULT 'nobody',
     show_friends     VARCHAR(16) NOT NULL DEFAULT 'everyone',
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_stories_user_id_expires_at ON stories (user_id, expires_at);
-CREATE INDEX IF NOT EXISTS idx_stories_user_id_expires_at ON stories (user_id, expires_at);
-CREATE UNIQUE INDEX story_views_unique_idx ON story_views(viewer_id, story_id, slide_index);
-CREATE UNIQUE INDEX uq_friendships_pair ON friendships (requester_id, addressee_id);
-CREATE INDEX idx_friendships_addressee_pending ON friendships (addressee_id, status);
-CREATE INDEX idx_friendships_requester_pending ON friendships (requester_id, status);
-CREATE INDEX idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_close_friends_owner ON close_friends (owner_id);
+CREATE TYPE photo_visibility AS ENUM ('everyone', 'friends', 'nobody');
+
+CREATE TABLE albums (
+    id            BIGSERIAL PRIMARY KEY,
+    user_id       BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title         VARCHAR(128) NOT NULL,
+    description   VARCHAR(512) NOT NULL DEFAULT '',
+    visibility    photo_visibility NOT NULL DEFAULT 'everyone',
+    hidden_from   BIGINT[] NOT NULL DEFAULT '{}',
+    cover_photo_id BIGINT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE photos (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    album_id        BIGINT REFERENCES albums(id) ON DELETE SET NULL,
+    display_name    VARCHAR(255) NOT NULL,
+    storage_key     TEXT NOT NULL UNIQUE,
+    url             TEXT NOT NULL,
+    size_bytes      BIGINT NOT NULL,
+    width           INT,
+    height          INT,
+    mime_type       VARCHAR(64) NOT NULL,
+    device_name     VARCHAR(64),
+    device_os       VARCHAR(128),
+    device_type     VARCHAR(32),
+    latitude        DOUBLE PRECISION,
+    longitude       DOUBLE PRECISION,
+    location_name   VARCHAR(255),
+    exif_data       JSONB,
+    visibility      photo_visibility NOT NULL DEFAULT 'everyone',
+    hidden_from     BIGINT[] NOT NULL DEFAULT '{}',
+    likes_count     INT NOT NULL DEFAULT 0,
+    comments_count  INT NOT NULL DEFAULT 0
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE photo_likes (
+    photo_id    BIGINT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+    user_id     BIGINT NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (photo_id, user_id)
+);
+
+CREATE TABLE photo_comments (
+    id          BIGSERIAL PRIMARY KEY,
+    photo_id    BIGINT  NOT NULL REFERENCES photos(id)         ON DELETE CASCADE,
+    author_id   BIGINT  NOT NULL REFERENCES users(id)          ON DELETE CASCADE,
+    parent_id   BIGINT  REFERENCES photo_comments(id)          ON DELETE CASCADE,
+    body        TEXT    NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000),
+    is_deleted  BOOLEAN NOT NULL DEFAULT FALSE,
+    likes_count INT NOT NULL DEFAULT 0,
+    replies_count INT NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE photo_comment_likes (
+    comment_id  BIGINT NOT NULL REFERENCES photo_comments(id) ON DELETE CASCADE,
+    user_id     BIGINT NOT NULL REFERENCES users(id)           ON DELETE CASCADE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (comment_id, user_id)
+);
+
+INSERT INTO roles (name) VALUES ('admin'), ('moderator'), ('user');
+INSERT INTO permissions (name, description)
+VALUES
+    ('users.read',   'Read user data'),
+    ('users.create', 'Create users'),
+    ('users.update', 'Update user data'),
+    ('users.delete', 'Delete users'),
+    ('roles.read',   'Read roles'),
+    ('roles.update', 'Update roles'),
+    ('admin.access', 'Access administration endpoints')
+ON CONFLICT (name) DO NOTHING;
+
+-- admin gets all permissions
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+         CROSS JOIN permissions p
+WHERE r.name = 'admin'
+    ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- moderator gets read + update users
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+         JOIN permissions p ON p.name IN ('users.read', 'users.update')
+WHERE r.name = 'moderator'
+    ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- user gets read users
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+FROM roles r
+         JOIN permissions p ON p.name = 'users.read'
+WHERE r.name = 'user'
+    ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+INSERT INTO system_settings (key, value) VALUES
+    ('default_storage_quota_bytes', '1073741824'),
+    ('default_bucket_policy',       '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::app-uploads/*"]}]}'),
+    ('theme',                       '{"primary_color": "#3B82F6", "mode": "light"}')
+ON CONFLICT (key) DO NOTHING;
+
+ALTER TABLE users ADD CONSTRAINT users_username_key UNIQUE (username);
+
+ALTER TABLE users
+    ADD CONSTRAINT fk_users_role
+        FOREIGN KEY (role_id) REFERENCES roles(id);
+
+CREATE INDEX IF NOT EXISTS idx_users_role_id                  ON users(role_id);
+CREATE INDEX IF NOT EXISTS idx_users_deactivated_at           ON users(deactivated_at);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id         ON refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_role_permissions_permission_id ON role_permissions(permission_id);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token    ON password_reset_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id  ON password_reset_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id          ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_refresh_token_id ON user_sessions(refresh_token_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id             ON audit_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type          ON audit_logs(event_type);
+CREATE INDEX idx_stories_user_id_expires_at                   ON stories (user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_stories_user_id_expires_at     ON stories (user_id, expires_at);
+CREATE UNIQUE INDEX story_views_unique_idx                    ON story_views(viewer_id, story_id, slide_index);
+CREATE UNIQUE INDEX uq_friendships_pair                       ON friendships (requester_id, addressee_id);
+CREATE INDEX idx_friendships_addressee_pending                ON friendships (addressee_id, status);
+CREATE INDEX idx_friendships_requester_pending                ON friendships (requester_id, status);
+CREATE INDEX idx_notifications_user_unread                    ON notifications (user_id, is_read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_close_friends_owner            ON close_friends (owner_id);
+CREATE INDEX idx_photos_user_id                               ON photos(user_id);
+CREATE INDEX idx_photos_album_id                              ON photos(album_id);
+CREATE INDEX idx_albums_user_id                               ON albums(user_id);
+CREATE INDEX idx_photo_likes_photo_id                         ON photo_likes(photo_id);
+CREATE INDEX idx_photo_comments_photo_id                      ON photo_comments(photo_id);
+CREATE INDEX idx_photo_comments_parent_id                     ON photo_comments(parent_id);
+CREATE INDEX idx_photo_comments_author_id                     ON photo_comments(author_id);
+CREATE INDEX idx_photo_comment_likes_comment_id               ON photo_comment_likes(comment_id);
 
 ALTER TABLE refresh_tokens
     ADD CONSTRAINT fk_refresh_tokens_parent
@@ -303,3 +363,7 @@ ALTER TABLE user_sessions
     ADD CONSTRAINT fk_user_sessions_device
         FOREIGN KEY (device_id) REFERENCES user_devices(id)
             DEFERRABLE INITIALLY DEFERRED;
+
+ALTER TABLE albums
+    ADD CONSTRAINT fk_albums_cover_photo
+        FOREIGN KEY (cover_photo_id) REFERENCES photos(id) ON DELETE SET NULL;
