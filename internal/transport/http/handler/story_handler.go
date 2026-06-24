@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -104,22 +105,24 @@ func (h *StoryHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 	for _, s := range sts {
 		slides, _ := h.presignSlides(r.Context(), s.Slides)
 		// author metadata
-		var authorName, authorAvatar string
+		var authorName, authorUsername, authorAvatar string
 		if u, err := h.userService.GetProfile(r.Context(), s.UserID); err == nil && u != nil {
 			authorName = u.FullName
+			authorUsername = u.Username
 			authorAvatar = u.AvatarURL
 		}
 		out = append(out, dto.StoryResponse{
-			ID:           s.ID,
-			UserID:       s.UserID,
-			AuthorName:   authorName,
-			AuthorAvatar: authorAvatar,
-			Visibility:   string(s.Visibility),
-			Duration:     s.DurationHours,
-			HiddenFrom:   s.HiddenFromUserIDs,
-			Slides:       slides,
-			CreatedAt:    s.CreatedAt.Format(time.RFC3339),
-			ExpiresAt:    s.ExpiresAt.Format(time.RFC3339),
+			ID:             s.ID,
+			UserID:         s.UserID,
+			AuthorName:     authorName,
+			AuthorUsername: authorUsername,
+			AuthorAvatar:   authorAvatar,
+			Visibility:     string(s.Visibility),
+			Duration:       s.DurationHours,
+			HiddenFrom:     s.HiddenFromUserIDs,
+			Slides:         slides,
+			CreatedAt:      s.CreatedAt.Format(time.RFC3339),
+			ExpiresAt:      s.ExpiresAt.Format(time.RFC3339),
 		})
 	}
 	response.SendSuccess(w, http.StatusOK, out)
@@ -143,45 +146,68 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]dto.StoryResponse, 0, len(sts))
 	for _, s := range sts {
-		// presign slides and unmarshal to annotate seen flags
-		var slidesArr []map[string]any
-		if err := json.Unmarshal(s.Slides, &slidesArr); err != nil {
-			slidesArr = nil
+		// Build stripped feed slides: only id, rendered_url (presigned) and seen flag.
+		var rawSlides []map[string]any
+		if err := json.Unmarshal(s.Slides, &rawSlides); err != nil {
+			rawSlides = nil
 		}
-		// presign URLs in-place
-		for i := range slidesArr {
-			// for each slide, presign media URLs (reuse presignSlides helper by marshalling single slide)
-			b, _ := json.Marshal(slidesArr[i])
-			pres, _ := h.presignSlides(r.Context(), b)
-			if len(pres) > 0 {
-				var updated map[string]any
-				_ = json.Unmarshal(pres[0], &updated)
-				slidesArr[i] = updated
+
+		// helper to determine seen status for a slide index
+		isSeen := func(m map[int]bool, idx int) bool {
+			if m == nil {
+				return false
 			}
-			// annotate seen status from views map
-			if m, ok := views[s.ID]; ok {
-				if _, seenAll := m[-1]; seenAll {
-					slidesArr[i]["seen"] = true
-				} else if _, seenSlide := m[i]; seenSlide {
-					slidesArr[i]["seen"] = true
+			if v, ok := m[-1]; ok && v {
+				return true
+			}
+			if v, ok := m[idx]; ok && v {
+				return true
+			}
+			return false
+		}
+
+		feedSlides := make([]json.RawMessage, 0, len(rawSlides))
+		storyViews := views[s.ID]
+		for i, rs := range rawSlides {
+			stripped := dto.FeedSlideResponse{ID: fmt.Sprintf("%v", rs["id"]), Seen: isSeen(storyViews, i)}
+			// presign rendered_url if present
+			if rv, ok := rs["rendered_url"].(string); ok && rv != "" {
+				if strings.Contains(rv, "/") {
+					if stg, ok := h.storage.(domainstorage.Storage); ok {
+						if presigned, err := stg.PresignURL(r.Context(), h.storageBucket(), rv, 15*time.Minute); err == nil {
+							stripped.RenderedURL = presigned
+						}
+					} else if o, ok := h.storage.(domainstorage.ObjectStorage); ok {
+						if presigned, err := o.GetURL(r.Context(), h.storageBucket(), rv, 15*time.Minute); err == nil {
+							stripped.RenderedURL = presigned
+						}
+					}
 				}
 			}
+			b, _ := json.Marshal(stripped)
+			feedSlides = append(feedSlides, b)
 		}
-		// marshal back to json.RawMessage slice
-		slides := make([]json.RawMessage, 0, len(slidesArr))
-		for _, si := range slidesArr {
-			b, _ := json.Marshal(si)
-			slides = append(slides, b)
+
+		// author metadata (best-effort)
+		var authorName, authorUsername, authorAvatar string
+		if u, err := h.userService.GetProfile(r.Context(), s.UserID); err == nil && u != nil {
+			authorName = u.FullName
+			authorUsername = u.Username
+			authorAvatar = u.AvatarURL
 		}
 
 		out = append(out, dto.StoryResponse{
-			ID:         s.ID,
-			Visibility: string(s.Visibility),
-			Duration:   s.DurationHours,
-			HiddenFrom: s.HiddenFromUserIDs,
-			Slides:     slides,
-			CreatedAt:  s.CreatedAt.Format(time.RFC3339),
-			ExpiresAt:  s.ExpiresAt.Format(time.RFC3339),
+			ID:             s.ID,
+			UserID:         s.UserID,
+			AuthorName:     authorName,
+			AuthorUsername: authorUsername,
+			AuthorAvatar:   authorAvatar,
+			Visibility:     string(s.Visibility),
+			Duration:       s.DurationHours,
+			HiddenFrom:     s.HiddenFromUserIDs,
+			Slides:         feedSlides,
+			CreatedAt:      s.CreatedAt.Format(time.RFC3339),
+			ExpiresAt:      s.ExpiresAt.Format(time.RFC3339),
 		})
 	}
 	response.SendSuccess(w, http.StatusOK, out)
@@ -274,6 +300,7 @@ func (h *StoryHandler) Reply(w http.ResponseWriter, r *http.Request) {
 
 // presignSlides walks the slides JSON array and replaces any media background
 // `url` fields that contain storage keys with short-lived presigned GET URLs.
+// It also presigns an optional top-level `rendered_url` key per slide.
 func (h *StoryHandler) presignSlides(ctx context.Context, slidesJSON []byte) ([]json.RawMessage, error) {
 	var slidesArr []map[string]any
 	if err := json.Unmarshal(slidesJSON, &slidesArr); err != nil {
@@ -282,28 +309,38 @@ func (h *StoryHandler) presignSlides(ctx context.Context, slidesJSON []byte) ([]
 	for i := range slidesArr {
 		// look for background.media.url
 		bg, ok := slidesArr[i]["background"].(map[string]any)
-		if !ok || bg == nil {
-			continue
-		}
-		if kind, _ := bg["kind"].(string); kind != "media" {
-			continue
-		}
-		if urlv, ok := bg["url"].(string); ok && urlv != "" {
-			// If url looks like a storage key (contains '/'), presign it.
-			if strings.Contains(urlv, "/") {
-				// Try storage.PresignURL via the Storage interface.
-				if s, ok := h.storage.(domainstorage.Storage); ok {
-					presigned, err := s.PresignURL(ctx, h.storageBucket(), urlv, 15*time.Minute)
-					if err == nil {
-						bg["url"] = presigned
-					}
-				} else {
-					// fallback to ObjectStorage GetURL if necessary
-					if o, ok := h.storage.(domainstorage.ObjectStorage); ok {
-						presigned, err := o.GetURL(ctx, h.storageBucket(), urlv, 15*time.Minute)
-						if err == nil {
-							bg["url"] = presigned
+		if ok && bg != nil {
+			if kind, _ := bg["kind"].(string); kind == "media" {
+				if urlv, ok := bg["url"].(string); ok && urlv != "" {
+					if strings.Contains(urlv, "/") {
+						if s, ok := h.storage.(domainstorage.Storage); ok {
+							presigned, err := s.PresignURL(ctx, h.storageBucket(), urlv, 15*time.Minute)
+							if err == nil {
+								bg["url"] = presigned
+							}
+						} else if o, ok := h.storage.(domainstorage.ObjectStorage); ok {
+							presigned, err := o.GetURL(ctx, h.storageBucket(), urlv, 15*time.Minute)
+							if err == nil {
+								bg["url"] = presigned
+							}
 						}
+					}
+				}
+			}
+		}
+
+		// also presign top-level rendered_url if present (frontend may upload a composite image)
+		if rv, ok := slidesArr[i]["rendered_url"].(string); ok && rv != "" {
+			if strings.Contains(rv, "/") {
+				if s, ok := h.storage.(domainstorage.Storage); ok {
+					presigned, err := s.PresignURL(ctx, h.storageBucket(), rv, 15*time.Minute)
+					if err == nil {
+						slidesArr[i]["rendered_url"] = presigned
+					}
+				} else if o, ok := h.storage.(domainstorage.ObjectStorage); ok {
+					presigned, err := o.GetURL(ctx, h.storageBucket(), rv, 15*time.Minute)
+					if err == nil {
+						slidesArr[i]["rendered_url"] = presigned
 					}
 				}
 			}

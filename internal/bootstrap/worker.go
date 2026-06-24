@@ -103,7 +103,7 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 		domainevent.AccountActivated:            workerHandler.NewAuditHandler(auditRepo, domainevent.AccountActivated),
 		// email send handler: deliver email.send events by calling SMTP mailer
 		domainevent.EmailSend:             workerHandler.NewEmailSendHandler(smtpMailer),
-		domainevent.StoryPublished:        workerHandler.NewStoryPublishedHandler(friendshipRepo, userSettingsRepo, notificationRepo, hub),
+		domainevent.StoryPublished:        workerHandler.NewStoryPublishedHandler(friendshipRepo, postgresRepo.NewStoryRepository(pool), userSettingsRepo, notificationRepo, hub),
 		domainevent.FriendRequestReceived: workerHandler.NewFriendRequestReceivedHandler(userSettingsRepo, notificationRepo, hub),
 		domainevent.FriendRequestAccepted: workerHandler.NewFriendRequestAcceptedHandler(userSettingsRepo, notificationRepo, hub),
 	}

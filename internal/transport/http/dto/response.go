@@ -75,20 +75,30 @@ type UserSettingsResponse struct {
 }
 
 type StoryResponse struct {
-	ID           int64             `json:"id"`
-	UserID       int64             `json:"user_id"`
-	AuthorName   string            `json:"author_name"`
-	AuthorAvatar string            `json:"author_avatar"`
-	Visibility   string            `json:"visibility"`
-	Duration     int               `json:"duration"`
-	HiddenFrom   []int64           `json:"hidden_from"`
-	Slides       []json.RawMessage `json:"slides"`
-	CreatedAt    string            `json:"created_at"`
-	ExpiresAt    string            `json:"expires_at"`
+	ID             int64             `json:"id"`
+	UserID         int64             `json:"user_id"`
+	AuthorName     string            `json:"author_name"`
+	AuthorUsername string            `json:"author_username"`
+	AuthorAvatar   string            `json:"author_avatar"`
+	Visibility     string            `json:"visibility"`
+	Duration       int               `json:"duration"`
+	HiddenFrom     []int64           `json:"hidden_from"`
+	Slides         []json.RawMessage `json:"slides"`
+	CreatedAt      string            `json:"created_at"`
+	ExpiresAt      string            `json:"expires_at"`
 }
 
 type StoryMediaResponse struct {
 	URL       string `json:"url"`
 	Key       string `json:"key"`
 	MediaType string `json:"media_type"`
+}
+
+// FeedSlideResponse — stripped slide shape returned in GET /stories/feed.
+// Only the pre-rendered composite image and seen flag are exposed; the raw
+// layer data (background, elements, adjustments) is intentionally omitted.
+type FeedSlideResponse struct {
+	ID          string `json:"id"`
+	RenderedURL string `json:"rendered_url,omitempty"`
+	Seen        bool   `json:"seen"`
 }

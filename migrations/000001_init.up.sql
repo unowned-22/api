@@ -258,16 +258,31 @@ CREATE TABLE notifications (
    is_read     BOOLEAN NOT NULL DEFAULT FALSE,
    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS close_friends (
+     id        BIGSERIAL PRIMARY KEY,
+     owner_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    friend_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT uq_close_friends UNIQUE (owner_id, friend_id),
+    CONSTRAINT chk_close_friends_not_self CHECK (owner_id <> friend_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_privacy_settings (
+ user_id          BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    show_email       VARCHAR(16) NOT NULL DEFAULT 'nobody',
+    show_phone       VARCHAR(16) NOT NULL DEFAULT 'nobody',
+    show_friends     VARCHAR(16) NOT NULL DEFAULT 'everyone',
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE INDEX idx_stories_user_id_expires_at ON stories (user_id, expires_at);
+CREATE INDEX IF NOT EXISTS idx_stories_user_id_expires_at ON stories (user_id, expires_at);
 CREATE UNIQUE INDEX story_views_unique_idx ON story_views(viewer_id, story_id, slide_index);
 CREATE UNIQUE INDEX uq_friendships_pair ON friendships (requester_id, addressee_id);
 CREATE INDEX idx_friendships_addressee_pending ON friendships (addressee_id, status);
 CREATE INDEX idx_friendships_requester_pending ON friendships (requester_id, status);
 CREATE INDEX idx_notifications_user_unread ON notifications (user_id, is_read, created_at DESC);
-
-ALTER TABLE stories
-    ADD CONSTRAINT stories_user_id_unique UNIQUE (user_id);
+CREATE INDEX IF NOT EXISTS idx_close_friends_owner ON close_friends (owner_id);
 
 ALTER TABLE refresh_tokens
     ADD CONSTRAINT fk_refresh_tokens_parent

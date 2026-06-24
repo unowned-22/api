@@ -3,7 +3,9 @@ package story
 import "context"
 
 type StoryRepository interface {
-	Upsert(ctx context.Context, s *Story) error
+	Create(ctx context.Context, s *Story) error
+	// IsCloseFriend returns true if friendID is in ownerID's close friends list.
+	IsCloseFriend(ctx context.Context, ownerID, friendID int64) (bool, error)
 	ListActiveByUser(ctx context.Context, userID int64) ([]*Story, error)
 	// ListFeed returns active stories visible to the given user. Filtering by
 	// friends/close visibility is applied by the repository when possible.
@@ -20,7 +22,7 @@ type StoryRepository interface {
 	AddLike(ctx context.Context, viewerID int64, storyID int64) error
 	RemoveLike(ctx context.Context, viewerID int64, storyID int64) error
 	AddReply(ctx context.Context, viewerID int64, storyID int64, message string) error
-	ListReplies(ctx context.Context, storyID int64) ([]*Reply, error)
+	ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*Reply, error)
 }
 
 type StoryService interface {
@@ -35,5 +37,5 @@ type StoryService interface {
 	Like(ctx context.Context, viewerID int64, storyID int64) error
 	Unlike(ctx context.Context, viewerID int64, storyID int64) error
 	Reply(ctx context.Context, viewerID int64, storyID int64, message string) error
-	ListReplies(ctx context.Context, storyID int64) ([]*Reply, error)
+	ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*Reply, error)
 }

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/domain/story"
@@ -17,26 +18,19 @@ func NewStoryRepository(db *pgxpool.Pool) *StoryRepository {
 	return &StoryRepository{db: db}
 }
 
-// Upsert inserts a new story row for the user or appends slides to the
-// existing row for that user. Business rules enforced at service layer
-// (e.g. max slides) — this method performs the DB-level upsert and
-// replaces per-row metadata with the provided values.
-func (r *StoryRepository) Upsert(ctx context.Context, s *story.Story) error {
+// Create inserts a new story row. Each publish creates an independent story.
+func (r *StoryRepository) Create(ctx context.Context, s *story.Story) error {
 	query := `
 		INSERT INTO stories (user_id, visibility, duration_hours, hidden_from_user_ids, slides, expires_at, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (user_id) DO UPDATE
-		SET
-			slides = (stories.slides || EXCLUDED.slides),
-			expires_at = EXCLUDED.expires_at,
-			visibility = EXCLUDED.visibility,
-			duration_hours = EXCLUDED.duration_hours,
-			hidden_from_user_ids = EXCLUDED.hidden_from_user_ids
 		RETURNING id, created_at
 	`
-	err := r.db.QueryRow(ctx, query, s.UserID, s.Visibility, s.DurationHours, s.HiddenFromUserIDs, s.Slides, s.ExpiresAt, s.CreatedAt).Scan(&s.ID, &s.CreatedAt)
+	err := r.db.QueryRow(ctx, query,
+		s.UserID, s.Visibility, s.DurationHours,
+		s.HiddenFromUserIDs, s.Slides, s.ExpiresAt, s.CreatedAt,
+	).Scan(&s.ID, &s.CreatedAt)
 	if err != nil {
-		return fmt.Errorf("failed to upsert story: %w", err)
+		return fmt.Errorf("failed to create story: %w", err)
 	}
 	return nil
 }
@@ -74,13 +68,35 @@ func (r *StoryRepository) ListActiveByUser(ctx context.Context, userID int64) ([
 // returns stories with expires_at > now().
 func (r *StoryRepository) ListFeed(ctx context.Context, viewerID int64) ([]*story.Story, error) {
 	query := `
-		SELECT id, user_id, visibility, duration_hours, hidden_from_user_ids, slides, created_at, expires_at
-		FROM stories
-		WHERE expires_at > now()
-		  AND (hidden_from_user_ids IS NULL OR NOT (hidden_from_user_ids @> $1::bigint[]))
-		ORDER BY created_at DESC
-	`
-	rows, err := r.db.Query(ctx, query, []int64{viewerID})
+       SELECT s.id, s.user_id, s.visibility, s.duration_hours, s.hidden_from_user_ids, s.slides, s.created_at, s.expires_at
+       FROM stories s
+       WHERE s.expires_at > now()
+         AND (s.hidden_from_user_ids IS NULL OR NOT (s.hidden_from_user_ids @> ARRAY[$1::bigint]))
+         AND (
+            s.visibility = 'everyone'
+            OR (
+               s.visibility = 'friends'
+               AND EXISTS (
+                  SELECT 1 FROM friendships f
+                  WHERE f.status = 'accepted'
+                   AND (
+                      (f.requester_id = s.user_id AND f.addressee_id = $1)
+                      OR (f.addressee_id = s.user_id AND f.requester_id = $1)
+                   )
+               )
+            )
+            OR (
+               s.visibility = 'close'
+               AND EXISTS (
+                  SELECT 1 FROM close_friends cf
+                  WHERE cf.owner_id = s.user_id AND cf.friend_id = $1
+               )
+            )
+            OR s.user_id = $1
+         )
+       ORDER BY s.created_at DESC
+    `
+	rows, err := r.db.Query(ctx, query, viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list feed stories: %w", err)
 	}
@@ -99,6 +115,19 @@ func (r *StoryRepository) ListFeed(ctx context.Context, viewerID int64) ([]*stor
 		out = append(out, &s)
 	}
 	return out, nil
+}
+
+// IsCloseFriend returns true if friendID is in ownerID's close friends list.
+func (r *StoryRepository) IsCloseFriend(ctx context.Context, ownerID, friendID int64) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM close_friends WHERE owner_id=$1 AND friend_id=$2)`,
+		ownerID, friendID,
+	).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check close friend: %w", err)
+	}
+	return exists, nil
 }
 
 // AddView records that viewerID has viewed a slide in a story. slideIndex may
@@ -209,8 +238,9 @@ func (r *StoryRepository) AddReply(ctx context.Context, viewerID int64, storyID 
 }
 
 // ListReplies returns recent replies for a story.
-func (r *StoryRepository) ListReplies(ctx context.Context, storyID int64) ([]*story.Reply, error) {
+func (r *StoryRepository) ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*story.Reply, error) {
 	query := `SELECT id, story_id, viewer_id, message, created_at FROM story_replies WHERE story_id = $1 ORDER BY created_at ASC`
+	// viewerID is currently unused by the repository; keep signature for service-level access checks
 	rows, err := r.db.Query(ctx, query, storyID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list replies: %w", err)

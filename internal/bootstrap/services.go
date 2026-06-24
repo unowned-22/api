@@ -66,7 +66,7 @@ func InitServices(
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)
 	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)
 	friendshipSvc := service.NewFriendshipService(repos.Friendship, outboxPublisher)
-	storySvc := service.NewStoryService(repos.Story, friendshipSvc)
+	storySvc := service.NewStoryService(repos.Story, friendshipSvc, outboxPublisher)
 	notifSvc := service.NewNotificationService(repos.Notification)
 	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
 

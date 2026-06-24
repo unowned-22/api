@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/friendship"
 	"github.com/unowned-22/api/internal/domain/story"
 	"github.com/unowned-22/api/internal/errs"
@@ -14,10 +15,11 @@ import (
 type StoryService struct {
 	repo          story.StoryRepository
 	friendshipSvc friendship.Service
+	publisher     event.Publisher
 }
 
-func NewStoryService(repo story.StoryRepository, friendshipSvc friendship.Service) *StoryService {
-	return &StoryService{repo: repo, friendshipSvc: friendshipSvc}
+func NewStoryService(repo story.StoryRepository, friendshipSvc friendship.Service, publisher event.Publisher) *StoryService {
+	return &StoryService{repo: repo, friendshipSvc: friendshipSvc, publisher: publisher}
 }
 
 func (s *StoryService) Feed(ctx context.Context, userID int64) ([]*story.Story, error) {
@@ -25,6 +27,9 @@ func (s *StoryService) Feed(ctx context.Context, userID int64) ([]*story.Story, 
 }
 
 func (s *StoryService) AddView(ctx context.Context, viewerID int64, storyID int64, slideIndex *int) error {
+	if _, err := s.assertCanAccess(ctx, viewerID, storyID); err != nil {
+		return err
+	}
 	return s.repo.AddView(ctx, viewerID, storyID, slideIndex)
 }
 
@@ -88,8 +93,16 @@ func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []b
 		ExpiresAt:         expiresAt,
 	}
 
-	if err := s.repo.Upsert(ctx, st); err != nil {
+	if err := s.repo.Create(ctx, st); err != nil {
 		return nil, fmt.Errorf("failed to persist story: %w", err)
+	}
+
+	// best-effort publish story.published event
+	if s.publisher != nil {
+		payload, _ := json.Marshal(map[string]interface{}{"story_id": st.ID, "user_id": st.UserID, "visibility": st.Visibility, "hidden_from": st.HiddenFromUserIDs})
+		if pubErr := s.publisher.Publish(ctx, event.Event{Name: event.StoryPublished, Payload: payload}); pubErr != nil {
+			fmt.Printf("failed to publish story.published: %v\n", pubErr)
+		}
 	}
 
 	return st, nil
@@ -119,17 +132,29 @@ func (s *StoryService) ListVisibleStories(ctx context.Context, viewerID, authorI
 				out = append(out, st)
 			}
 		case story.VisibilityClose:
-			// TODO: close-friends list not implemented in this task.
+			isClose, cerr := s.repo.IsCloseFriend(ctx, authorID, viewerID)
+			if cerr != nil {
+				return nil, cerr
+			}
+			if isClose {
+				out = append(out, st)
+			}
 		}
 	}
 	return out, nil
 }
 
 func (s *StoryService) Like(ctx context.Context, viewerID int64, storyID int64) error {
+	if _, err := s.assertCanAccess(ctx, viewerID, storyID); err != nil {
+		return err
+	}
 	return s.repo.AddLike(ctx, viewerID, storyID)
 }
 
 func (s *StoryService) Unlike(ctx context.Context, viewerID int64, storyID int64) error {
+	if _, err := s.assertCanAccess(ctx, viewerID, storyID); err != nil {
+		return err
+	}
 	return s.repo.RemoveLike(ctx, viewerID, storyID)
 }
 
@@ -137,11 +162,67 @@ func (s *StoryService) Reply(ctx context.Context, viewerID int64, storyID int64,
 	if message == "" {
 		return errs.ErrInvalidStoryPayload
 	}
+	if len(message) > 500 {
+		return errs.ErrInvalidStoryPayload
+	}
+	if _, err := s.assertCanAccess(ctx, viewerID, storyID); err != nil {
+		return err
+	}
 	return s.repo.AddReply(ctx, viewerID, storyID, message)
 }
 
-func (s *StoryService) ListReplies(ctx context.Context, storyID int64) ([]*story.Reply, error) {
-	return s.repo.ListReplies(ctx, storyID)
+func (s *StoryService) ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*story.Reply, error) {
+	if _, err := s.assertCanAccess(ctx, viewerID, storyID); err != nil {
+		return nil, err
+	}
+	return s.repo.ListReplies(ctx, viewerID, storyID)
+}
+
+// assertCanAccess checks whether viewerID can access storyID according to
+// visibility rules and hidden-from list. Returns the story when allowed.
+func (s *StoryService) assertCanAccess(ctx context.Context, viewerID int64, storyID int64) (*story.Story, error) {
+	st, err := s.repo.GetByID(ctx, storyID)
+	if err != nil {
+		return nil, err
+	}
+	// treat expired as not found
+	if time.Now().UTC().After(st.ExpiresAt) || st.ExpiresAt.Equal(time.Time{}) {
+		return nil, errs.ErrStoryNotFound
+	}
+	// author always has access
+	if viewerID == st.UserID {
+		return st, nil
+	}
+	// hidden-from list prevents access
+	for _, hid := range st.HiddenFromUserIDs {
+		if hid == viewerID {
+			return nil, errs.ErrForbidden
+		}
+	}
+	switch st.Visibility {
+	case story.VisibilityEveryone:
+		return st, nil
+	case story.VisibilityFriends:
+		isFriend, ferr := s.friendshipSvc.IsFriend(ctx, viewerID, st.UserID)
+		if ferr != nil {
+			return nil, ferr
+		}
+		if isFriend {
+			return st, nil
+		}
+		return nil, errs.ErrForbidden
+	case story.VisibilityClose:
+		isClose, cerr := s.repo.IsCloseFriend(ctx, st.UserID, viewerID)
+		if cerr != nil {
+			return nil, cerr
+		}
+		if isClose {
+			return st, nil
+		}
+		return nil, errs.ErrForbidden
+	default:
+		return nil, errs.ErrForbidden
+	}
 }
 
 func (s *StoryService) Delete(ctx context.Context, userID int64, storyID int64) error {
