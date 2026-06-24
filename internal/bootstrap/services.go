@@ -7,6 +7,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/album"
 	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/domain/photo"
+	"github.com/unowned-22/api/internal/domain/photocomment"
 	domainstorage "github.com/unowned-22/api/internal/domain/storage"
 	"github.com/unowned-22/api/internal/domain/systemsettings"
 	"github.com/unowned-22/api/internal/domain/token"
@@ -32,6 +33,7 @@ type Services struct {
 	Notification   notification.Service
 	Photo          photo.Service
 	Album          album.Service
+	PhotoComment   photocomment.Service
 }
 
 // InitServices constructs application services from repositories and infra.
@@ -73,7 +75,9 @@ func InitServices(
 	storySvc := service.NewStoryService(repos.Story, friendshipSvc, outboxPublisher)
 	notifSvc := service.NewNotificationService(repos.Notification)
 	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
-	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage)
+	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage, notifSvc)
+	// initialize photo comment service
+	photoCommentSvc := service.NewPhotoCommentService(repos.PhotoComment, repos.Photo, repos.Notification)
 	albumSvc := service.NewAlbumService(repos.Album, repos.Photo)
 
 	return &Services{
@@ -89,6 +93,7 @@ func InitServices(
 		Profile:        profileSvc,
 		Notification:   notifSvc,
 		Photo:          photoSvc,
+		PhotoComment:   photoCommentSvc,
 		Album:          albumSvc,
 	}
 }

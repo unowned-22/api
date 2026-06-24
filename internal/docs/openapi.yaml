@@ -528,9 +528,119 @@ components:
         visibility:
           type: string
           enum: [everyone, friends, nobody]
+        likes_count:
+          type: integer
+        comments_count:
+          type: integer
+        is_liked:
+          type: boolean
+        device_name:
+          type: string
+          nullable: true
+        device_os:
+          type: string
+          nullable: true
+        device_type:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          format: double
+          nullable: true
+        longitude:
+          type: number
+          format: double
+          nullable: true
+        location_name:
+          type: string
+          nullable: true
+        exif_data:
+          type: object
+          nullable: true
         created_at:
           type: string
           format: date-time
+
+    CommentAuthorResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        full_name:
+          type: string
+        username:
+          type: string
+        avatar_url:
+          type: string
+
+    CommentResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        photo_id:
+          type: integer
+          format: int64
+        parent_id:
+          type: integer
+          format: int64
+          nullable: true
+        body:
+          type: string
+        is_deleted:
+          type: boolean
+        likes_count:
+          type: integer
+        replies_count:
+          type: integer
+        is_liked:
+          type: boolean
+        author:
+          $ref: '#/components/schemas/CommentAuthorResponse'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AddCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        parent_id:
+          type: integer
+          format: int64
+          nullable: true
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    EditCommentRequest:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+
+    PaginatedCommentsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommentResponse'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
 
     PhotoList:
       type: object
@@ -2717,6 +2827,26 @@ paths:
                 album_id:
                   type: integer
                   format: int64
+                latitude:
+                  type: number
+                  format: double
+                  nullable: true
+                longitude:
+                  type: number
+                  format: double
+                  nullable: true
+                location_name:
+                  type: string
+                  nullable: true
+                device_name:
+                  type: string
+                  nullable: true
+                device_os:
+                  type: string
+                  nullable: true
+                device_type:
+                  type: string
+                  nullable: true
       responses:
         "201":
           description: Photo uploaded
@@ -2888,6 +3018,274 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "403": { $ref: '#/components/responses/403Forbidden' }
         "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/photos/{photoID}/like:
+    post:
+      tags: [photos]
+      summary: Like a photo
+      operationId: photoLike
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: photoID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "409":
+          description: Already liked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    delete:
+      tags: [photos]
+      summary: Unlike a photo
+      operationId: photoUnlike
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: photoID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "409":
+          description: Not liked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/photos/{photoID}/comments:
+    post:
+      tags: [photos]
+      summary: Add comment to photo
+      operationId: photoAddComment
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: photoID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCommentRequest'
+      responses:
+        "201":
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CommentResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    get:
+      tags: [photos]
+      summary: List comments for photo
+      operationId: photoListComments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: photoID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Comments list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommentsResponse'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/photos/comments/{commentID}/replies:
+    get:
+      tags: [photos]
+      summary: List replies to a comment
+      operationId: commentListReplies
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commentID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Replies list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCommentsResponse'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/photos/comments/{commentID}:
+    patch:
+      tags: [photos]
+      summary: Edit a comment
+      operationId: commentEdit
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commentID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EditCommentRequest'
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    delete:
+      tags: [photos]
+      summary: Delete a comment
+      operationId: commentDelete
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commentID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/photos/comments/{commentID}/like:
+    post:
+      tags: [photos]
+      summary: Like a comment
+      operationId: commentLike
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commentID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "409":
+          description: Already liked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    delete:
+      tags: [photos]
+      summary: Unlike a comment
+      operationId: commentUnlike
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: commentID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "409":
+          description: Not liked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
         "500": { $ref: '#/components/responses/500Internal' }
 
   /api/v1/albums:

@@ -13,6 +13,7 @@ import (
 	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/domain/album"
 	"github.com/unowned-22/api/internal/domain/photo"
+	"github.com/unowned-22/api/internal/pkg/uaparser"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 	"github.com/unowned-22/api/internal/validator"
@@ -86,7 +87,13 @@ func (h *PhotoHandler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := h.photos.Upload(r.Context(), userID, photo.UploadInput{Reader: bytes.NewReader(data), Size: int64(len(data)), Filename: filename, ContentType: contentType, AlbumID: albumID})
+	// parse user-agent for device info
+	di := uaparser.Parse(r.Header.Get("User-Agent"))
+	deviceName := di.Browser
+	deviceOS := di.OS
+	deviceType := di.DeviceType
+
+	p, err := h.photos.Upload(r.Context(), userID, photo.UploadInput{Reader: bytes.NewReader(data), Size: int64(len(data)), Filename: filename, ContentType: contentType, AlbumID: albumID, DeviceName: &deviceName, DeviceOS: &deviceOS, DeviceType: &deviceType})
 	if err != nil {
 		response.SendError(w, r, err)
 		return

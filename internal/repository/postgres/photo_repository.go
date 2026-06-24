@@ -21,9 +21,31 @@ func NewPhotoRepository(db *pgxpool.Pool) *PhotoRepository {
 }
 
 func (r *PhotoRepository) Create(ctx context.Context, p *photo.Photo) error {
-	q := `INSERT INTO photos (user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, created_at, updated_at`
-	err := r.db.QueryRow(ctx, q, p.UserID, p.AlbumID, p.DisplayName, p.StorageKey, p.URL, p.SizeBytes, p.Width, p.Height, p.MimeType, p.Visibility, p.HiddenFrom, p.CreatedAt).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
+	q := `INSERT INTO photos (user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, device_name, device_os, device_type, latitude, longitude, location_name, exif_data, likes_count, comments_count, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING id, created_at, updated_at`
+	err := r.db.QueryRow(ctx, q,
+		p.UserID,
+		p.AlbumID,
+		p.DisplayName,
+		p.StorageKey,
+		p.URL,
+		p.SizeBytes,
+		p.Width,
+		p.Height,
+		p.MimeType,
+		p.Visibility,
+		p.HiddenFrom,
+		p.DeviceName,
+		p.DeviceOS,
+		p.DeviceType,
+		p.Latitude,
+		p.Longitude,
+		p.LocationName,
+		p.ExifData,
+		p.LikesCount,
+		p.CommentsCount,
+		p.CreatedAt,
+	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
@@ -37,11 +59,15 @@ func (r *PhotoRepository) Create(ctx context.Context, p *photo.Photo) error {
 }
 
 func (r *PhotoRepository) GetByID(ctx context.Context, id int64) (*photo.Photo, error) {
-	q := `SELECT id, user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, created_at, updated_at FROM photos WHERE id = $1`
+	q := `SELECT id, user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, device_name, device_os, device_type, latitude, longitude, location_name, exif_data, likes_count, comments_count, created_at, updated_at FROM photos WHERE id = $1`
 	var p photo.Photo
 	var hidden []int64
 	var width, height *int
-	err := r.db.QueryRow(ctx, q, id).Scan(&p.ID, &p.UserID, &p.AlbumID, &p.DisplayName, &p.StorageKey, &p.URL, &p.SizeBytes, &width, &height, &p.MimeType, &p.Visibility, &hidden, &p.CreatedAt, &p.UpdatedAt)
+	var deviceName, deviceOS, deviceType *string
+	var latitude, longitude *float64
+	var locationName *string
+	var exifData []byte
+	err := r.db.QueryRow(ctx, q, id).Scan(&p.ID, &p.UserID, &p.AlbumID, &p.DisplayName, &p.StorageKey, &p.URL, &p.SizeBytes, &width, &height, &p.MimeType, &p.Visibility, &hidden, &deviceName, &deviceOS, &deviceType, &latitude, &longitude, &locationName, &exifData, &p.LikesCount, &p.CommentsCount, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, errs.ErrPhotoNotFound
@@ -51,15 +77,27 @@ func (r *PhotoRepository) GetByID(ctx context.Context, id int64) (*photo.Photo, 
 	p.Width = width
 	p.Height = height
 	p.HiddenFrom = hidden
+	p.DeviceName = deviceName
+	p.DeviceOS = deviceOS
+	p.DeviceType = deviceType
+	p.Latitude = latitude
+	p.Longitude = longitude
+	p.LocationName = locationName
+	p.ExifData = exifData
+	// likes/comments default 0 already handled by DB
 	return &p, nil
 }
 
 func (r *PhotoRepository) GetByStorageKey(ctx context.Context, key string) (*photo.Photo, error) {
-	q := `SELECT id, user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, created_at, updated_at FROM photos WHERE storage_key = $1`
+	q := `SELECT id, user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, device_name, device_os, device_type, latitude, longitude, location_name, exif_data, created_at, updated_at FROM photos WHERE storage_key = $1`
 	var p photo.Photo
 	var hidden []int64
 	var width, height *int
-	err := r.db.QueryRow(ctx, q, key).Scan(&p.ID, &p.UserID, &p.AlbumID, &p.DisplayName, &p.StorageKey, &p.URL, &p.SizeBytes, &width, &height, &p.MimeType, &p.Visibility, &hidden, &p.CreatedAt, &p.UpdatedAt)
+	var deviceName, deviceOS, deviceType *string
+	var latitude, longitude *float64
+	var locationName *string
+	var exifData []byte
+	err := r.db.QueryRow(ctx, q, key).Scan(&p.ID, &p.UserID, &p.AlbumID, &p.DisplayName, &p.StorageKey, &p.URL, &p.SizeBytes, &width, &height, &p.MimeType, &p.Visibility, &hidden, &deviceName, &deviceOS, &deviceType, &latitude, &longitude, &locationName, &exifData, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, nil
@@ -69,6 +107,13 @@ func (r *PhotoRepository) GetByStorageKey(ctx context.Context, key string) (*pho
 	p.Width = width
 	p.Height = height
 	p.HiddenFrom = hidden
+	p.DeviceName = deviceName
+	p.DeviceOS = deviceOS
+	p.DeviceType = deviceType
+	p.Latitude = latitude
+	p.Longitude = longitude
+	p.LocationName = locationName
+	p.ExifData = exifData
 	return &p, nil
 }
 
@@ -84,7 +129,7 @@ func (r *PhotoRepository) ListByUser(ctx context.Context, userID int64, viewerID
 		return nil, 0, fmt.Errorf("failed to count photos: %w", err)
 	}
 
-	q := `SELECT id, user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, created_at, updated_at
+	q := `SELECT id, user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, device_name, device_os, device_type, latitude, longitude, location_name, exif_data, likes_count, comments_count, created_at, updated_at
         FROM photos p
         WHERE p.user_id = $1 AND (
             p.user_id = $2 OR (
@@ -105,12 +150,23 @@ func (r *PhotoRepository) ListByUser(ctx context.Context, userID int64, viewerID
 		var p photo.Photo
 		var hidden []int64
 		var width, height *int
-		if err := rows.Scan(&p.ID, &p.UserID, &p.AlbumID, &p.DisplayName, &p.StorageKey, &p.URL, &p.SizeBytes, &width, &height, &p.MimeType, &p.Visibility, &hidden, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var deviceName, deviceOS, deviceType *string
+		var latitude, longitude *float64
+		var locationName *string
+		var exifData []byte
+		if err := rows.Scan(&p.ID, &p.UserID, &p.AlbumID, &p.DisplayName, &p.StorageKey, &p.URL, &p.SizeBytes, &width, &height, &p.MimeType, &p.Visibility, &hidden, &deviceName, &deviceOS, &deviceType, &latitude, &longitude, &locationName, &exifData, &p.LikesCount, &p.CommentsCount, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("failed to scan photo row: %w", err)
 		}
 		p.Width = width
 		p.Height = height
 		p.HiddenFrom = hidden
+		p.DeviceName = deviceName
+		p.DeviceOS = deviceOS
+		p.DeviceType = deviceType
+		p.Latitude = latitude
+		p.Longitude = longitude
+		p.LocationName = locationName
+		p.ExifData = exifData
 		out = append(out, &p)
 	}
 	return out, total, nil
@@ -127,7 +183,7 @@ func (r *PhotoRepository) ListByAlbum(ctx context.Context, albumID int64, viewer
 		return nil, 0, fmt.Errorf("failed to count album photos: %w", err)
 	}
 
-	q := `SELECT id, user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, created_at, updated_at
+	q := `SELECT id, user_id, album_id, display_name, storage_key, url, size_bytes, width, height, mime_type, visibility, hidden_from, device_name, device_os, device_type, latitude, longitude, location_name, exif_data, likes_count, comments_count, created_at, updated_at
         FROM photos p
         WHERE p.album_id = $1 AND (
             p.user_id = $2 OR (
@@ -148,12 +204,23 @@ func (r *PhotoRepository) ListByAlbum(ctx context.Context, albumID int64, viewer
 		var p photo.Photo
 		var hidden []int64
 		var width, height *int
-		if err := rows.Scan(&p.ID, &p.UserID, &p.AlbumID, &p.DisplayName, &p.StorageKey, &p.URL, &p.SizeBytes, &width, &height, &p.MimeType, &p.Visibility, &hidden, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		var deviceName, deviceOS, deviceType *string
+		var latitude, longitude *float64
+		var locationName *string
+		var exifData []byte
+		if err := rows.Scan(&p.ID, &p.UserID, &p.AlbumID, &p.DisplayName, &p.StorageKey, &p.URL, &p.SizeBytes, &width, &height, &p.MimeType, &p.Visibility, &hidden, &deviceName, &deviceOS, &deviceType, &latitude, &longitude, &locationName, &exifData, &p.LikesCount, &p.CommentsCount, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, 0, fmt.Errorf("failed to scan photo row: %w", err)
 		}
 		p.Width = width
 		p.Height = height
 		p.HiddenFrom = hidden
+		p.DeviceName = deviceName
+		p.DeviceOS = deviceOS
+		p.DeviceType = deviceType
+		p.Latitude = latitude
+		p.Longitude = longitude
+		p.LocationName = locationName
+		p.ExifData = exifData
 		out = append(out, &p)
 	}
 	return out, total, nil
@@ -169,6 +236,60 @@ func (r *PhotoRepository) UpdateMeta(ctx context.Context, id int64, displayName 
 		return errs.ErrPhotoNotFound
 	}
 	return nil
+}
+
+func (r *PhotoRepository) AddLike(ctx context.Context, userID, photoID int64) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `INSERT INTO photo_likes (photo_id, user_id) VALUES ($1,$2)`, photoID, userID); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return errs.ErrPhotoAlreadyLiked
+		}
+		return fmt.Errorf("insert photo like: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE photos SET likes_count = likes_count + 1 WHERE id = $1`, photoID); err != nil {
+		return fmt.Errorf("inc photo likes: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
+func (r *PhotoRepository) RemoveLike(ctx context.Context, userID, photoID int64) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	cmd, err := tx.Exec(ctx, `DELETE FROM photo_likes WHERE photo_id = $1 AND user_id = $2`, photoID, userID)
+	if err != nil {
+		return fmt.Errorf("delete photo like: %w", err)
+	}
+	if cmd.RowsAffected() == 0 {
+		return errs.ErrPhotoNotLiked
+	}
+	if _, err := tx.Exec(ctx, `UPDATE photos SET likes_count = GREATEST(0, likes_count - 1) WHERE id = $1`, photoID); err != nil {
+		return fmt.Errorf("dec photo likes: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit tx: %w", err)
+	}
+	return nil
+}
+
+func (r *PhotoRepository) IsLiked(ctx context.Context, userID, photoID int64) (bool, error) {
+	var exists bool
+	if err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM photo_likes WHERE photo_id = $1 AND user_id = $2)`, photoID, userID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("is liked: %w", err)
+	}
+	return exists, nil
 }
 
 func (r *PhotoRepository) MoveToAlbum(ctx context.Context, id int64, albumID *int64) error {

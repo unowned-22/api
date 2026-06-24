@@ -10,8 +10,11 @@ import (
 	"io"
 	"path"
 
+	"encoding/json"
 	"github.com/google/uuid"
+	"github.com/rwcarlsen/goexif/exif"
 	"github.com/unowned-22/api/internal/domain/album"
+	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/domain/photo"
 	"github.com/unowned-22/api/internal/domain/storage"
 	domainusersettings "github.com/unowned-22/api/internal/domain/usersettings"
@@ -23,10 +26,11 @@ type photoService struct {
 	albums   album.Repository
 	settings domainusersettings.Repository
 	storage  storage.Storage
+	notif    notification.Service
 }
 
-func NewPhotoService(photos photo.Repository, albums album.Repository, settings domainusersettings.Repository, storage storage.Storage) photo.Service {
-	return &photoService{photos: photos, albums: albums, settings: settings, storage: storage}
+func NewPhotoService(photos photo.Repository, albums album.Repository, settings domainusersettings.Repository, storage storage.Storage, notif notification.Service) photo.Service {
+	return &photoService{photos: photos, albums: albums, settings: settings, storage: storage, notif: notif}
 }
 
 func (s *photoService) Upload(ctx context.Context, userID int64, input photo.UploadInput) (*photo.Photo, error) {
@@ -67,6 +71,32 @@ func (s *photoService) Upload(ctx context.Context, userID int64, input photo.Upl
 		heightPtr = &h
 	}
 
+	// parse EXIF for GPS if present
+	var latPtr, lonPtr *float64
+	var exifJSON []byte
+	if x, err := exif.Decode(bytes.NewReader(data)); err == nil {
+		if lat, lon, err := x.LatLong(); err == nil {
+			latPtr = &lat
+			lonPtr = &lon
+		}
+		// collect a small set of tags into JSON
+		m := map[string]string{}
+		if t, err := x.Get(exif.Model); err == nil {
+			m["model"] = t.String()
+		}
+		if t, err := x.Get(exif.Make); err == nil {
+			m["make"] = t.String()
+		}
+		if t, err := x.Get(exif.DateTimeOriginal); err == nil {
+			m["datetime"] = t.String()
+		}
+		if len(m) > 0 {
+			if b, err := json.Marshal(m); err == nil {
+				exifJSON = b
+			}
+		}
+	}
+
 	// extension from content type
 	ext := "bin"
 	switch input.ContentType {
@@ -86,17 +116,24 @@ func (s *photoService) Upload(ctx context.Context, userID int64, input photo.Upl
 	}
 
 	p := &photo.Photo{
-		UserID:      userID,
-		AlbumID:     input.AlbumID,
-		DisplayName: input.Filename,
-		StorageKey:  key,
-		URL:         url,
-		SizeBytes:   int64(len(data)),
-		Width:       widthPtr,
-		Height:      heightPtr,
-		MimeType:    input.ContentType,
-		Visibility:  photo.VisibilityEveryone,
-		HiddenFrom:  []int64{},
+		UserID:       userID,
+		AlbumID:      input.AlbumID,
+		DisplayName:  input.Filename,
+		StorageKey:   key,
+		URL:          url,
+		SizeBytes:    int64(len(data)),
+		Width:        widthPtr,
+		Height:       heightPtr,
+		MimeType:     input.ContentType,
+		Visibility:   photo.VisibilityEveryone,
+		HiddenFrom:   []int64{},
+		DeviceName:   input.DeviceName,
+		DeviceOS:     input.DeviceOS,
+		DeviceType:   input.DeviceType,
+		Latitude:     latPtr,
+		Longitude:    lonPtr,
+		LocationName: input.LocationName,
+		ExifData:     exifJSON,
 	}
 
 	if err := s.photos.Create(ctx, p); err != nil {
@@ -225,6 +262,27 @@ func (s *photoService) Delete(ctx context.Context, id int64, requesterID int64) 
 	}
 	// decrement used bytes
 	if err := s.settings.IncrementUsedBytes(ctx, requesterID, -p.SizeBytes); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *photoService) LikePhoto(ctx context.Context, photoID int64, userID int64) error {
+	p, err := s.photos.GetByID(ctx, photoID)
+	if err != nil {
+		return err
+	}
+	if p == nil {
+		return errs.ErrPhotoNotFound
+	}
+	if err := s.photos.AddLike(ctx, userID, photoID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *photoService) UnlikePhoto(ctx context.Context, photoID int64, userID int64) error {
+	if err := s.photos.RemoveLike(ctx, userID, photoID); err != nil {
 		return err
 	}
 	return nil

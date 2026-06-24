@@ -24,6 +24,7 @@ type Repositories struct {
 	Friendship     *postgresRepo.FriendshipRepository
 	UserPrivacy    *postgresRepo.UserPrivacyRepository
 	Photo          *postgresRepo.PhotoRepository
+	PhotoComment   *postgresRepo.PhotoCommentRepository
 	Album          *postgresRepo.AlbumRepository
 }
 
@@ -46,6 +47,7 @@ func InitRepositories(pool *pgxpool.Pool) *Repositories {
 		Friendship:     postgresRepo.NewFriendshipRepository(pool),
 		UserPrivacy:    postgresRepo.NewUserPrivacyRepository(pool),
 		Photo:          postgresRepo.NewPhotoRepository(pool),
+		PhotoComment:   postgresRepo.NewPhotoCommentRepository(pool),
 		Album:          postgresRepo.NewAlbumRepository(pool),
 	}
 }

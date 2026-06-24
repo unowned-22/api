@@ -107,6 +107,24 @@ The spec is embedded into the binary from `internal/docs/openapi.yaml` — no se
 
 Swagger UI is **not** available when `APP_ENV=production`.
 
+## Photos: metadata, comments and likes
+
+Photos now include optional device and geolocation metadata as well as raw EXIF JSON. When uploading a photo (`POST /api/v1/photos`) clients may provide optional multipart fields `latitude`, `longitude`, `location_name`, `device_name`, `device_os`, and `device_type`. The server will also attempt to extract GPS and basic EXIF tags from uploaded images when available.
+
+New endpoints were added for social interactions:
+- `POST /api/v1/photos/{photoID}/like` and `DELETE /api/v1/photos/{photoID}/like` — like/unlike a photo.
+- `POST /api/v1/photos/{photoID}/comments` and `GET /api/v1/photos/{photoID}/comments` — add and list top-level comments.
+- `GET /api/v1/photos/comments/{commentID}/replies` — list replies (one-level deep only).
+- `PATCH/DELETE /api/v1/photos/comments/{commentID}` — edit/delete comment.
+- `POST/DELETE /api/v1/photos/comments/{commentID}/like` — like/unlike a comment.
+
+Server behavior notes:
+- Photo rows include `likes_count` and `comments_count` (denormalized counters updated transactionally).
+- Replies are limited to one level (replies-to-replies are rejected).
+- Notifications are generated for new likes and comments; see `internal/domain/notification` for the contract.
+
+Remember: whenever you change or add endpoints, update `internal/docs/openapi.yaml` in the same commit.
+
 ---
 
 ## CLI Usage

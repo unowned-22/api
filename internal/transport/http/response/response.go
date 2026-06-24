@@ -128,6 +128,41 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "STORY_NOT_FOUND"
 		message = "story not found"
 
+	case errors.Is(err, errs.ErrCommentNotFound):
+		status = http.StatusNotFound
+		code = "COMMENT_NOT_FOUND"
+		message = "comment not found"
+
+	case errors.Is(err, errs.ErrCommentNotOwned):
+		status = http.StatusForbidden
+		code = "FORBIDDEN"
+		message = "forbidden"
+
+	case errors.Is(err, errs.ErrCommentNestingNotAllowed):
+		status = http.StatusUnprocessableEntity
+		code = "COMMENT_NESTING_NOT_ALLOWED"
+		message = "replies to replies are not allowed"
+
+	case errors.Is(err, errs.ErrCommentEditExpired):
+		status = http.StatusUnprocessableEntity
+		code = "COMMENT_EDIT_EXPIRED"
+		message = "comment edit window has expired"
+
+	case errors.Is(err, errs.ErrCommentAlreadyDeleted):
+		status = http.StatusUnprocessableEntity
+		code = "COMMENT_ALREADY_DELETED"
+		message = "comment is already deleted"
+
+	case errors.Is(err, errs.ErrPhotoAlreadyLiked), errors.Is(err, errs.ErrCommentAlreadyLiked):
+		status = http.StatusConflict
+		code = "ALREADY_LIKED"
+		message = "already liked"
+
+	case errors.Is(err, errs.ErrPhotoNotLiked), errors.Is(err, errs.ErrCommentNotLiked):
+		status = http.StatusConflict
+		code = "NOT_LIKED"
+		message = "not liked"
+
 	case errors.Is(err, errs.ErrInvalidStoryPayload):
 		status = http.StatusBadRequest
 		code = "INVALID_STORY_PAYLOAD"

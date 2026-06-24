@@ -23,6 +23,23 @@ type Photo struct {
 	MimeType    string
 	Visibility  Visibility
 	HiddenFrom  []int64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// Device metadata
+	DeviceName *string
+	DeviceOS   *string
+	DeviceType *string
+
+	// Geolocation
+	Latitude     *float64
+	Longitude    *float64
+	LocationName *string
+
+	// EXIF raw JSON
+	ExifData []byte
+
+	// Counters & viewer-specific
+	LikesCount    int
+	CommentsCount int
+	IsLiked       bool
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }

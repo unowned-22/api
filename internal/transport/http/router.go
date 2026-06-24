@@ -56,6 +56,7 @@ func NewRouter(
 	notificationHandler *handler.NotificationHandler,
 	photoHandler *handler.PhotoHandler,
 	albumHandler *handler.AlbumHandler,
+	photoCommentHandler *handler.PhotoCommentHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
 	permissionService permission.PermissionService,
@@ -157,6 +158,8 @@ func NewRouter(
 			r.Patch("/photos/{photoID}", photoHandler.UpdatePhotoMeta)
 			r.Patch("/photos/{photoID}/move", photoHandler.MovePhotoToAlbum)
 			r.Delete("/photos/{photoID}", photoHandler.DeletePhoto)
+			r.Post("/photos/{photoID}/like", photoCommentHandler.LikePhoto)
+			r.Delete("/photos/{photoID}/like", photoCommentHandler.UnlikePhoto)
 
 			r.Post("/albums", albumHandler.CreateAlbum)
 			r.Get("/albums", albumHandler.ListMyAlbums)
@@ -165,6 +168,15 @@ func NewRouter(
 			r.Delete("/albums/{albumID}", albumHandler.DeleteAlbum)
 			r.Patch("/albums/{albumID}/cover", albumHandler.SetAlbumCover)
 			r.Get("/albums/{albumID}/photos", albumHandler.ListAlbumPhotos)
+
+			// photo comments & likes
+			r.Post("/photos/{photoID}/comments", photoCommentHandler.AddComment)
+			r.Get("/photos/{photoID}/comments", photoCommentHandler.ListComments)
+			r.Get("/photos/comments/{commentID}/replies", photoCommentHandler.ListReplies)
+			r.Patch("/photos/comments/{commentID}", photoCommentHandler.EditComment)
+			r.Delete("/photos/comments/{commentID}", photoCommentHandler.DeleteComment)
+			r.Post("/photos/comments/{commentID}/like", photoCommentHandler.LikeComment)
+			r.Delete("/photos/comments/{commentID}/like", photoCommentHandler.UnlikeComment)
 
 			// Notifications
 			r.Get("/notifications", notificationHandler.List)
