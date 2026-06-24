@@ -28,7 +28,6 @@ type Service interface {
 	UpdateMeta(ctx context.Context, id int64, requesterID int64, displayName string, visibility Visibility, hiddenFrom []int64) error
 	MoveToAlbum(ctx context.Context, id int64, requesterID int64, albumID *int64) error
 	Delete(ctx context.Context, id int64, requesterID int64) error
-	// Likes
 	LikePhoto(ctx context.Context, photoID int64, userID int64) error
 	UnlikePhoto(ctx context.Context, photoID int64, userID int64) error
 }

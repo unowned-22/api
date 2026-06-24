@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -23,6 +24,12 @@ func NewAlbumRepository(db *pgxpool.Pool) *AlbumRepository {
 func (r *AlbumRepository) Create(ctx context.Context, a *album.Album) error {
 	q := `INSERT INTO albums (user_id, title, description, visibility, hidden_from, cover_photo_id, created_at)
         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at, updated_at`
+	if a.HiddenFrom == nil {
+		a.HiddenFrom = make([]int64, 0)
+	}
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now()
+	}
 	err := r.db.QueryRow(ctx, q, a.UserID, a.Title, a.Description, a.Visibility, a.HiddenFrom, a.CoverPhotoID, a.CreatedAt).Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -95,6 +102,9 @@ func (r *AlbumRepository) ListByUser(ctx context.Context, userID int64, viewerID
 
 func (r *AlbumRepository) Update(ctx context.Context, a *album.Album) error {
 	q := `UPDATE albums SET title = $1, description = $2, visibility = $3, hidden_from = $4, updated_at = NOW() WHERE id = $5`
+	if a.HiddenFrom == nil {
+		a.HiddenFrom = make([]int64, 0)
+	}
 	cmd, err := r.db.Exec(ctx, q, a.Title, a.Description, a.Visibility, a.HiddenFrom, a.ID)
 	if err != nil {
 		return fmt.Errorf("failed to update album: %w", err)

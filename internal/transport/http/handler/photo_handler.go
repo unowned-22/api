@@ -13,6 +13,7 @@ import (
 	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/domain/album"
 	"github.com/unowned-22/api/internal/domain/photo"
+	"github.com/unowned-22/api/internal/domain/profile"
 	"github.com/unowned-22/api/internal/pkg/uaparser"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
@@ -20,12 +21,13 @@ import (
 )
 
 type PhotoHandler struct {
-	photos photo.Service
-	albums album.Service
+	photos   photo.Service
+	albums   album.Service
+	profiles profile.Service
 }
 
-func NewPhotoHandler(photos photo.Service, albums album.Service) *PhotoHandler {
-	return &PhotoHandler{photos: photos, albums: albums}
+func NewPhotoHandler(photos photo.Service, albums album.Service, profiles profile.Service) *PhotoHandler {
+	return &PhotoHandler{photos: photos, albums: albums, profiles: profiles}
 }
 
 // UploadPhoto handles POST /api/v1/photos
@@ -134,6 +136,43 @@ func (h *PhotoHandler) ListMyPhotos(w http.ResponseWriter, r *http.Request) {
 	out := make([]dto.PhotoResponse, 0, len(items))
 	for _, p := range items {
 		out = append(out, dto.PhotoResponse{ID: p.ID, AlbumID: p.AlbumID, DisplayName: p.DisplayName, URL: p.URL, SizeBytes: p.SizeBytes, Width: p.Width, Height: p.Height, MimeType: p.MimeType, Visibility: string(p.Visibility), CreatedAt: p.CreatedAt.Format(time.RFC3339)})
+	}
+	response.SendSuccess(w, http.StatusOK, out)
+}
+
+func (h *PhotoHandler) ListUserPhotosByUsername(w http.ResponseWriter, r *http.Request) {
+	viewerID, _ := contextx.UserID(r.Context())
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		response.SendBadRequest(w, "username is required")
+		return
+	}
+	p, err := h.profiles.GetPublicProfile(r.Context(), viewerID, username)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	q := r.URL.Query()
+	limit := 20
+	offset := 0
+	if l := q.Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil {
+			limit = v
+		}
+	}
+	if o := q.Get("offset"); o != "" {
+		if v, err := strconv.Atoi(o); err == nil {
+			offset = v
+		}
+	}
+	items, _, err := h.photos.ListUserPhotos(r.Context(), p.ID, viewerID, limit, offset)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	out := make([]dto.PhotoResponse, 0, len(items))
+	for _, ph := range items {
+		out = append(out, dto.PhotoResponse{ID: ph.ID, AlbumID: ph.AlbumID, DisplayName: ph.DisplayName, URL: ph.URL, SizeBytes: ph.SizeBytes, Width: ph.Width, Height: ph.Height, MimeType: ph.MimeType, Visibility: string(ph.Visibility), CreatedAt: ph.CreatedAt.Format(time.RFC3339)})
 	}
 	response.SendSuccess(w, http.StatusOK, out)
 }

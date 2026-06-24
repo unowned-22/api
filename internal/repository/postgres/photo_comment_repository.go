@@ -52,10 +52,10 @@ func (r *PhotoCommentRepository) Create(ctx context.Context, c *photocomment.Com
 }
 
 func (r *PhotoCommentRepository) GetByID(ctx context.Context, id int64) (*photocomment.Comment, error) {
-	q := `SELECT c.id, c.photo_id, c.author_id, c.parent_id, c.body, c.is_deleted, c.likes_count, c.replies_count, c.created_at, c.updated_at, u.id, u.full_name, u.username, u.avatar_url
-        FROM photo_comments c
-        JOIN users u ON u.id = c.author_id
-        WHERE c.id = $1`
+	q := `SELECT c.id, c.photo_id, c.author_id, c.parent_id, c.body, c.is_deleted, c.likes_count, c.replies_count, c.created_at, c.updated_at, u.id, u.full_name, u.username, COALESCE(u.avatar_url, '') AS avatar_url
+		FROM photo_comments c
+		JOIN users u ON u.id = c.author_id
+		WHERE c.id = $1`
 	var c photocomment.Comment
 	var parent sql.NullInt64
 	var authorID int64
@@ -84,7 +84,7 @@ func (r *PhotoCommentRepository) ListRoots(ctx context.Context, photoID int64, v
 		return nil, 0, fmt.Errorf("count roots: %w", err)
 	}
 
-	q := `SELECT c.id, c.photo_id, c.author_id, c.parent_id, c.body, c.is_deleted, c.likes_count, c.replies_count, c.created_at, c.updated_at, u.id, u.full_name, u.username, u.avatar_url,
+	q := `SELECT c.id, c.photo_id, c.author_id, c.parent_id, c.body, c.is_deleted, c.likes_count, c.replies_count, c.created_at, c.updated_at, u.id, u.full_name, u.username, COALESCE(u.avatar_url, '') AS avatar_url,
         EXISTS(SELECT 1 FROM photo_comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $3) AS is_liked
         FROM photo_comments c
         JOIN users u ON u.id = c.author_id
@@ -125,7 +125,7 @@ func (r *PhotoCommentRepository) ListReplies(ctx context.Context, parentID int64
 		return nil, 0, fmt.Errorf("count replies: %w", err)
 	}
 
-	q := `SELECT c.id, c.photo_id, c.author_id, c.parent_id, c.body, c.is_deleted, c.likes_count, c.replies_count, c.created_at, c.updated_at, u.id, u.full_name, u.username, u.avatar_url,
+	q := `SELECT c.id, c.photo_id, c.author_id, c.parent_id, c.body, c.is_deleted, c.likes_count, c.replies_count, c.created_at, c.updated_at, u.id, u.full_name, u.username, COALESCE(u.avatar_url, '') AS avatar_url,
         EXISTS(SELECT 1 FROM photo_comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $2) AS is_liked
         FROM photo_comments c
         JOIN users u ON u.id = c.author_id

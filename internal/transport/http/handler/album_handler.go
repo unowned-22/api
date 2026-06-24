@@ -9,16 +9,20 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/domain/album"
+	"github.com/unowned-22/api/internal/domain/profile"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 	"github.com/unowned-22/api/internal/validator"
 )
 
 type AlbumHandler struct {
-	albums album.Service
+	albums   album.Service
+	profiles profile.Service
 }
 
-func NewAlbumHandler(albums album.Service) *AlbumHandler { return &AlbumHandler{albums: albums} }
+func NewAlbumHandler(albums album.Service, profiles profile.Service) *AlbumHandler {
+	return &AlbumHandler{albums: albums, profiles: profiles}
+}
 
 func (h *AlbumHandler) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
@@ -35,7 +39,11 @@ func (h *AlbumHandler) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 		response.SendValidationError(w, []response.ValidationFieldError{{Field: "", Message: "validation failed"}})
 		return
 	}
-	a, err := h.albums.Create(r.Context(), userID, album.CreateInput{Title: req.Title, Description: req.Description, Visibility: album.Visibility(req.Visibility), HiddenFrom: req.HiddenFrom})
+	vis := album.Visibility(req.Visibility)
+	if req.Visibility == "" {
+		vis = album.VisibilityEveryone
+	}
+	a, err := h.albums.Create(r.Context(), userID, album.CreateInput{Title: req.Title, Description: req.Description, Visibility: vis, HiddenFrom: req.HiddenFrom})
 	if err != nil {
 		response.SendError(w, r, err)
 		return
@@ -64,6 +72,43 @@ func (h *AlbumHandler) ListMyAlbums(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	items, _, err := h.albums.ListUserAlbums(r.Context(), userID, userID, limit, offset)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	out := make([]dto.AlbumResponse, 0, len(items))
+	for _, a := range items {
+		out = append(out, dto.AlbumResponse{ID: a.ID, Title: a.Title, Description: a.Description, Visibility: string(a.Visibility), CreatedAt: a.CreatedAt.Format(time.RFC3339)})
+	}
+	response.SendSuccess(w, http.StatusOK, out)
+}
+
+func (h *AlbumHandler) ListUserAlbumsByUsername(w http.ResponseWriter, r *http.Request) {
+	viewerID, _ := contextx.UserID(r.Context())
+	username := chi.URLParam(r, "username")
+	if username == "" {
+		response.SendBadRequest(w, "username is required")
+		return
+	}
+	p, err := h.profiles.GetPublicProfile(r.Context(), viewerID, username)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	q := r.URL.Query()
+	limit := 20
+	offset := 0
+	if l := q.Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil {
+			limit = v
+		}
+	}
+	if o := q.Get("offset"); o != "" {
+		if v, err := strconv.Atoi(o); err == nil {
+			offset = v
+		}
+	}
+	items, _, err := h.albums.ListUserAlbums(r.Context(), p.ID, viewerID, limit, offset)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
@@ -113,7 +158,11 @@ func (h *AlbumHandler) UpdateAlbum(w http.ResponseWriter, r *http.Request) {
 		response.SendValidationError(w, []response.ValidationFieldError{{Field: "", Message: "validation failed"}})
 		return
 	}
-	a, err := h.albums.Update(r.Context(), id, userID, album.UpdateInput{Title: req.Title, Description: req.Description, Visibility: album.Visibility(req.Visibility), HiddenFrom: req.HiddenFrom})
+	vis := album.Visibility(req.Visibility)
+	if req.Visibility == "" {
+		vis = album.VisibilityEveryone
+	}
+	a, err := h.albums.Update(r.Context(), id, userID, album.UpdateInput{Title: req.Title, Description: req.Description, Visibility: vis, HiddenFrom: req.HiddenFrom})
 	if err != nil {
 		response.SendError(w, r, err)
 		return

@@ -33,6 +33,8 @@ tags:
     description: Liveness and readiness probes
   - name: friends
     description: Friend requests, friendships and subscriptions
+  - name: close-friends
+    description: Manage the close friends list used for story visibility
   - name: stories
     description: Ephemeral photo/video stories, feed, views, likes and replies
   - name: photos
@@ -835,6 +837,25 @@ components:
             type: integer
             format: int64
           description: User IDs excluded from seeing this story even if `visibility` would otherwise allow it.
+    AddCloseFriendRequest:
+      type: object
+      required: [friend_id]
+      properties:
+        friend_id:
+          type: integer
+          format: int64
+          example: 42
+    CloseFriendResponse:
+      type: object
+      properties:
+        friend_id:
+          type: integer
+          format: int64
+          example: 42
+    CloseFriendList:
+      type: array
+      items:
+        $ref: '#/components/schemas/CloseFriendResponse'
 
     StoryResponse:
       type: object
@@ -1485,6 +1506,72 @@ paths:
         "400": { $ref: '#/components/responses/400BadRequest' }
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/users/me/close-friends:
+    get:
+      tags: [close-friends]
+      summary: List close friends
+      operationId: closeFriendsList
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Close friends list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloseFriendList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+    post:
+      tags: [close-friends]
+      summary: Add close friend
+      operationId: closeFriendsAdd
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCloseFriendRequest'
+      responses:
+        "201":
+          description: Close friend added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CloseFriendResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/users/me/close-friends/{friendID}:
+    delete:
+      tags: [close-friends]
+      summary: Remove close friend
+      operationId: closeFriendsRemove
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: friendID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Close friend removed
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
 
   /api/v1/users/me/settings:
@@ -3569,52 +3656,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-
-  /api/v1/users/{username}/albums/{albumID}/photos:
-    get:
-      tags: [albums]
-      summary: List photos in a user's album
-      description: Lists photos in a specified album owned by username, subject to album and photo visibility.
-      operationId: photosListByUsernameAlbum
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: username
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: albumID
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            example: 20
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            example: 0
-      responses:
-        "200":
-          description: Photos list
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PhotoList'
-        "401": { $ref: '#/components/responses/401Unauthorized' }
-        "403": { $ref: '#/components/responses/403Forbidden' }
-        "404": { $ref: '#/components/responses/404NotFound' }
-        "500": { $ref: '#/components/responses/500Internal' }
-          name: id
-          schema:
-            type: integer
-          required: true
       responses:
         '204':
           description: Liked

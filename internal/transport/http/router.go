@@ -57,6 +57,7 @@ func NewRouter(
 	photoHandler *handler.PhotoHandler,
 	albumHandler *handler.AlbumHandler,
 	photoCommentHandler *handler.PhotoCommentHandler,
+	closeFriendHandler *handler.CloseFriendHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
 	permissionService permission.PermissionService,
@@ -131,6 +132,9 @@ func NewRouter(
 			r.Get("/users/me/settings", userHandler.GetMySettings)
 			r.Patch("/users/me/settings", userHandler.UpdateMySettings)
 			r.Patch("/users/me/settings/notifications", userHandler.UpdateMyNotificationPreferences)
+			r.Get("/users/me/close-friends", closeFriendHandler.List)
+			r.Post("/users/me/close-friends", closeFriendHandler.Add)
+			r.Delete("/users/me/close-friends/{friendID}", closeFriendHandler.Remove)
 			// List users (requires users.read permission)
 			r.With(middleware.RequirePermission(permissionService, userService, "users.read")).Get("/users", userHandler.List)
 			r.Get("/auth/sessions", authHandler.ListSessions)
@@ -197,6 +201,8 @@ func NewRouter(
 
 			// Public profile by username
 			r.Get("/users/{username}", profileHandler.GetByUsername)
+			r.Get("/users/{username}/photos", photoHandler.ListUserPhotosByUsername)
+			r.Get("/users/{username}/albums", albumHandler.ListUserAlbumsByUsername)
 
 			// Role-gated: admin only.
 			r.Group(func(r chi.Router) {

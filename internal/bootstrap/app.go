@@ -71,6 +71,8 @@ func NewApp() (*App, error) {
 		}
 	}()
 
+	hub := ws.NewHub()
+
 	// Repositories
 	repos := InitRepositories(pool)
 
@@ -78,7 +80,6 @@ func NewApp() (*App, error) {
 	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache)
 
 	// Handlers + WS hub
-	hub := ws.NewHub()
 	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
 	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub)
 	if err != nil {

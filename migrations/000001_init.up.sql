@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS story_likes (
    id BIGSERIAL PRIMARY KEY,
    story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
     viewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (story_id, viewer_id)
 );
 
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS story_replies (
      story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
     viewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     message TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE friendships (
@@ -237,7 +237,7 @@ CREATE TABLE photos (
     visibility      photo_visibility NOT NULL DEFAULT 'everyone',
     hidden_from     BIGINT[] NOT NULL DEFAULT '{}',
     likes_count     INT NOT NULL DEFAULT 0,
-    comments_count  INT NOT NULL DEFAULT 0
+    comments_count  INT NOT NULL DEFAULT 0,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

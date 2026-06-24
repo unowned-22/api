@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/unowned-22/api/internal/domain/notification"
+	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/photo"
 	"github.com/unowned-22/api/internal/domain/photocomment"
 	"github.com/unowned-22/api/internal/errs"
@@ -14,11 +14,11 @@ import (
 type photoCommentService struct {
 	repo      photocomment.Repository
 	photos    photo.Repository
-	notifRepo notification.Repository
+	publisher event.Publisher
 }
 
-func NewPhotoCommentService(repo photocomment.Repository, photos photo.Repository, notifRepo notification.Repository) photocomment.Service {
-	return &photoCommentService{repo: repo, photos: photos, notifRepo: notifRepo}
+func NewPhotoCommentService(repo photocomment.Repository, photos photo.Repository, publisher event.Publisher) photocomment.Service {
+	return &photoCommentService{repo: repo, photos: photos, publisher: publisher}
 }
 
 func (s *photoCommentService) AddComment(ctx context.Context, photoID int64, authorID int64, input photocomment.AddCommentInput) (*photocomment.Comment, error) {
@@ -79,38 +79,25 @@ func (s *photoCommentService) AddComment(ctx context.Context, photoID int64, aut
 		return nil, err
 	}
 
-	// notifications (fire-and-forget but try best-effort)
-	go func() {
-		// notify photo owner if different
-		if p.UserID != authorID {
-			payload := map[string]interface{}{"photo_id": photoID, "comment_id": created.ID}
-			b, _ := json.Marshal(payload)
-			_ = s.notifRepo.Create(context.Background(), &notification.Notification{
-				UserID:     p.UserID,
-				ActorID:    authorID,
-				Type:       notification.Type("photo_commented"),
-				EntityType: "photo",
-				EntityID:   photoID,
-				Payload:    b,
-			})
-		}
-		// if reply to parent, notify parent author
-		if created.ParentID != nil {
-			parent, _ := s.repo.GetByID(context.Background(), *created.ParentID)
-			if parent != nil && parent.AuthorID != authorID {
-				payload := map[string]interface{}{"comment_id": created.ID}
-				b, _ := json.Marshal(payload)
-				_ = s.notifRepo.Create(context.Background(), &notification.Notification{
-					UserID:     parent.AuthorID,
-					ActorID:    authorID,
-					Type:       notification.Type("comment_replied"),
-					EntityType: "photo_comment",
-					EntityID:   parent.ID,
-					Payload:    b,
-				})
+	if p.UserID != authorID {
+		if s.publisher != nil {
+			payload, _ := json.Marshal(map[string]any{"photo_id": photoID, "comment_id": created.ID, "owner_id": p.UserID, "actor_id": authorID})
+			if err := s.publisher.Publish(ctx, event.Event{Name: event.PhotoCommented, Payload: payload}); err != nil {
+				return nil, err
 			}
 		}
-	}()
+	}
+	if created.ParentID != nil {
+		parent, _ := s.repo.GetByID(ctx, *created.ParentID)
+		if parent != nil && parent.AuthorID != authorID {
+			if s.publisher != nil {
+				payload, _ := json.Marshal(map[string]any{"comment_id": created.ID, "parent_comment_id": parent.ID, "owner_id": parent.AuthorID, "actor_id": authorID})
+				if err := s.publisher.Publish(ctx, event.Event{Name: event.CommentReplied, Payload: payload}); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 
 	return created, nil
 }
@@ -175,18 +162,13 @@ func (s *photoCommentService) LikeComment(ctx context.Context, commentID int64, 
 	if err := s.repo.AddLike(ctx, userID, commentID); err != nil {
 		return err
 	}
-	// notify comment author
 	if c.AuthorID != userID {
-		payload := map[string]interface{}{"comment_id": commentID}
-		b, _ := json.Marshal(payload)
-		go s.notifRepo.Create(context.Background(), &notification.Notification{
-			UserID:     c.AuthorID,
-			ActorID:    userID,
-			Type:       notification.Type("comment_liked"),
-			EntityType: "photo_comment",
-			EntityID:   c.ID,
-			Payload:    b,
-		})
+		if s.publisher != nil {
+			payload, _ := json.Marshal(map[string]any{"comment_id": commentID, "owner_id": c.AuthorID, "actor_id": userID})
+			if err := s.publisher.Publish(ctx, event.Event{Name: event.CommentLiked, Payload: payload}); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

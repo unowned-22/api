@@ -14,7 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/unowned-22/api/internal/domain/album"
-	"github.com/unowned-22/api/internal/domain/notification"
+	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/photo"
 	"github.com/unowned-22/api/internal/domain/storage"
 	domainusersettings "github.com/unowned-22/api/internal/domain/usersettings"
@@ -22,15 +22,16 @@ import (
 )
 
 type photoService struct {
-	photos   photo.Repository
-	albums   album.Repository
-	settings domainusersettings.Repository
-	storage  storage.Storage
-	notif    notification.Service
+	photos       photo.Repository
+	albums       album.Repository
+	settings     domainusersettings.Repository
+	storage      storage.Storage
+	publisher    event.Publisher
+	publicBucket string
 }
 
-func NewPhotoService(photos photo.Repository, albums album.Repository, settings domainusersettings.Repository, storage storage.Storage, notif notification.Service) photo.Service {
-	return &photoService{photos: photos, albums: albums, settings: settings, storage: storage, notif: notif}
+func NewPhotoService(photos photo.Repository, albums album.Repository, settings domainusersettings.Repository, storage storage.Storage, publisher event.Publisher, publicBucket string) photo.Service {
+	return &photoService{photos: photos, albums: albums, settings: settings, storage: storage, publisher: publisher, publicBucket: publicBucket}
 }
 
 func (s *photoService) Upload(ctx context.Context, userID int64, input photo.UploadInput) (*photo.Photo, error) {
@@ -110,7 +111,13 @@ func (s *photoService) Upload(ctx context.Context, userID int64, input photo.Upl
 
 	key := path.Join(fmt.Sprintf("photos/%d", userID), uuid.New().String()+"."+ext)
 
-	url, err := s.storage.PutObject(ctx, us.BucketName, key, bytes.NewReader(data), int64(len(data)), input.ContentType)
+	// Upload photos into the public bucket under photos/ prefix (like stories).
+	bucket := s.publicBucket
+	if bucket == "" {
+		// fallback to user's bucket if public bucket not configured
+		bucket = us.BucketName
+	}
+	url, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(data), int64(len(data)), input.ContentType)
 	if err != nil {
 		return nil, err
 	}
@@ -251,10 +258,14 @@ func (s *photoService) Delete(ctx context.Context, id int64, requesterID int64) 
 		return errs.ErrPhotoNotOwned
 	}
 
-	// delete from storage (best-effort)
+	// delete from storage (best-effort) — prefer public bucket
 	us, _ := s.settings.GetByUserID(ctx, requesterID)
-	if us != nil && us.BucketName != "" {
-		_ = s.storage.DeleteObject(ctx, us.BucketName, p.StorageKey)
+	bucket := s.publicBucket
+	if bucket == "" && us != nil {
+		bucket = us.BucketName
+	}
+	if bucket != "" {
+		_ = s.storage.DeleteObject(ctx, bucket, p.StorageKey)
 	}
 
 	if err := s.photos.Delete(ctx, id); err != nil {
@@ -277,6 +288,12 @@ func (s *photoService) LikePhoto(ctx context.Context, photoID int64, userID int6
 	}
 	if err := s.photos.AddLike(ctx, userID, photoID); err != nil {
 		return err
+	}
+	if p.UserID != userID && s.publisher != nil {
+		payload, _ := json.Marshal(map[string]any{"photo_id": p.ID, "owner_id": p.UserID, "actor_id": userID})
+		if err := s.publisher.Publish(ctx, event.Event{Name: event.PhotoLiked, Payload: payload}); err != nil {
+			return err
+		}
 	}
 	return nil
 }

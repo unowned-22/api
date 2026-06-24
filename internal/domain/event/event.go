@@ -33,6 +33,10 @@ const (
 	// Friend events
 	FriendRequestReceived Name = "friend.request_received"
 	FriendRequestAccepted Name = "friend.request_accepted"
+	PhotoLiked            Name = "photo.liked"
+	PhotoCommented        Name = "photo.commented"
+	CommentReplied        Name = "photo.comment_replied"
+	CommentLiked          Name = "photo.comment_liked"
 	// StoryPublished is emitted when a user publishes a story
 	StoryPublished Name = "story.published"
 )

@@ -5,6 +5,7 @@ import (
 	"github.com/unowned-22/api/internal/auth"
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/domain/album"
+	"github.com/unowned-22/api/internal/domain/closefriend"
 	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/domain/photo"
 	"github.com/unowned-22/api/internal/domain/photocomment"
@@ -29,6 +30,7 @@ type Services struct {
 	UserSettings   usersettings.Service
 	Story          *service.StoryService
 	Friendship     *service.FriendshipService
+	CloseFriend    closefriend.Service
 	Profile        *service.ProfileService
 	Notification   notification.Service
 	Photo          photo.Service
@@ -72,12 +74,13 @@ func InitServices(
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)
 	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)
 	friendshipSvc := service.NewFriendshipService(repos.Friendship, outboxPublisher)
+	closeFriendSvc := service.NewCloseFriendService(repos.CloseFriend, repos.Friendship)
 	storySvc := service.NewStoryService(repos.Story, friendshipSvc, outboxPublisher)
 	notifSvc := service.NewNotificationService(repos.Notification)
 	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
-	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage, notifSvc)
+	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage, outboxPublisher, cfg.MinIOBucket)
 	// initialize photo comment service
-	photoCommentSvc := service.NewPhotoCommentService(repos.PhotoComment, repos.Photo, repos.Notification)
+	photoCommentSvc := service.NewPhotoCommentService(repos.PhotoComment, repos.Photo, outboxPublisher)
 	albumSvc := service.NewAlbumService(repos.Album, repos.Photo)
 
 	return &Services{
@@ -90,6 +93,7 @@ func InitServices(
 		UserSettings:   userSettingsSvc,
 		Story:          storySvc,
 		Friendship:     friendshipSvc,
+		CloseFriend:    closeFriendSvc,
 		Profile:        profileSvc,
 		Notification:   notifSvc,
 		Photo:          photoSvc,

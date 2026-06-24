@@ -21,6 +21,7 @@ type Handlers struct {
 	Photo         *handler.PhotoHandler
 	Album         *handler.AlbumHandler
 	PhotoComment  *handler.PhotoCommentHandler
+	CloseFriend   *handler.CloseFriendHandler
 }
 
 // InitHandlers wires HTTP handlers from services and infra.
@@ -35,9 +36,10 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	friendshipHandler := handler.NewFriendshipHandler(svcs.Friendship)
 	profileHandler := handler.NewProfileHandler(svcs.Profile)
 	notificationHandler := handler.NewNotificationHandler(svcs.Notification, hub)
-	photoHandler := handler.NewPhotoHandler(svcs.Photo, svcs.Album)
-	albumHandler := handler.NewAlbumHandler(svcs.Album)
+	photoHandler := handler.NewPhotoHandler(svcs.Photo, svcs.Album, svcs.Profile)
+	albumHandler := handler.NewAlbumHandler(svcs.Album, svcs.Profile)
 	photoCommentHandler := handler.NewPhotoCommentHandler(svcs.PhotoComment, svcs.Photo)
+	closeFriendHandler := handler.NewCloseFriendHandler(svcs.CloseFriend)
 
 	return &Handlers{
 		Auth:          authHandler,
@@ -53,5 +55,6 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 		Photo:         photoHandler,
 		PhotoComment:  photoCommentHandler,
 		Album:         albumHandler,
+		CloseFriend:   closeFriendHandler,
 	}
 }

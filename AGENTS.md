@@ -10,6 +10,8 @@ To reduce repeated directory scanning, agents may consult this short index descr
 
 - `cmd/` — application entrypoints (`cmd/app/main.go`) (thin entrypoint; composition root moved to `internal/bootstrap/`).
 - `internal/bootstrap/` — composition root and dependency wiring (`internal/bootstrap/app.go`, `internal/bootstrap/worker.go`).
+- `internal/realtime/` — serve-side realtime consumers and WebSocket broadcast helpers.
+- `internal/domain/closefriend/` — close-friends domain contract.
 - `internal/transport/http/` — HTTP handlers, router, DTOs and response helpers.
 - `internal/service/` — business logic / services.
 - `internal/repository/postgres/` — raw SQL repository implementations (pgx).
@@ -406,8 +408,9 @@ The project includes a Stories feature implemented under `internal/domain/story`
 > - The repository layer (`story_repository.go`) is complete and already implements every method the domain interfaces require (`Upsert`, `ListActiveByUser`, `ListFeed`, `ListExpired`, `AddView`, `ListViewsByViewer`, `GetByID`, `Delete`, `AddLike`, `RemoveLike`, `AddReply`, `ListReplies`) — the gap is entirely in the service layer.
 
 - Visibility enforcement — **currently not applied on the live feed path**: the handler's `Feed` calls `StoryService.Feed`, which is expected to call `repo.ListFeed`. That SQL query only filters out expired stories and rows where the viewer is explicitly listed in `hidden_from_user_ids` — it does **not** look at `visibility` at all. In practice this means `friends` and `close` stories are currently shown to *any* authenticated viewer in the feed, exactly like `everyone`, unless the author explicitly muted that viewer via `hidden_from`.
-- There is a second, unused method `StoryService.ListVisibleStories(ctx, viewerID, authorID)` that *does* implement correct per-author visibility filtering (checks `friendshipSvc.IsFriend` for `friends`, and has a `// TODO: close-friends list not implemented` stub that excludes `close` stories entirely rather than falling back to `everyone`). It is not part of the `story.StoryService` interface and is not called anywhere — it's dead code today. Whoever fixes the build-breaking gap above should decide whether `Feed`/`ListFeed` should be rewritten to use this per-author filtering logic (recommended) instead of leaving visibility unenforced.
-- TODO: implement a close-friends list (table + rules) so `VisibilityClose` has somewhere to look; until then, treat `close` as "broken/unimplemented", not as a synonym for `everyone`.
+- There is a second, unused method `StoryService.ListVisibleStories(ctx, viewerID, authorID)` that *does* implement correct per-author visibility filtering (checks `friendshipSvc.IsFriend` for `friends`, and uses the `close_friends` table for `close`). It is not part of the `story.StoryService` interface and is not called anywhere — it's dead code today. Whoever fixes the build-breaking gap above should decide whether `Feed`/`ListFeed` should be rewritten to use this per-author filtering logic (recommended) instead of leaving visibility unenforced.
+- `close_friends` is now a supported feature with its own API under `/api/v1/users/me/close-friends` (`GET`, `POST`, `DELETE`). Keep `internal/docs/openapi.yaml` in sync whenever those endpoints or their DTOs change.
+- Realtime notification handlers that push to connected WebSocket clients belong in `serve` alongside the hub and RabbitMQ realtime consumers. Do not add new hub-dependent notification handlers to `worker`.
 
 Agents making changes to Story code should: (1) fix the build-breaking gap above first, (2) decide and document how `friends`/`close` visibility is enforced in the feed query before shipping it as a real feature, (3) preserve the per-story-row model and the private-media presign pattern unless a migration plan and data-backfill are provided.
 
@@ -709,6 +712,7 @@ When adding photo metadata, comments, and likes, follow these rules and patterns
 - EXIF & Device metadata: handlers may accept optional multipart fields (latitude/longitude/location_name/device_*). Services should also attempt to parse EXIF GPS tags (recommended library: `github.com/rwcarlsen/goexif/exif`) and store selected EXIF tags in `photos.exif_data` as JSONB. When the client omits device info, parse `User-Agent` heuristically in the handler (there is already `internal/pkg/uaparser` for this purpose).
 
 - Notifications: use `internal/domain/notification` to create notifications for `photo_commented`, `comment_replied`, and `comment_liked`. Prefer writing notifications to the transactional outbox when cross-process delivery is required.
+- Realtime delivery: `serve` owns the WebSocket hub and RabbitMQ realtime consumers. `worker` must not create or depend on a `ws.Hub`.
 
 - OpenAPI: document every new endpoint, request/response schema, and response codes in `internal/docs/openapi.yaml` and keep `operationId` values consistent with handler names.
 

@@ -22,6 +22,7 @@ type Repositories struct {
 	Outbox         domout.Repository
 	Story          *postgresRepo.StoryRepository
 	Friendship     *postgresRepo.FriendshipRepository
+	CloseFriend    *postgresRepo.CloseFriendRepository
 	UserPrivacy    *postgresRepo.UserPrivacyRepository
 	Photo          *postgresRepo.PhotoRepository
 	PhotoComment   *postgresRepo.PhotoCommentRepository
@@ -45,6 +46,7 @@ func InitRepositories(pool *pgxpool.Pool) *Repositories {
 		Outbox:         outboxRepo.NewRepository(pool),
 		Story:          postgresRepo.NewStoryRepository(pool),
 		Friendship:     postgresRepo.NewFriendshipRepository(pool),
+		CloseFriend:    postgresRepo.NewCloseFriendRepository(pool),
 		UserPrivacy:    postgresRepo.NewUserPrivacyRepository(pool),
 		Photo:          postgresRepo.NewPhotoRepository(pool),
 		PhotoComment:   postgresRepo.NewPhotoCommentRepository(pool),

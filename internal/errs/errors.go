@@ -57,6 +57,7 @@ var (
 	ErrNotAddressee           = errors.New("only addressee can perform this action")
 	ErrNotRequester           = errors.New("only requester can perform this action")
 	ErrNotFriend              = errors.New("users are not friends")
+	ErrCloseFriendNotFound    = errors.New("close friend not found")
 
 	// Photos & Albums
 	ErrPhotoNotFound        = errors.New("photo not found")
