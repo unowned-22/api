@@ -35,6 +35,10 @@ tags:
     description: Friend requests, friendships and subscriptions
   - name: stories
     description: Ephemeral photo/video stories, feed, views, likes and replies
+  - name: photos
+    description: Photo upload, listing, metadata and visibility management
+  - name: albums
+    description: Album CRUD, cover photo and album-level visibility
 
 components:
   securitySchemes:
@@ -494,6 +498,157 @@ components:
           type: string
         cover_url:
           type: string
+
+    # ── Photos & Albums ───────────────────────────────────────────────────
+    PhotoResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        album_id:
+          type: integer
+          format: int64
+          nullable: true
+        display_name:
+          type: string
+        url:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        width:
+          type: integer
+          nullable: true
+        height:
+          type: integer
+          nullable: true
+        mime_type:
+          type: string
+        visibility:
+          type: string
+          enum: [everyone, friends, nobody]
+        created_at:
+          type: string
+          format: date-time
+
+    PhotoList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhotoResponse'
+        total:
+          type: integer
+          format: int64
+
+    UpdatePhotoRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        visibility:
+          type: string
+          enum: [everyone, friends, nobody]
+        hidden_from:
+          type: array
+          items:
+            type: integer
+            format: int64
+          maxItems: 500
+
+    MovePhotoRequest:
+      type: object
+      properties:
+        album_id:
+          type: integer
+          format: int64
+          nullable: true
+
+    AlbumResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+        visibility:
+          type: string
+          enum: [everyone, friends, nobody]
+        cover_url:
+          type: string
+          nullable: true
+        photo_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    AlbumList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlbumResponse'
+        total:
+          type: integer
+          format: int64
+
+    CreateAlbumRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 512
+        visibility:
+          type: string
+          enum: [everyone, friends, nobody]
+        hidden_from:
+          type: array
+          items:
+            type: integer
+            format: int64
+          maxItems: 500
+
+    UpdateAlbumRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 512
+        visibility:
+          type: string
+          enum: [everyone, friends, nobody]
+        hidden_from:
+          type: array
+          items:
+            type: integer
+            format: int64
+          maxItems: 500
+
+    SetAlbumCoverRequest:
+      type: object
+      properties:
+        photo_id:
+          type: integer
+          format: int64
+          nullable: true
 
     UpdateSystemSettingRequest:
       type: object
@@ -2539,6 +2694,525 @@ paths:
         - BearerAuth: []
       parameters:
         - in: path
+
+  # ── Photos & Albums ───────────────────────────────────────────────────────
+  /api/v1/photos:
+    post:
+      tags: [photos]
+      summary: Upload a photo
+      description: Uploads a photo file (multipart/form-data, field `file`). Respects user storage quota.
+      operationId: photosUpload
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                album_id:
+                  type: integer
+                  format: int64
+      responses:
+        "201":
+          description: Photo uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PhotoResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "413":
+          description: Storage quota exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    $ref: '#/components/schemas/ErrorDetail'
+              example:
+                error:
+                  code: STORAGE_QUOTA_EXCEEDED
+                  message: storage quota exceeded
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    get:
+      tags: [photos]
+      summary: List my photos
+      description: Returns paginated list of photos owned by the authenticated user.
+      operationId: photosListMine
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Photos list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/photos/{photoID}:
+    get:
+      tags: [photos]
+      summary: Get a photo
+      description: Returns photo metadata if visible to the requester.
+      operationId: photosGet
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: photoID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Photo metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PhotoResponse'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    patch:
+      tags: [photos]
+      summary: Update photo metadata
+      description: Update display name, visibility or hidden_from list for a photo owned by the requester.
+      operationId: photosUpdate
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: photoID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePhotoRequest'
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    delete:
+      tags: [photos]
+      summary: Delete a photo
+      description: Deletes a photo owned by the requester and decrements storage usage.
+      operationId: photosDelete
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: photoID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Photo deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageData'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/photos/{photoID}/move:
+    patch:
+      tags: [photos]
+      summary: Move photo to album
+      description: Moves a photo into an album or removes from album (album_id=null).
+      operationId: photosMove
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: photoID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovePhotoRequest'
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/albums:
+    post:
+      tags: [albums]
+      summary: Create an album
+      description: Create a new album owned by the authenticated user.
+      operationId: albumsCreate
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAlbumRequest'
+      responses:
+        "201":
+          description: Album created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AlbumResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    get:
+      tags: [albums]
+      summary: List my albums
+      description: Returns paginated list of albums owned by the authenticated user.
+      operationId: albumsListMine
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Albums list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/albums/{albumID}:
+    get:
+      tags: [albums]
+      summary: Get album
+      description: Returns album metadata if visible to the requester.
+      operationId: albumsGet
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: albumID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Album metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AlbumResponse'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    patch:
+      tags: [albums]
+      summary: Update album
+      description: Update title, description, visibility, and hidden_from for an album owned by requester.
+      operationId: albumsUpdate
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: albumID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAlbumRequest'
+      responses:
+        "200":
+          description: Album updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AlbumResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+    delete:
+      tags: [albums]
+      summary: Delete album
+      description: Deletes an album (photos are kept; their album_id becomes null).
+      operationId: albumsDelete
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: albumID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/albums/{albumID}/cover:
+    patch:
+      tags: [albums]
+      summary: Set or clear album cover
+      description: Set an album's cover photo by photo ID owned by the same user, or null to clear.
+      operationId: albumsSetCover
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: albumID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetAlbumCoverRequest'
+      responses:
+        "200": { $ref: '#/components/responses/200' }
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/albums/{albumID}/photos:
+    get:
+      tags: [albums]
+      summary: List photos in album
+      description: List photos belonging to an album, respecting album and photo visibility rules.
+      operationId: albumsListPhotos
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: albumID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Album photos list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  # ── Public user album/photo listing by username
+  /api/v1/users/{username}/photos:
+    get:
+      tags: [photos]
+      summary: List public photos of a user
+      description: Lists photos visible to the authenticated viewer for the specified user.
+      operationId: photosListByUsername
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Photos list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/users/{username}/albums:
+    get:
+      tags: [albums]
+      summary: List public albums of a user
+      description: Lists albums visible to the authenticated viewer for the specified user.
+      operationId: albumsListByUsername
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Albums list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
+
+  /api/v1/users/{username}/albums/{albumID}/photos:
+    get:
+      tags: [albums]
+      summary: List photos in a user's album
+      description: Lists photos in a specified album owned by username, subject to album and photo visibility.
+      operationId: photosListByUsernameAlbum
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: albumID
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            example: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            example: 0
+      responses:
+        "200":
+          description: Photos list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoList'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "403": { $ref: '#/components/responses/403Forbidden' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "500": { $ref: '#/components/responses/500Internal' }
           name: id
           schema:
             type: integer

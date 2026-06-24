@@ -54,6 +54,8 @@ func NewRouter(
 	friendshipHandler *handler.FriendshipHandler,
 	profileHandler *handler.ProfileHandler,
 	notificationHandler *handler.NotificationHandler,
+	photoHandler *handler.PhotoHandler,
+	albumHandler *handler.AlbumHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
 	permissionService permission.PermissionService,
@@ -147,6 +149,22 @@ func NewRouter(
 			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/{id}/unlike", storyHandler.Unlike)
 			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/{id}/reply", storyHandler.Reply)
 			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/media", uploadHandler.UploadStoryMedia)
+
+			// Photos & Albums
+			r.Post("/photos", photoHandler.UploadPhoto)
+			r.Get("/photos", photoHandler.ListMyPhotos)
+			r.Get("/photos/{photoID}", photoHandler.GetPhoto)
+			r.Patch("/photos/{photoID}", photoHandler.UpdatePhotoMeta)
+			r.Patch("/photos/{photoID}/move", photoHandler.MovePhotoToAlbum)
+			r.Delete("/photos/{photoID}", photoHandler.DeletePhoto)
+
+			r.Post("/albums", albumHandler.CreateAlbum)
+			r.Get("/albums", albumHandler.ListMyAlbums)
+			r.Get("/albums/{albumID}", albumHandler.GetAlbum)
+			r.Patch("/albums/{albumID}", albumHandler.UpdateAlbum)
+			r.Delete("/albums/{albumID}", albumHandler.DeleteAlbum)
+			r.Patch("/albums/{albumID}/cover", albumHandler.SetAlbumCover)
+			r.Get("/albums/{albumID}/photos", albumHandler.ListAlbumPhotos)
 
 			// Notifications
 			r.Get("/notifications", notificationHandler.List)

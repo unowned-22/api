@@ -103,6 +103,26 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "COVER_NOT_FOUND"
 		message = "cover not found"
 
+	case errors.Is(err, errs.ErrPhotoNotFound):
+		status = http.StatusNotFound
+		code = "PHOTO_NOT_FOUND"
+		message = "photo not found"
+
+	case errors.Is(err, errs.ErrAlbumNotFound):
+		status = http.StatusNotFound
+		code = "ALBUM_NOT_FOUND"
+		message = "album not found"
+
+	case errors.Is(err, errs.ErrStorageQuotaExceeded):
+		status = http.StatusRequestEntityTooLarge
+		code = "STORAGE_QUOTA_EXCEEDED"
+		message = "storage quota exceeded"
+
+	case errors.Is(err, errs.ErrPhotoAccessDenied), errors.Is(err, errs.ErrPhotoNotOwned), errors.Is(err, errs.ErrAlbumAccessDenied), errors.Is(err, errs.ErrAlbumNotOwned):
+		status = http.StatusForbidden
+		code = "FORBIDDEN"
+		message = "forbidden"
+
 	case errors.Is(err, errs.ErrStoryNotFound):
 		status = http.StatusNotFound
 		code = "STORY_NOT_FOUND"

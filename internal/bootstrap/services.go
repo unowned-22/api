@@ -4,7 +4,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/auth"
 	"github.com/unowned-22/api/internal/config"
+	"github.com/unowned-22/api/internal/domain/album"
 	"github.com/unowned-22/api/internal/domain/notification"
+	"github.com/unowned-22/api/internal/domain/photo"
 	domainstorage "github.com/unowned-22/api/internal/domain/storage"
 	"github.com/unowned-22/api/internal/domain/systemsettings"
 	"github.com/unowned-22/api/internal/domain/token"
@@ -28,6 +30,8 @@ type Services struct {
 	Friendship     *service.FriendshipService
 	Profile        *service.ProfileService
 	Notification   notification.Service
+	Photo          photo.Service
+	Album          album.Service
 }
 
 // InitServices constructs application services from repositories and infra.
@@ -69,6 +73,8 @@ func InitServices(
 	storySvc := service.NewStoryService(repos.Story, friendshipSvc, outboxPublisher)
 	notifSvc := service.NewNotificationService(repos.Notification)
 	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
+	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage)
+	albumSvc := service.NewAlbumService(repos.Album, repos.Photo)
 
 	return &Services{
 		Auth:           authSvc,
@@ -82,5 +88,7 @@ func InitServices(
 		Friendship:     friendshipSvc,
 		Profile:        profileSvc,
 		Notification:   notifSvc,
+		Photo:          photoSvc,
+		Album:          albumSvc,
 	}
 }

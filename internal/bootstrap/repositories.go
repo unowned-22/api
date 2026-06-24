@@ -23,6 +23,8 @@ type Repositories struct {
 	Story          *postgresRepo.StoryRepository
 	Friendship     *postgresRepo.FriendshipRepository
 	UserPrivacy    *postgresRepo.UserPrivacyRepository
+	Photo          *postgresRepo.PhotoRepository
+	Album          *postgresRepo.AlbumRepository
 }
 
 // InitRepositories wires repository implementations using the provided pool.
@@ -43,5 +45,7 @@ func InitRepositories(pool *pgxpool.Pool) *Repositories {
 		Story:          postgresRepo.NewStoryRepository(pool),
 		Friendship:     postgresRepo.NewFriendshipRepository(pool),
 		UserPrivacy:    postgresRepo.NewUserPrivacyRepository(pool),
+		Photo:          postgresRepo.NewPhotoRepository(pool),
+		Album:          postgresRepo.NewAlbumRepository(pool),
 	}
 }

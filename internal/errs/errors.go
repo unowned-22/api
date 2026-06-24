@@ -57,4 +57,13 @@ var (
 	ErrNotAddressee           = errors.New("only addressee can perform this action")
 	ErrNotRequester           = errors.New("only requester can perform this action")
 	ErrNotFriend              = errors.New("users are not friends")
+
+	// Photos & Albums
+	ErrPhotoNotFound        = errors.New("photo not found")
+	ErrAlbumNotFound        = errors.New("album not found")
+	ErrStorageQuotaExceeded = errors.New("storage quota exceeded")
+	ErrPhotoAccessDenied    = errors.New("access to photo denied")
+	ErrAlbumAccessDenied    = errors.New("access to album denied")
+	ErrPhotoNotOwned        = errors.New("photo does not belong to requester")
+	ErrAlbumNotOwned        = errors.New("album does not belong to requester")
 )
