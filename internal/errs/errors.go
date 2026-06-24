@@ -57,4 +57,25 @@ var (
 	ErrNotAddressee           = errors.New("only addressee can perform this action")
 	ErrNotRequester           = errors.New("only requester can perform this action")
 	ErrNotFriend              = errors.New("users are not friends")
+	ErrCloseFriendNotFound    = errors.New("close friend not found")
+
+	// Photos & Albums
+	ErrPhotoNotFound        = errors.New("photo not found")
+	ErrAlbumNotFound        = errors.New("album not found")
+	ErrStorageQuotaExceeded = errors.New("storage quota exceeded")
+	ErrPhotoAccessDenied    = errors.New("access to photo denied")
+	ErrAlbumAccessDenied    = errors.New("access to album denied")
+	ErrPhotoNotOwned        = errors.New("photo does not belong to requester")
+	ErrAlbumNotOwned        = errors.New("album does not belong to requester")
+
+	// Photo comments & likes
+	ErrCommentNotFound          = errors.New("comment not found")
+	ErrCommentNotOwned          = errors.New("comment does not belong to requester")
+	ErrCommentNestingNotAllowed = errors.New("replies to replies are not allowed")
+	ErrCommentEditExpired       = errors.New("comment edit window has expired")
+	ErrCommentAlreadyDeleted    = errors.New("comment is already deleted")
+	ErrPhotoAlreadyLiked        = errors.New("photo is already liked")
+	ErrPhotoNotLiked            = errors.New("photo is not liked")
+	ErrCommentAlreadyLiked      = errors.New("comment is already liked")
+	ErrCommentNotLiked          = errors.New("comment is not liked")
 )

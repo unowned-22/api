@@ -37,6 +37,49 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 	var code string
 	var message string
 
+	// Error contract reference:
+	// - USER_NOT_FOUND -> 404
+	// - USER_ALREADY_EXISTS -> 409
+	// - USERNAME_ALREADY_EXISTS -> 409
+	// - INVALID_CREDENTIALS -> 401
+	// - INVALID_REFRESH_TOKEN -> 401
+	// - INVALID_VERIFICATION_TOKEN -> 400
+	// - EMAIL_ALREADY_VERIFIED -> 409
+	// - ROLE_NOT_FOUND -> 404
+	// - EMAIL_NOT_VERIFIED -> 403
+	// - FORBIDDEN -> 403
+	// - USER_SETTINGS_NOT_FOUND -> 404
+	// - AVATAR_NOT_FOUND -> 404
+	// - COVER_NOT_FOUND -> 404
+	// - PHOTO_NOT_FOUND -> 404
+	// - ALBUM_NOT_FOUND -> 404
+	// - STORAGE_QUOTA_EXCEEDED -> 413
+	// - PHOTO_ACCESS_DENIED / PHOTO_NOT_Owned / ALBUM_ACCESS_DENIED / ALBUM_NOT_OWNED -> 403
+	// - STORY_NOT_FOUND -> 404
+	// - COMMENT_NOT_FOUND -> 404
+	// - COMMENT_NOT_OWNED -> 403
+	// - COMMENT_NESTING_NOT_ALLOWED -> 422
+	// - COMMENT_EDIT_EXPIRED -> 422
+	// - COMMENT_ALREADY_DELETED -> 422
+	// - ALREADY_LIKED -> 409
+	// - NOT_LIKED -> 409
+	// - INVALID_STORY_PAYLOAD -> 400
+	// - STORAGE_NOT_PROVISIONED -> 503
+	// - FRIENDSHIP_NOT_FOUND -> 404
+	// - FRIENDSHIP_ALREADY_EXISTS -> 409
+	// - CANNOT_FRIEND_YOURSELF -> 422
+	// - NOT_ADDRESSEE -> 403
+	// - NOT_REQUESTER -> 403
+	// - NOT_FRIEND -> 404
+	// - CLOSE_FRIEND_NOT_FOUND -> 404
+	// - SESSION_EXPIRED -> 401
+	// - SESSION_REVOKED -> 401
+	// - SESSION_NOT_FOUND -> 404
+	// - DEVICE_NOT_FOUND -> 404
+	// - USER_DEACTIVATED -> 403
+	// - INVALID_PASSWORD_RESET_TOKEN -> 400
+	// - PASSWORD_RESET_TOKEN_USED -> 400
+
 	switch {
 	case errors.Is(err, errs.ErrUserNotFound):
 		status = http.StatusNotFound
@@ -74,9 +117,9 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		message = "email already verified"
 
 	case errors.Is(err, errs.ErrRoleNotFound):
-		status = http.StatusInternalServerError
-		code = "INTERNAL_SERVER_ERROR"
-		message = "internal server error"
+		status = http.StatusNotFound
+		code = "ROLE_NOT_FOUND"
+		message = "role not found"
 
 	case errors.Is(err, errs.ErrEmailNotVerified):
 		status = http.StatusForbidden
@@ -87,6 +130,66 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusForbidden
 		code = "FORBIDDEN"
 		message = "you do not have permission to access this resource"
+
+	case errors.Is(err, errs.ErrFriendshipNotFound):
+		status = http.StatusNotFound
+		code = "FRIENDSHIP_NOT_FOUND"
+		message = "friendship not found"
+
+	case errors.Is(err, errs.ErrFriendshipAlreadyExist):
+		status = http.StatusConflict
+		code = "FRIENDSHIP_ALREADY_EXISTS"
+		message = "friendship already exists"
+
+	case errors.Is(err, errs.ErrCannotFriendYourself):
+		status = http.StatusUnprocessableEntity
+		code = "CANNOT_FRIEND_YOURSELF"
+		message = "cannot send friendship request to yourself"
+
+	case errors.Is(err, errs.ErrNotAddressee):
+		status = http.StatusForbidden
+		code = "NOT_ADDRESSEE"
+		message = "only addressee can perform this action"
+
+	case errors.Is(err, errs.ErrNotRequester):
+		status = http.StatusForbidden
+		code = "NOT_REQUESTER"
+		message = "only requester can perform this action"
+
+	case errors.Is(err, errs.ErrNotFriend):
+		status = http.StatusNotFound
+		code = "NOT_FRIEND"
+		message = "users are not friends"
+
+	case errors.Is(err, errs.ErrCloseFriendNotFound):
+		status = http.StatusNotFound
+		code = "CLOSE_FRIEND_NOT_FOUND"
+		message = "close friend not found"
+
+	case errors.Is(err, errs.ErrSessionExpired):
+		status = http.StatusUnauthorized
+		code = "SESSION_EXPIRED"
+		message = "session has expired"
+
+	case errors.Is(err, errs.ErrSessionRevoked):
+		status = http.StatusUnauthorized
+		code = "SESSION_REVOKED"
+		message = "session has been revoked"
+
+	case errors.Is(err, errs.ErrSessionNotFound):
+		status = http.StatusNotFound
+		code = "SESSION_NOT_FOUND"
+		message = "session not found"
+
+	case errors.Is(err, errs.ErrDeviceNotFound):
+		status = http.StatusNotFound
+		code = "DEVICE_NOT_FOUND"
+		message = "device not found"
+
+	case errors.Is(err, errs.ErrUserDeactivated):
+		status = http.StatusForbidden
+		code = "USER_DEACTIVATED"
+		message = "user account is deactivated"
 
 	case errors.Is(err, errs.ErrUserSettingsNotFound):
 		status = http.StatusNotFound
@@ -103,10 +206,75 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "COVER_NOT_FOUND"
 		message = "cover not found"
 
+	case errors.Is(err, errs.ErrPhotoNotFound):
+		status = http.StatusNotFound
+		code = "PHOTO_NOT_FOUND"
+		message = "photo not found"
+
+	case errors.Is(err, errs.ErrAlbumNotFound):
+		status = http.StatusNotFound
+		code = "ALBUM_NOT_FOUND"
+		message = "album not found"
+
+	case errors.Is(err, errs.ErrStorageQuotaExceeded):
+		status = http.StatusRequestEntityTooLarge
+		code = "STORAGE_QUOTA_EXCEEDED"
+		message = "storage quota exceeded"
+
+	case errors.Is(err, errs.ErrPhotoAccessDenied), errors.Is(err, errs.ErrPhotoNotOwned), errors.Is(err, errs.ErrAlbumAccessDenied), errors.Is(err, errs.ErrAlbumNotOwned):
+		status = http.StatusForbidden
+		code = "FORBIDDEN"
+		message = "forbidden"
+
 	case errors.Is(err, errs.ErrStoryNotFound):
 		status = http.StatusNotFound
 		code = "STORY_NOT_FOUND"
 		message = "story not found"
+
+	case errors.Is(err, errs.ErrCommentNotFound):
+		status = http.StatusNotFound
+		code = "COMMENT_NOT_FOUND"
+		message = "comment not found"
+
+	case errors.Is(err, errs.ErrCommentNotOwned):
+		status = http.StatusForbidden
+		code = "FORBIDDEN"
+		message = "forbidden"
+
+	case errors.Is(err, errs.ErrCommentNestingNotAllowed):
+		status = http.StatusUnprocessableEntity
+		code = "COMMENT_NESTING_NOT_ALLOWED"
+		message = "replies to replies are not allowed"
+
+	case errors.Is(err, errs.ErrCommentEditExpired):
+		status = http.StatusUnprocessableEntity
+		code = "COMMENT_EDIT_EXPIRED"
+		message = "comment edit window has expired"
+
+	case errors.Is(err, errs.ErrCommentAlreadyDeleted):
+		status = http.StatusUnprocessableEntity
+		code = "COMMENT_ALREADY_DELETED"
+		message = "comment is already deleted"
+
+	case errors.Is(err, errs.ErrPasswordResetTokenInvalid):
+		status = http.StatusBadRequest
+		code = "INVALID_PASSWORD_RESET_TOKEN"
+		message = "password reset token is invalid or expired"
+
+	case errors.Is(err, errs.ErrPasswordResetTokenUsed):
+		status = http.StatusBadRequest
+		code = "PASSWORD_RESET_TOKEN_USED"
+		message = "password reset token has already been used"
+
+	case errors.Is(err, errs.ErrPhotoAlreadyLiked), errors.Is(err, errs.ErrCommentAlreadyLiked):
+		status = http.StatusConflict
+		code = "ALREADY_LIKED"
+		message = "already liked"
+
+	case errors.Is(err, errs.ErrPhotoNotLiked), errors.Is(err, errs.ErrCommentNotLiked):
+		status = http.StatusConflict
+		code = "NOT_LIKED"
+		message = "not liked"
 
 	case errors.Is(err, errs.ErrInvalidStoryPayload):
 		status = http.StatusBadRequest

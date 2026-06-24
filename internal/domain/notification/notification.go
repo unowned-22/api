@@ -14,6 +14,10 @@ const (
 	TypeStoryPublished        Type = "story_published"
 	TypeFriendRequestReceived Type = "friend_request_received"
 	TypeFriendRequestAccepted Type = "friend_request_accepted"
+	TypePhotoLiked            Type = "photo_liked"
+	TypePhotoCommented        Type = "photo_commented"
+	TypeCommentReplied        Type = "comment_replied"
+	TypeCommentLiked          Type = "comment_liked"
 )
 
 type Notification struct {
@@ -35,6 +39,11 @@ type Repository interface {
 	MarkRead(ctx context.Context, userID int64, notificationID int64) error
 	MarkAllRead(ctx context.Context, userID int64) error
 	CountUnread(ctx context.Context, userID int64) (int64, error)
+}
+
+// Broadcaster delivers a notification to connected realtime clients.
+type Broadcaster interface {
+	Broadcast(ctx context.Context, n *Notification) error
 }
 
 type Service interface {

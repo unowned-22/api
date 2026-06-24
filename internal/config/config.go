@@ -28,11 +28,13 @@ type Config struct {
 	AppName      string `envconfig:"APP_NAME" default:"App"`
 	AppURL       string `envconfig:"APP_URL" default:"http://localhost:3222"`
 
-	RabbitMQURL                  string `envconfig:"RABBITMQ_URL"`
-	RabbitMQExchange             string `envconfig:"RABBITMQ_EXCHANGE" default:"app.events"`
-	RabbitMQQueue                string `envconfig:"RABBITMQ_QUEUE"    default:"app.worker"`
-	RabbitMQDeadLetterExchange   string `envconfig:"RABBITMQ_DLX"             default:"app.dlx"`
-	RabbitMQDeadLetterRoutingKey string `envconfig:"RABBITMQ_DLX_ROUTING_KEY" default:"app.worker.dead"`
+	RabbitMQURL                          string `envconfig:"RABBITMQ_URL"`
+	RabbitMQExchange                     string `envconfig:"RABBITMQ_EXCHANGE" default:"app.events"`
+	RabbitMQQueue                        string `envconfig:"RABBITMQ_QUEUE"    default:"app.worker"`
+	RabbitMQRealtimeQueue                string `envconfig:"RABBITMQ_REALTIME_QUEUE" default:"app.realtime"`
+	RabbitMQDeadLetterExchange           string `envconfig:"RABBITMQ_DLX"             default:"app.dlx"`
+	RabbitMQDeadLetterRoutingKey         string `envconfig:"RABBITMQ_DLX_ROUTING_KEY" default:"app.worker.dead"`
+	RabbitMQRealtimeDeadLetterRoutingKey string `envconfig:"RABBITMQ_REALTIME_DLX_ROUTING_KEY" default:"app.realtime.dead"`
 
 	DBHost    string `envconfig:"DB_HOST"`
 	DBPort    string `envconfig:"DB_PORT"`
