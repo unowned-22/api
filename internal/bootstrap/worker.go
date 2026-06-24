@@ -17,7 +17,6 @@ import (
 	infrastorage "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
 	postgresRepo "github.com/unowned-22/api/internal/repository/postgres"
-	ws "github.com/unowned-22/api/internal/transport/ws"
 	workerHandler "github.com/unowned-22/api/internal/worker/handler"
 )
 
@@ -64,9 +63,6 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 	auditRepo := postgresRepo.NewAuditRepository(pool)
 	systemSettingsRepo := postgresRepo.NewSystemSettingsRepository(pool)
 	userSettingsRepo := postgresRepo.NewUserSettingsRepository(pool)
-	notificationRepo := postgresRepo.NewNotificationRepository(pool)
-	friendshipRepo := postgresRepo.NewFriendshipRepository(pool)
-	hub := ws.NewHub()
 
 	// initialize MinIO storage
 	minioStorage, err := infrastorage.NewMinIOStorage(infrastorage.Config{
@@ -102,10 +98,7 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 		domainevent.AccountDeactivated:          workerHandler.NewAuditHandler(auditRepo, domainevent.AccountDeactivated),
 		domainevent.AccountActivated:            workerHandler.NewAuditHandler(auditRepo, domainevent.AccountActivated),
 		// email send handler: deliver email.send events by calling SMTP mailer
-		domainevent.EmailSend:             workerHandler.NewEmailSendHandler(smtpMailer),
-		domainevent.StoryPublished:        workerHandler.NewStoryPublishedHandler(friendshipRepo, postgresRepo.NewStoryRepository(pool), userSettingsRepo, notificationRepo, hub),
-		domainevent.FriendRequestReceived: workerHandler.NewFriendRequestReceivedHandler(userSettingsRepo, notificationRepo, hub),
-		domainevent.FriendRequestAccepted: workerHandler.NewFriendRequestAcceptedHandler(userSettingsRepo, notificationRepo, hub),
+		domainevent.EmailSend: workerHandler.NewEmailSendHandler(smtpMailer),
 	}
 
 	consumer, err := queue.NewConsumer(queue.ConsumerConfig{
@@ -133,7 +126,10 @@ func (w *Worker) Run() error {
 	defer w.pool.Close()
 
 	if err := w.consumer.Consume(); err != nil {
-		w.consumer.Shutdown(context.Background())
+		err := w.consumer.Shutdown(context.Background())
+		if err != nil {
+			return err
+		}
 		return fmt.Errorf("failed to start consuming: %w", err)
 	}
 

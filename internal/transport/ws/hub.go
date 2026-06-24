@@ -35,6 +35,13 @@ func (h *Hub) Unregister(userID int64, conn *websocket.Conn) {
 	}
 }
 
+func (h *Hub) HasUser(userID int64) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	conns, ok := h.conns[userID]
+	return ok && len(conns) > 0
+}
+
 func (h *Hub) SendToUser(userID int64, msg []byte) {
 	h.mu.RLock()
 	conns := h.conns[userID]

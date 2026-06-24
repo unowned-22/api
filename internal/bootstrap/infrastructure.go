@@ -111,6 +111,7 @@ func InitInfrastructure(cfg *config.Config) (
 
 			if pingErr != nil {
 				logger.Log.WithError(pingErr).Warnf("failed to connect to Redis at %s, falling back to in-memory cache", cfg.RedisURL)
+				_ = rClient.Close()
 				tokenVersionCache = cache.NewMemoryCache()
 			} else {
 				logger.Log.Infof("successfully connected to Redis at %s", cfg.RedisURL)

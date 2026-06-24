@@ -97,7 +97,10 @@ func (h *NotificationHandler) Subscribe(w http.ResponseWriter, r *http.Request) 
 	h.hub.Register(userID, conn)
 	defer func() {
 		h.hub.Unregister(userID, conn)
-		conn.Close()
+		err := conn.Close()
+		if err != nil {
+			return
+		}
 	}()
 
 	// keep connection alive; read loop to detect client close

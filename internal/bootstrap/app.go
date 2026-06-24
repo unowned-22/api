@@ -15,6 +15,7 @@ import (
 	stor "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/middleware"
+	"github.com/unowned-22/api/internal/realtime"
 	ws "github.com/unowned-22/api/internal/transport/ws"
 	outboxworker "github.com/unowned-22/api/internal/worker/outbox"
 )
@@ -37,6 +38,9 @@ type App struct {
 	loginLimiter, registerLimiter, forgotLimiter, resendLimiter *middleware.AuthRateLimiter
 	publisher                                                   *queue.AMQPPublisher
 	pool                                                        *pgxpool.Pool
+	realtimeConsumer                                            *realtime.Consumer
+	realtimeCancel                                              context.CancelFunc
+	realtimeDone                                                chan struct{}
 	outboxCancel                                                context.CancelFunc
 }
 
@@ -56,6 +60,16 @@ func NewApp() (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		if err != nil {
+			if publisher != nil {
+				_ = publisher.Close()
+			}
+			if pool != nil {
+				pool.Close()
+			}
+		}
+	}()
 
 	// Repositories
 	repos := InitRepositories(pool)
@@ -66,20 +80,25 @@ func NewApp() (*App, error) {
 	// Handlers + WS hub
 	hub := ws.NewHub()
 	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
+	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub)
+	if err != nil {
+		return nil, err
+	}
 
 	// Server and limiters
 	srv, loginLimiter, registerLimiter, forgotLimiter, resendLimiter := NewServer(cfg, handlers, tokenManager, svcs, tokenVersionCache)
 
 	app := &App{
-		Config:       cfg,
-		DB:           pool,
-		Storage:      minioStorage,
-		Queue:        publisher,
-		Router:       srv.Handler,
-		Server:       srv,
-		Repositories: repos,
-		Services:     svcs,
-		Handlers:     handlers,
+		Config:           cfg,
+		DB:               pool,
+		Storage:          minioStorage,
+		Queue:            publisher,
+		Router:           srv.Handler,
+		Server:           srv,
+		Repositories:     repos,
+		Services:         svcs,
+		Handlers:         handlers,
+		realtimeConsumer: realtimeConsumer,
 
 		loginLimiter:    loginLimiter,
 		registerLimiter: registerLimiter,
@@ -97,11 +116,23 @@ func NewApp() (*App, error) {
 		app.outboxCancel = cancelWorker
 	}
 
+	if app.realtimeConsumer != nil {
+		ctxRealtime, cancelRealtime := context.WithCancel(context.Background())
+		app.realtimeCancel = cancelRealtime
+		app.realtimeDone = make(chan struct{})
+		go func() {
+			defer close(app.realtimeDone)
+			if err := app.realtimeConsumer.Run(ctxRealtime); err != nil {
+				logger.Log.WithError(err).Error("Realtime consumer stopped with error")
+			}
+		}()
+	}
+
 	// Start cleanup goroutine for expired stories (best-effort background job)
 	if app.Repositories != nil && app.Storage != nil {
-		if stor, ok := app.Storage.(*stor.MinIOStorage); ok {
+		if minIOStorage, ok := app.Storage.(*stor.MinIOStorage); ok {
 			ctxCleanup, cancelCleanup := context.WithCancel(context.Background())
-			StartCleanupExpired(ctxCleanup, app.Repositories.Story, stor, cfg.MinIOBucket, time.Duration(cfg.StoriesCleanupIntervalMinutes)*time.Minute)
+			StartCleanupExpired(ctxCleanup, app.Repositories.Story, minIOStorage, cfg.MinIOBucket, time.Duration(cfg.StoriesCleanupIntervalMinutes)*time.Minute)
 			// attach cancel to shutdown via outboxCancel slot
 			if app.outboxCancel == nil {
 				app.outboxCancel = cancelCleanup
@@ -169,8 +200,23 @@ func (a *App) Run() error {
 		a.resendLimiter.Stop()
 	}
 
+	if a.realtimeCancel != nil {
+		a.realtimeCancel()
+	}
+	if a.realtimeDone != nil {
+		select {
+		case <-a.realtimeDone:
+			logger.Log.Info("Realtime consumer stopped gracefully")
+		case <-ctxShut.Done():
+			logger.Log.Warn("Realtime consumer shutdown timeout exceeded")
+		}
+	}
+
 	if a.publisher != nil {
-		a.publisher.Close()
+		err := a.publisher.Close()
+		if err != nil {
+			return err
+		}
 	}
 
 	if a.outboxCancel != nil {
