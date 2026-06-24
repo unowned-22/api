@@ -4,6 +4,8 @@ DROP TABLE IF EXISTS story_replies;
 DROP TABLE IF EXISTS story_likes;
 DROP TABLE IF EXISTS friendships;
 DROP TABLE IF EXISTS notifications;
+DROP TABLE IF EXISTS close_friends;
+DROP TABLE IF EXISTS user_privacy_settings;
 DROP TABLE IF EXISTS user_devices;
 DROP TABLE IF EXISTS user_settings;
 DROP TABLE IF EXISTS system_settings;
