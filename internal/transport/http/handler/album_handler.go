@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/domain/album"
+	"github.com/unowned-22/api/internal/domain/photo"
 	"github.com/unowned-22/api/internal/domain/profile"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
@@ -17,11 +18,12 @@ import (
 
 type AlbumHandler struct {
 	albums   album.Service
+	photos   photo.Service
 	profiles profile.Service
 }
 
-func NewAlbumHandler(albums album.Service, profiles profile.Service) *AlbumHandler {
-	return &AlbumHandler{albums: albums, profiles: profiles}
+func NewAlbumHandler(albums album.Service, photos photo.Service, profiles profile.Service) *AlbumHandler {
+	return &AlbumHandler{albums: albums, photos: photos, profiles: profiles}
 }
 
 func (h *AlbumHandler) CreateAlbum(w http.ResponseWriter, r *http.Request) {
@@ -240,11 +242,28 @@ func (h *AlbumHandler) ListAlbumPhotos(w http.ResponseWriter, r *http.Request) {
 		response.SendError(w, r, err)
 		return
 	}
-	items, _, err := h.albums.ListUserAlbums(r.Context(), 0, viewerID, limit, offset) // placeholder; service exposes ListAlbumPhotos via photo service in real impl
+	photos, _, err := h.photos.ListAlbumPhotos(r.Context(), id, viewerID, limit, offset)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
 	}
-	// For now, return empty photo list structure per API contract
-	response.SendSuccess(w, http.StatusOK, items)
+	out := make([]dto.PhotoResponse, 0, len(photos))
+	for _, p := range photos {
+		out = append(out, dto.PhotoResponse{ID: p.ID, AlbumID: p.AlbumID, DisplayName: p.DisplayName, URL: p.URL, SizeBytes: p.SizeBytes, Width: p.Width, Height: p.Height, MimeType: p.MimeType, Visibility: string(p.Visibility), LikesCount: p.LikesCount, CommentsCount: p.CommentsCount, DeviceName: derefString(p.DeviceName), DeviceOS: derefString(p.DeviceOS), DeviceType: derefString(p.DeviceType), Latitude: p.Latitude, Longitude: p.Longitude, LocationName: derefStringPtr(p.LocationName), ExifData: p.ExifData, CreatedAt: p.CreatedAt.Format(time.RFC3339)})
+	}
+	response.SendSuccess(w, http.StatusOK, out)
+}
+
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
+func derefStringPtr(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

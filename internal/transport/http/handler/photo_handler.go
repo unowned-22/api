@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -49,25 +50,22 @@ func (h *PhotoHandler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 	var part io.Reader
 	var filename string
 	var contentType string
+	var albumID *int64
+
 	for p, pErr := mr.NextPart(); pErr == nil; p, pErr = mr.NextPart() {
-		if p.FormName() == "file" {
+		switch p.FormName() {
+		case "file":
 			b, _ := io.ReadAll(p)
 			part = bytes.NewReader(b)
 			filename = path.Base(p.FileName())
 			contentType = p.Header.Get("Content-Type")
-			break
-		}
-	}
-	if part == nil {
-		response.SendBadRequest(w, "file part required")
-		return
-	}
-
-	// optional album_id field in form
-	var albumID *int64
-	if v := r.FormValue("album_id"); v != "" {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			albumID = &id
+		case "album_id":
+			b, _ := io.ReadAll(p)
+			if v := strings.TrimSpace(string(b)); v != "" {
+				if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+					albumID = &id
+				}
+			}
 		}
 	}
 
@@ -91,11 +89,7 @@ func (h *PhotoHandler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 
 	// parse user-agent for device info
 	di := uaparser.Parse(r.Header.Get("User-Agent"))
-	deviceName := di.Browser
-	deviceOS := di.OS
-	deviceType := di.DeviceType
-
-	p, err := h.photos.Upload(r.Context(), userID, photo.UploadInput{Reader: bytes.NewReader(data), Size: int64(len(data)), Filename: filename, ContentType: contentType, AlbumID: albumID, DeviceName: &deviceName, DeviceOS: &deviceOS, DeviceType: &deviceType})
+	p, err := h.photos.Upload(r.Context(), userID, photo.UploadInput{Reader: bytes.NewReader(data), Size: int64(len(data)), Filename: filename, ContentType: contentType, AlbumID: albumID, DeviceName: new(di.Browser), DeviceOS: new(di.OS), DeviceType: new(di.DeviceType)})
 	if err != nil {
 		response.SendError(w, r, err)
 		return

@@ -37,7 +37,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	profileHandler := handler.NewProfileHandler(svcs.Profile)
 	notificationHandler := handler.NewNotificationHandler(svcs.Notification, hub)
 	photoHandler := handler.NewPhotoHandler(svcs.Photo, svcs.Album, svcs.Profile)
-	albumHandler := handler.NewAlbumHandler(svcs.Album, svcs.Profile)
+	albumHandler := handler.NewAlbumHandler(svcs.Album, svcs.Photo, svcs.Profile)
 	photoCommentHandler := handler.NewPhotoCommentHandler(svcs.PhotoComment, svcs.Photo)
 	closeFriendHandler := handler.NewCloseFriendHandler(svcs.CloseFriend)
 
