@@ -401,14 +401,10 @@ The project includes a Stories feature implemented under `internal/domain/story`
 
 - Storage model: one DB row per published story (not per user); slides are stored as opaque JSON (`json.RawMessage` end-to-end — neither the repository nor the service validates slide internals beyond array length). Media is uploaded separately via `POST /api/v1/stories/media` into a private bucket; only the storage key is persisted in the slide JSON, and short-lived (15 minute) presigned URLs are generated on every read (`presignSlides` in the handler).
 - Endpoints: `POST /api/v1/stories` (publish), `GET /api/v1/stories/me`, `GET /api/v1/stories/feed`, `DELETE /api/v1/stories/{id}`, `POST /api/v1/stories/{id}/view`, `POST /api/v1/stories/{id}/like`, `POST /api/v1/stories/{id}/unlike`, `POST /api/v1/stories/{id}/reply`, `POST /api/v1/stories/media`. Keep `internal/docs/openapi.yaml` in sync with this list per §6.
-
-> **⚠️ KNOWN BUILD-BREAKING GAP (as of this writing) — fix before merging anything else in this area:**
-> - `internal/domain/story/interfaces.go` declares `StoryService.Feed`, `AddView`, `ListViewsByViewer`, `Like`, `Unlike`, `Reply`, and `ListReplies`, and `story_handler.go` calls all of them — but `internal/service/story_service.go` only implements `Publish`, `ListMyStories`, `ListVisibleStories`, and `Delete`. `*StoryService` does **not** satisfy the `story.StoryService` interface, so the service package will not compile until the missing methods are added (they should mostly delegate straight to the already-implemented repository methods of the same name).
-> - `Publish` calls `s.repo.Create(ctx, st)`, but `StoryRepository` only declares/implements `Upsert(ctx, s)` — there is no `Create` method. This call site needs to be fixed to `s.repo.Upsert(...)`.
-> - The repository layer (`story_repository.go`) is complete and already implements every method the domain interfaces require (`Upsert`, `ListActiveByUser`, `ListFeed`, `ListExpired`, `AddView`, `ListViewsByViewer`, `GetByID`, `Delete`, `AddLike`, `RemoveLike`, `AddReply`, `ListReplies`) — the gap is entirely in the service layer.
+- Repository uses `Create` (one row per publish); `StoryService` satisfies `story.StoryService` in full — `Publish`, `Feed`, `ListMyStories`, `AddView`, `ListViewsByViewer`, `Delete`, `Like`, `Unlike`, `Reply`, `ListReplies` are all implemented.
 
 - Visibility enforcement — **currently not applied on the live feed path**: the handler's `Feed` calls `StoryService.Feed`, which is expected to call `repo.ListFeed`. That SQL query only filters out expired stories and rows where the viewer is explicitly listed in `hidden_from_user_ids` — it does **not** look at `visibility` at all. In practice this means `friends` and `close` stories are currently shown to *any* authenticated viewer in the feed, exactly like `everyone`, unless the author explicitly muted that viewer via `hidden_from`.
-- There is a second, unused method `StoryService.ListVisibleStories(ctx, viewerID, authorID)` that *does* implement correct per-author visibility filtering (checks `friendshipSvc.IsFriend` for `friends`, and uses the `close_friends` table for `close`). It is not part of the `story.StoryService` interface and is not called anywhere — it's dead code today. Whoever fixes the build-breaking gap above should decide whether `Feed`/`ListFeed` should be rewritten to use this per-author filtering logic (recommended) instead of leaving visibility unenforced.
+- There is a method `StoryService.ListVisibleStories(ctx, viewerID, authorID)` that implements correct per-author visibility filtering (checks `friendshipSvc.IsFriend` for `friends`, and uses the `close_friends` table for `close`). It is not part of the `story.StoryService` interface and is not called by the feed path — feed visibility enforcement remains an open item (see note below).
 - `close_friends` is now a supported feature with its own API under `/api/v1/users/me/close-friends` (`GET`, `POST`, `DELETE`). Keep `internal/docs/openapi.yaml` in sync whenever those endpoints or their DTOs change.
 - Realtime notification handlers that push to connected WebSocket clients belong in `serve` alongside the hub and RabbitMQ realtime consumers. Do not add new hub-dependent notification handlers to `worker`.
 
@@ -508,8 +504,8 @@ In `cmd/app/main.go`, create one `AuthRateLimiter` instance per endpoint:
 
 ```go
 loginLimiter := middleware.NewAuthRateLimiter(
-  config.LoginRateLimit,
-  config.LoginRateLimitWindow,
+config.LoginRateLimit,
+config.LoginRateLimitWindow,
 )
 defer loginLimiter.Stop()
 
@@ -719,3 +715,70 @@ When adding photo metadata, comments, and likes, follow these rules and patterns
 - Tests: add unit tests for repository transactional behavior, service validation (reply depth), and notification creation. Integration tests are encouraged for end-to-end validation of counters and notifications.
 
 Add this section to PR descriptions when introducing photos/comments changes so reviewers can verify migration, OpenAPI, and transactional correctness.
+
+---
+
+## Messenger Feature Guidance
+
+Rules established during TASK-13/14 that all agents must follow when touching messenger code.
+
+### Atomicity: message + attachments
+
+`MessageRepository.CreateWithAttachments` is the **only** correct way to persist a new message with attachments. It wraps the `messages` insert and all `message_attachments` inserts in a single DB transaction, so a mid-loop failure cannot leave an orphaned message without some of its attachments.
+
+**Never** call `Create` + `CreateAttachment` in a loop from the service layer — that is the anti-pattern this method was introduced to eliminate.
+
+`draftRepo.Delete` and `convRepo.UpdateLastMessage` are intentionally left **outside** the transaction in `SendMessage`: a draft that wasn't cleaned up is cosmetic; `last_message_id` self-corrects on the next send. Log their failures at `Warn`, never return them as errors to the caller.
+
+### Block enforcement on every send
+
+`PrivacyRepo.IsBlocked` must be called inside `SendMessage` for **every** `TypeDirect` message, not only during `GetOrCreateDirect`. A block placed after a conversation was created must take effect immediately.
+
+Two directions must be checked:
+- Recipient blocked sender (`IsBlocked(otherID, senderID)`)
+- Sender blocked recipient (`IsBlocked(senderID, otherID)`)
+
+Both result in `errs.ErrUserBlocked` → HTTP 403 `USER_BLOCKED`. This check does **not** apply to groups or channels (moderation there is role/kick-based).
+
+### Pre-load pattern: avoid duplicate ListMembers
+
+When `SendMessage` for a direct conversation needs the member list for multiple purposes (block-check, publish payload), load it **once** and pass the slice to helpers. Never call `ListMembers` twice for the same `convID` in the same call stack.
+
+Concrete rule: `otherIDFromMembers` is a pure function operating on an already-loaded slice. `publishMessageSentWithMembers` accepts `members []*messenger.ConversationMember` and falls back to a DB call only when `members == nil` (group/channel path). This pattern must be preserved when extending `SendMessage`.
+
+### Hub lock order
+
+`Hub` uses two mutexes. They must **always** be acquired in this order:
+
+```
+presenceMu → mu
+```
+
+No code path may acquire `mu` first and then `presenceMu`. Violating this order will cause a deadlock. Document any new goroutine that touches both locks with an explicit comment referencing this order.
+
+### Worker: memoize ListMembers per conversation
+
+Background workers that process multiple messages per ticker pass (e.g. `DisappearingMessageWorker`, `ScheduledMessageWorker`) must memoize `ListMembers` by `conversation_id` within a single invocation. Multiple expired/due messages in the same conversation must not produce multiple identical DB queries.
+
+Pattern:
+
+```go
+membersCache := make(map[int64][]*messenger.ConversationMember)
+for _, m := range msgs {
+members, ok := membersCache[m.ConversationID]
+if !ok {
+members, err = memberRepo.ListMembers(ctx, m.ConversationID)
+if err != nil { continue }
+membersCache[m.ConversationID] = members
+}
+// use members
+}
+```
+
+### Error catalogue additions
+
+| Sentinel | Package | HTTP | Code |
+|---|---|---|---|
+| `ErrUserBlocked` | `internal/errs` | 403 | `USER_BLOCKED` |
+
+New messenger errors must be declared in `internal/errs/errors.go` with an explanatory comment and mapped in `internal/transport/http/response/response.go`.

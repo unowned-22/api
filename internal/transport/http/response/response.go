@@ -131,6 +131,11 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "FORBIDDEN"
 		message = "you do not have permission to access this resource"
 
+	case errors.Is(err, errs.ErrUserBlocked):
+		status = http.StatusForbidden
+		code = "USER_BLOCKED"
+		message = "you cannot send messages to this user"
+
 	case errors.Is(err, errs.ErrFriendshipNotFound):
 		status = http.StatusNotFound
 		code = "FRIENDSHIP_NOT_FOUND"
@@ -390,6 +395,18 @@ func SendNotFound(w http.ResponseWriter, message string) {
 	_ = json.NewEncoder(w).Encode(ErrorResponse{
 		Error: ErrorDetail{
 			Code:    "NOT_FOUND",
+			Message: message,
+		},
+	})
+}
+
+// SendNotImplemented sends a 501 Not Implemented error with a custom message.
+func SendNotImplemented(w http.ResponseWriter, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusNotImplemented)
+	_ = json.NewEncoder(w).Encode(ErrorResponse{
+		Error: ErrorDetail{
+			Code:    "NOT_IMPLEMENTED",
 			Message: message,
 		},
 	})

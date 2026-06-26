@@ -39,6 +39,26 @@ const (
 	CommentLiked          Name = "photo.comment_liked"
 	// StoryPublished is emitted when a user publishes a story
 	StoryPublished Name = "story.published"
+
+	MessengerMessageSent Name = "messenger.message_sent"
+	// MessengerReadReceipt is used for broadcasting read receipts to conversation members.
+	MessengerReadReceipt     Name = "messenger.read_receipt"
+	MessengerMessagePinned   Name = "messenger.message_pinned"
+	MessengerMessageUnpinned Name = "messenger.message_unpinned"
+	MessengerReactionAdded   Name = "messenger.reaction_added"
+	MessengerReactionRemoved Name = "messenger.reaction_removed"
+	MessengerDeliveryUpdated Name = "messenger.delivery_updated"
+	// MessengerDisappearTimer is reserved for future use. Timer-change
+	// notifications are currently delivered directly via ws.Hub and are not
+	// published through the outbox/AMQP pipeline. Wire this up when cross-device
+	// or offline delivery of timer-change events is required.
+	MessengerDisappearTimer Name = "messenger.disappear_timer_changed"
+	MessengerScheduledReady Name = "messenger.scheduled_ready"
+	MessengerMessageEdited  Name = "messenger.message_edited"
+	MessengerMessageDeleted Name = "messenger.message_deleted"
+	MessengerTyping         Name = "messenger.typing"
+	MessengerMemberAdded    Name = "messenger.member_added"
+	MessengerMemberRemoved  Name = "messenger.member_removed"
 )
 
 // Event is a unit of publication.

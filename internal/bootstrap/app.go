@@ -17,6 +17,7 @@ import (
 	"github.com/unowned-22/api/internal/middleware"
 	"github.com/unowned-22/api/internal/realtime"
 	ws "github.com/unowned-22/api/internal/transport/ws"
+	messengerworker "github.com/unowned-22/api/internal/worker"
 	outboxworker "github.com/unowned-22/api/internal/worker/outbox"
 )
 
@@ -33,6 +34,7 @@ type App struct {
 	Repositories *Repositories
 	Services     *Services
 	Handlers     *Handlers
+	Hub          *ws.Hub
 
 	// internal pieces we need to shutdown
 	loginLimiter, registerLimiter, forgotLimiter, resendLimiter *middleware.AuthRateLimiter
@@ -71,17 +73,17 @@ func NewApp() (*App, error) {
 		}
 	}()
 
-	hub := ws.NewHub()
-
 	// Repositories
 	repos := InitRepositories(pool)
+
+	hub := ws.NewHubWithPresence(repos.Presence, repos.Friendship)
 
 	// Services
 	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache)
 
 	// Handlers + WS hub
 	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
-	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub)
+	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub, repos.Member)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +101,7 @@ func NewApp() (*App, error) {
 		Repositories:     repos,
 		Services:         svcs,
 		Handlers:         handlers,
+		Hub:              hub,
 		realtimeConsumer: realtimeConsumer,
 
 		loginLimiter:    loginLimiter,
@@ -127,6 +130,26 @@ func NewApp() (*App, error) {
 				logger.Log.WithError(err).Error("Realtime consumer stopped with error")
 			}
 		}()
+	}
+
+	// Start messenger workers (scheduled messages + disappearing messages).
+	if app.Repositories != nil && app.Services != nil {
+		ctxScheduled, cancelScheduled := context.WithCancel(context.Background())
+		scheduledWorker := messengerworker.NewScheduledMessageWorker(app.Repositories.Message, app.Repositories.Member, app.Services.OutboxPublisher)
+		go scheduledWorker.Run(ctxScheduled)
+
+		ctxDisappearing, cancelDisappearing := context.WithCancel(context.Background())
+		disappearingWorker := messengerworker.NewDisappearingMessageWorker(app.Repositories.Message, app.Repositories.Member, app.Hub)
+		go disappearingWorker.Run(ctxDisappearing)
+
+		prevCancel := app.outboxCancel
+		app.outboxCancel = func() {
+			if prevCancel != nil {
+				prevCancel()
+			}
+			cancelScheduled()
+			cancelDisappearing()
+		}
 	}
 
 	// Start cleanup goroutine for expired stories (best-effort background job)

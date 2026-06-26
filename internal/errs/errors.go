@@ -45,6 +45,26 @@ var (
 	ErrStoryNotFound       = errors.New("story not found")
 	ErrInvalidStoryPayload = errors.New("invalid story payload")
 
+	// Messenger
+	ErrConversationNotFound    = errors.New("conversation not found")
+	ErrMessageNotFound         = errors.New("message not found")
+	ErrMemberNotFound          = errors.New("conversation member not found")
+	ErrPresenceNotFound        = errors.New("user presence not found")
+	ErrPrivacySettingsNotFound = errors.New("messenger privacy settings not found")
+	ErrDraftNotFound           = errors.New("message draft not found")
+	ErrCannotBlockSelf         = errors.New("cannot block yourself")
+	ErrMessagingNotAllowed     = errors.New("messaging is not allowed")
+	// ErrUserBlocked is returned when a sender attempts to message a user who
+	// has blocked them (or whom they have blocked) in an existing direct
+	// conversation. Mapped to 403 Forbidden at the transport layer.
+	ErrUserBlocked              = errors.New("user is blocked")
+	ErrNotConversationMember    = errors.New("user is not a conversation member")
+	ErrInsufficientChannelRole  = errors.New("insufficient channel role")
+	ErrInviteLinkInvalid        = errors.New("invite link is invalid")
+	ErrConversationMemberExists = errors.New("conversation member already exists")
+	ErrCannotRemoveOwner        = errors.New("cannot remove conversation owner")
+	ErrMessageNotScheduled      = errors.New("message is not scheduled")
+
 	// Device / session errors added for session-device refactor.
 	ErrDeviceNotFound = errors.New("device not found")
 	ErrSessionExpired = errors.New("session has expired")

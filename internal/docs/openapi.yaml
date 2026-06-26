@@ -48,7 +48,6 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-
   schemas:
     # ── Wrappers ────────────────────────────────────────────────────────────────
     MessageData:
@@ -1078,8 +1077,6 @@ components:
           type: string
         avatar_url:
           type: string
-
-  # ── Reusable responses ───────────────────────────────────────────────────────
   responses:
     400BadRequest:
       description: Malformed request body
@@ -1202,8 +1199,6 @@ components:
 # PATHS
 # ────────────────────────────────────────────────────────────────────────────────
 paths:
-
-  # ── Health ──────────────────────────────────────────────────────────────────
   /health/live:
     get:
       tags: [health]
@@ -1220,7 +1215,6 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/HealthReport'
-
   /health/ready:
     get:
       tags: [health]
@@ -1246,8 +1240,6 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/HealthReport'
-
-  # ── Auth ────────────────────────────────────────────────────────────────────
   /api/v1/auth/register:
     post:
       tags: [auth]
@@ -1280,7 +1272,6 @@ paths:
         "422": { $ref: '#/components/responses/422Validation' }
         "429": { $ref: '#/components/responses/429TooMany' }
         "500": { $ref: '#/components/responses/500Internal' }
-
     patch:
       tags: [users]
       summary: Update current user profile
@@ -1317,7 +1308,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/users/me/password:
     put:
       tags: [users]
@@ -1349,7 +1339,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/notifications:
     get:
       tags: [users]
@@ -1378,7 +1367,6 @@ paths:
                 $ref: '#/components/schemas/NotificationList'
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/notifications/unread-count:
     get:
       tags: [users]
@@ -1403,7 +1391,6 @@ paths:
                         example: 3
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/notifications/{id}/read:
     post:
       tags: [users]
@@ -1435,7 +1422,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/notifications/read-all:
     post:
       tags: [users]
@@ -1458,7 +1444,6 @@ paths:
                   message: ok
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /ws/notifications:
     get:
       tags: [users]
@@ -1475,7 +1460,6 @@ paths:
           description: Switching Protocols — WebSocket established
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/users/me/settings/notifications:
     patch:
       tags: [users]
@@ -1507,7 +1491,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/users/me/close-friends:
     get:
       tags: [close-friends]
@@ -1552,7 +1535,6 @@ paths:
         "404": { $ref: '#/components/responses/404NotFound' }
         "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/users/me/close-friends/{friendID}:
     delete:
       tags: [close-friends]
@@ -1573,7 +1555,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/users/me/settings:
     get:
       tags: [users]
@@ -1594,7 +1575,6 @@ paths:
                     $ref: '#/components/schemas/UserSettings'
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
-
     patch:
       tags: [users]
       summary: Update current user's settings (theme)
@@ -1622,7 +1602,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/users/me/avatar:
     post:
       tags: [users]
@@ -1668,7 +1647,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-  
   /api/v1/users/{username}:
     get:
       tags: [users]
@@ -1697,7 +1675,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/users/me/cover:
     post:
       tags: [users]
@@ -1743,7 +1720,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/admin/users/{id}/settings:
     get:
       tags: [admin]
@@ -1774,7 +1750,6 @@ paths:
         "403": { $ref: '#/components/responses/403Forbidden' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-
     patch:
       tags: [admin]
       summary: Update a user's settings (admin)
@@ -1817,7 +1792,6 @@ paths:
         "404": { $ref: '#/components/responses/404NotFound' }
         "422": { $ref: '#/components/responses/422Validation' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/auth/login:
     post:
       tags: [auth]
@@ -1865,7 +1839,6 @@ paths:
                   message: please verify your email address before logging in
         "422": { $ref: '#/components/responses/422Validation' }
         "429": { $ref: '#/components/responses/429TooMany' }
-
   /api/v1/auth/refresh:
     post:
       tags: [auth]
@@ -1903,7 +1876,6 @@ paths:
                   message: refresh token is invalid
         "422": { $ref: '#/components/responses/422Validation' }
         "429": { $ref: '#/components/responses/429TooMany' }
-
   /api/v1/auth/logout:
     post:
       tags: [auth]
@@ -1932,7 +1904,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "422": { $ref: '#/components/responses/422Validation' }
         "429": { $ref: '#/components/responses/429TooMany' }
-
   /api/v1/auth/logout-all:
     post:
       tags: [auth]
@@ -1956,7 +1927,6 @@ paths:
                   message: all sessions revoked successfully
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/auth/sessions:
     get:
       tags: [auth]
@@ -1987,7 +1957,6 @@ paths:
                       last_used_at: "2026-06-13T11:20:00Z"
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/auth/sessions/{id}:
     delete:
       tags: [auth]
@@ -2022,7 +1991,6 @@ paths:
         "403": { $ref: '#/components/responses/403Forbidden' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/auth/verify-email:
     get:
       tags: [auth]
@@ -2076,7 +2044,6 @@ paths:
                   code: EMAIL_ALREADY_VERIFIED
                   message: email already verified
         "429": { $ref: '#/components/responses/429TooMany' }
-
   /api/v1/auth/resend-verification:
     post:
       tags: [auth]
@@ -2112,8 +2079,6 @@ paths:
                   message: email already verified
         "422": { $ref: '#/components/responses/422Validation' }
         "429": { $ref: '#/components/responses/429TooMany' }
-
-  # ── Password reset ──────────────────────────────────────────────────────────
   /api/v1/auth/forgot-password:
     post:
       tags: [password-reset]
@@ -2145,7 +2110,6 @@ paths:
                   message: if the email exists, a reset link has been sent
         "422": { $ref: '#/components/responses/422Validation' }
         "429": { $ref: '#/components/responses/429TooMany' }
-
   /api/v1/auth/reset-password:
     post:
       tags: [password-reset]
@@ -2189,8 +2153,6 @@ paths:
         "422": { $ref: '#/components/responses/422Validation' }
         "429": { $ref: '#/components/responses/429TooMany' }
         "500": { $ref: '#/components/responses/500Internal' }
-
-  # ── Users ───────────────────────────────────────────────────────────────────
   /api/v1/users/me:
     get:
       tags: [users]
@@ -2221,7 +2183,6 @@ paths:
         "401": { $ref: '#/components/responses/401Unauthorized' }
         "404": { $ref: '#/components/responses/404NotFound' }
         "500": { $ref: '#/components/responses/500Internal' }
-
   /api/v1/users:
     get:
       tags: [users]

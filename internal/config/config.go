@@ -67,8 +67,14 @@ type Config struct {
 	ResendVerificationRateLimit       int           `envconfig:"RESEND_VERIFICATION_RATE_LIMIT"        default:"3"`
 	ResendVerificationRateLimitWindow time.Duration `envconfig:"RESEND_VERIFICATION_RATE_LIMIT_WINDOW" default:"15m"`
 
-	// Stories cleanup interval in minutes for background job removing expired stories
 	StoriesCleanupIntervalMinutes int `envconfig:"STORIES_CLEANUP_INTERVAL_MINUTES" default:"10"`
+
+	MessengerMaxFileSizeBytes  int64  `envconfig:"MESSENGER_MAX_FILE_SIZE_BYTES"    default:"52428800"`
+	MessengerMaxAudioDurationS int    `envconfig:"MESSENGER_MAX_AUDIO_DURATION_S"   default:"300"`
+	MessengerMaxGroupMembers   int    `envconfig:"MESSENGER_MAX_GROUP_MEMBERS"      default:"500"`
+	MessengerTypingTimeoutS    int    `envconfig:"MESSENGER_TYPING_TIMEOUT_S"       default:"5"`
+	MessengerInviteLinkBaseURL string `envconfig:"MESSENGER_INVITE_LINK_BASE_URL"`
+	MessengerDefaultDisappearS int    `envconfig:"MESSENGER_DEFAULT_DISAPPEAR_S"    default:"0"`
 }
 
 func Load() (*Config, error) {

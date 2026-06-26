@@ -6,6 +6,8 @@ import (
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/domain/album"
 	"github.com/unowned-22/api/internal/domain/closefriend"
+	"github.com/unowned-22/api/internal/domain/event"
+	"github.com/unowned-22/api/internal/domain/messenger"
 	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/domain/photo"
 	"github.com/unowned-22/api/internal/domain/photocomment"
@@ -21,21 +23,23 @@ import (
 )
 
 type Services struct {
-	Auth           auth.AuthService
-	PasswordReset  service.PasswordResetService
-	User           *service.UserService
-	Permission     *service.PermissionService
-	Health         *service.HealthService
-	SystemSettings systemsettings.Service
-	UserSettings   usersettings.Service
-	Story          *service.StoryService
-	Friendship     *service.FriendshipService
-	CloseFriend    closefriend.Service
-	Profile        *service.ProfileService
-	Notification   notification.Service
-	Photo          photo.Service
-	Album          album.Service
-	PhotoComment   photocomment.Service
+	Auth            auth.AuthService
+	PasswordReset   service.PasswordResetService
+	User            *service.UserService
+	Permission      *service.PermissionService
+	Health          *service.HealthService
+	SystemSettings  systemsettings.Service
+	UserSettings    usersettings.Service
+	Story           *service.StoryService
+	Friendship      *service.FriendshipService
+	CloseFriend     closefriend.Service
+	Profile         *service.ProfileService
+	Notification    notification.Service
+	Photo           photo.Service
+	Album           album.Service
+	PhotoComment    photocomment.Service
+	Messenger       messenger.Service
+	OutboxPublisher event.Publisher
 }
 
 // InitServices constructs application services from repositories and infra.
@@ -82,22 +86,25 @@ func InitServices(
 	// initialize photo comment service
 	photoCommentSvc := service.NewPhotoCommentService(repos.PhotoComment, repos.Photo, outboxPublisher)
 	albumSvc := service.NewAlbumService(repos.Album, repos.Photo)
+	messengerSvc := service.NewMessengerService(repos.Conversation, repos.Message, repos.Member, repos.Presence, repos.MessengerPrivacy, repos.Draft, friendshipSvc, storage, cfg.MinIOBucket, outboxPublisher)
 
 	return &Services{
-		Auth:           authSvc,
-		PasswordReset:  passwordResetSvc,
-		User:           userSvc,
-		Permission:     permissionSvc,
-		Health:         healthSvc,
-		SystemSettings: systemSettingsSvc,
-		UserSettings:   userSettingsSvc,
-		Story:          storySvc,
-		Friendship:     friendshipSvc,
-		CloseFriend:    closeFriendSvc,
-		Profile:        profileSvc,
-		Notification:   notifSvc,
-		Photo:          photoSvc,
-		PhotoComment:   photoCommentSvc,
-		Album:          albumSvc,
+		Auth:            authSvc,
+		PasswordReset:   passwordResetSvc,
+		User:            userSvc,
+		Permission:      permissionSvc,
+		Health:          healthSvc,
+		SystemSettings:  systemSettingsSvc,
+		UserSettings:    userSettingsSvc,
+		Story:           storySvc,
+		Friendship:      friendshipSvc,
+		CloseFriend:     closeFriendSvc,
+		Profile:         profileSvc,
+		Notification:    notifSvc,
+		Photo:           photoSvc,
+		PhotoComment:    photoCommentSvc,
+		Album:           albumSvc,
+		Messenger:       messengerSvc,
+		OutboxPublisher: outboxPublisher,
 	}
 }
