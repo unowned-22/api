@@ -18,6 +18,8 @@ const (
 	TypePhotoCommented        Type = "photo_commented"
 	TypeCommentReplied        Type = "comment_replied"
 	TypeCommentLiked          Type = "comment_liked"
+	TypeMessengerNewMessage   Type = "messenger_new_message"
+	TypeMessengerMentioned    Type = "messenger_mentioned"
 )
 
 type Notification struct {

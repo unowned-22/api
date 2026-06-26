@@ -115,6 +115,32 @@ func (r *ConversationRepository) Create(ctx context.Context, c *domainmessenger.
 	return c, nil
 }
 
+func (r *ConversationRepository) CreateWithMembers(ctx context.Context, c *domainmessenger.Conversation, members []*domainmessenger.ConversationMember) (*domainmessenger.Conversation, error) {
+	convQ := `INSERT INTO conversations (type, title, description, avatar_url, owner_id, created_by, last_message_id, last_message_at, members_count, is_archived, invite_link, disappear_after_s, created_at, updated_at)
+	VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`
+	memberQ := `INSERT INTO conversation_members (conversation_id,user_id,role,joined_at,left_at,muted_until,last_read_message_id,last_read_at,is_archived) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := tx.QueryRow(ctx, convQ, c.Type, c.Title, c.Description, c.AvatarURL, c.OwnerID, c.CreatedBy, c.LastMessageID, c.LastMessageAt, c.MembersCount, c.IsArchived, c.InviteLink, c.DisappearAfterS, c.CreatedAt, c.UpdatedAt).Scan(&c.ID); err != nil {
+		return nil, fmt.Errorf("create conversation: %w", err)
+	}
+	for _, m := range members {
+		m.ConversationID = c.ID
+		if _, err := tx.Exec(ctx, memberQ, m.ConversationID, m.UserID, m.Role, m.JoinedAt, m.LeftAt, m.MutedUntil, m.LastReadMessageID, m.LastReadAt, m.IsArchived); err != nil {
+			return nil, fmt.Errorf("add member %d: %w", m.UserID, err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+	return c, nil
+}
+
 func (r *ConversationRepository) GetByID(ctx context.Context, id int64) (*domainmessenger.Conversation, error) {
 	q := `SELECT id, type, title, description, avatar_url, owner_id, created_by, last_message_id, last_message_at, members_count, is_archived, invite_link, disappear_after_s, created_at, updated_at FROM conversations WHERE id = $1`
 	c, err := scanConversation(r.db.QueryRow(ctx, q, id))
@@ -148,31 +174,123 @@ func (r *ConversationRepository) ListForUser(ctx context.Context, userID int64, 
 	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM conversations c JOIN conversation_members m ON m.conversation_id = c.id AND m.user_id = $1 AND m.left_at IS NULL`, userID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count conversations: %w", err)
 	}
-	q := `SELECT c.id, c.type, c.title, c.description, c.avatar_url, c.owner_id, c.created_by, c.last_message_id, c.last_message_at, c.members_count, c.is_archived, c.invite_link, c.disappear_after_s, c.created_at, c.updated_at
-	FROM conversations c
-	JOIN conversation_members m ON m.conversation_id = c.id AND m.user_id = $1 AND m.left_at IS NULL
-	ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
-	LIMIT $2 OFFSET $3`
+	// QA-3: unread_count subquery
+	// QA-4: LEFT JOIN with last message
+	q := `
+SELECT
+    c.id, c.type, c.title, c.description, c.avatar_url, c.owner_id, c.created_by,
+    c.last_message_id, c.last_message_at, c.members_count, c.is_archived, c.invite_link,
+    c.disappear_after_s, c.created_at, c.updated_at,
+    (
+        SELECT COUNT(*)
+        FROM messages m2
+        WHERE m2.conversation_id = c.id
+          AND m2.id > COALESCE(cm.last_read_message_id, 0)
+          AND m2.sender_id != $1
+          AND m2.is_deleted = FALSE
+          AND m2.is_scheduled = FALSE
+    ) AS unread_count,
+    lm.id, lm.conversation_id, lm.sender_id, lm.type, lm.body,
+    lm.reply_to_id, lm.forwarded_from_id, lm.is_deleted, lm.is_edited,
+    lm.edited_at, lm.pinned, lm.likes_count, lm.disappears_at, lm.scheduled_at,
+    lm.is_scheduled, lm.delivery_status, lm.mention_user_ids, lm.created_at, lm.updated_at
+FROM conversations c
+JOIN conversation_members cm ON cm.conversation_id = c.id AND cm.user_id = $1 AND cm.left_at IS NULL
+LEFT JOIN messages lm ON lm.id = c.last_message_id
+ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
+LIMIT $2 OFFSET $3`
+
 	rows, err := r.db.Query(ctx, q, userID, page.Limit, page.Offset())
 	if err != nil {
 		return nil, 0, fmt.Errorf("list conversations: %w", err)
 	}
 	defer rows.Close()
+
 	out := make([]*domainmessenger.Conversation, 0)
 	for rows.Next() {
 		var c domainmessenger.Conversation
 		var ownerID *int64
 		var lastMessageID *int64
 		var lastMessageAt *time.Time
-		if err := rows.Scan(&c.ID, &c.Type, &c.Title, &c.Description, &c.AvatarURL, &ownerID, &c.CreatedBy, &lastMessageID, &lastMessageAt, &c.MembersCount, &c.IsArchived, &c.InviteLink, &c.DisappearAfterS, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		var unreadCount int
+
+		// last message fields (all nullable due to LEFT JOIN)
+		var lmID *int64
+		var lmConvID, lmSenderID *int64
+		var lmType *string
+		var lmBody *string
+		var lmReplyToID, lmForwardedFromID *int64
+		var lmIsDeleted, lmIsEdited, lmPinned, lmIsScheduled *bool
+		var lmEditedAt, lmDisappearsAt, lmScheduledAt *time.Time
+		var lmLikesCount *int
+		var lmDeliveryStatus *string
+		var lmMentions []int64
+		var lmCreatedAt, lmUpdatedAt *time.Time
+
+		if err := rows.Scan(
+			&c.ID, &c.Type, &c.Title, &c.Description, &c.AvatarURL, &ownerID, &c.CreatedBy,
+			&lastMessageID, &lastMessageAt, &c.MembersCount, &c.IsArchived, &c.InviteLink,
+			&c.DisappearAfterS, &c.CreatedAt, &c.UpdatedAt,
+			&unreadCount,
+			&lmID, &lmConvID, &lmSenderID, &lmType, &lmBody,
+			&lmReplyToID, &lmForwardedFromID, &lmIsDeleted, &lmIsEdited,
+			&lmEditedAt, &lmPinned, &lmLikesCount, &lmDisappearsAt, &lmScheduledAt,
+			&lmIsScheduled, &lmDeliveryStatus, &lmMentions, &lmCreatedAt, &lmUpdatedAt,
+		); err != nil {
 			return nil, 0, fmt.Errorf("scan conversation: %w", err)
 		}
 		c.OwnerID = ownerID
 		c.LastMessageID = lastMessageID
 		c.LastMessageAt = lastMessageAt
+		c.UnreadCount = unreadCount
+
+		if lmID != nil {
+			msg := &domainmessenger.Message{
+				ID:              *lmID,
+				ConversationID:  *lmConvID,
+				SenderID:        *lmSenderID,
+				Type:            domainmessenger.MessageType(*lmType),
+				Body:            *lmBody,
+				ReplyToID:       lmReplyToID,
+				ForwardedFromID: lmForwardedFromID,
+				IsDeleted:       derefBool(lmIsDeleted),
+				IsEdited:        derefBool(lmIsEdited),
+				EditedAt:        lmEditedAt,
+				Pinned:          derefBool(lmPinned),
+				LikesCount:      derefInt(lmLikesCount),
+				DisappearsAt:    lmDisappearsAt,
+				ScheduledAt:     lmScheduledAt,
+				IsScheduled:     derefBool(lmIsScheduled),
+				MentionUserIDs:  lmMentions,
+			}
+			if lmDeliveryStatus != nil {
+				msg.DeliveryStatus = domainmessenger.DeliveryStatus(*lmDeliveryStatus)
+			}
+			if lmCreatedAt != nil {
+				msg.CreatedAt = *lmCreatedAt
+			}
+			if lmUpdatedAt != nil {
+				msg.UpdatedAt = *lmUpdatedAt
+			}
+			c.LastMessage = msg
+		}
 		out = append(out, &c)
 	}
 	return out, total, nil
+}
+
+func derefBool(b *bool) bool {
+	if b == nil {
+		return false
+	}
+	return *b
+}
+
+func derefInt(i *int) int {
+	if i == nil {
+		return 0
+	}
+	return *i
 }
 
 func (r *ConversationRepository) Update(ctx context.Context, c *domainmessenger.Conversation) error {
@@ -320,8 +438,8 @@ func (r *MessageRepository) ListPinned(ctx context.Context, convID int64) ([]*do
 }
 func (r *MessageRepository) Search(ctx context.Context, convID int64, query string, page pagination.Query) ([]*domainmessenger.Message, int64, error) {
 	var total int64
-	_ = r.db.QueryRow(ctx, `SELECT COUNT(*) FROM messages WHERE conversation_id=$1 AND to_tsvector('russian', COALESCE(body,'')) @@ plainto_tsquery('russian', $2)`, convID, query).Scan(&total)
-	rows, err := r.db.Query(ctx, `SELECT id, conversation_id, sender_id, type, body, reply_to_id, forwarded_from_id, is_deleted, is_edited, edited_at, pinned, likes_count, disappears_at, scheduled_at, is_scheduled, delivery_status, mention_user_ids, created_at, updated_at FROM messages WHERE conversation_id=$1 AND to_tsvector('russian', COALESCE(body,'')) @@ plainto_tsquery('russian', $2) ORDER BY created_at DESC LIMIT $3 OFFSET $4`, convID, query, page.Limit, page.Offset())
+	_ = r.db.QueryRow(ctx, `SELECT COUNT(*) FROM messages WHERE conversation_id=$1 AND is_deleted=FALSE AND (to_tsvector('russian', COALESCE(body,'')) @@ plainto_tsquery('russian', $2) OR to_tsvector('simple', COALESCE(body,'')) @@ plainto_tsquery('simple', $2))`, convID, query).Scan(&total)
+	rows, err := r.db.Query(ctx, `SELECT id, conversation_id, sender_id, type, body, reply_to_id, forwarded_from_id, is_deleted, is_edited, edited_at, pinned, likes_count, disappears_at, scheduled_at, is_scheduled, delivery_status, mention_user_ids, created_at, updated_at FROM messages WHERE conversation_id=$1 AND is_deleted=FALSE AND (to_tsvector('russian', COALESCE(body,'')) @@ plainto_tsquery('russian', $2) OR to_tsvector('simple', COALESCE(body,'')) @@ plainto_tsquery('simple', $2)) ORDER BY created_at DESC LIMIT $3 OFFSET $4`, convID, query, page.Limit, page.Offset())
 	if err != nil {
 		return nil, 0, err
 	}

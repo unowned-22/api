@@ -18,34 +18,14 @@ var (
 	ErrEmailNotVerified          = errors.New("email not verified")
 	ErrSessionNotFound           = errors.New("session not found")
 	ErrUserDeactivated           = errors.New("user account is deactivated")
-
-	// ErrUserStorageNotProvisioned is returned when the user's MinIO bucket or
-	// user_settings row does not yet exist. This is a transient condition: the
-	// email_verified worker creates the bucket asynchronously after verification,
-	// so the provisioning may still be in flight (or may have failed and ended up
-	// in the DLQ). The transport layer maps this to 503 Service Unavailable so
-	// clients know to retry rather than treat the situation as a permanent error.
 	ErrUserStorageNotProvisioned = errors.New("user storage is not yet provisioned")
+	ErrUserSettingsNotFound      = errors.New("user settings not found")
+	ErrAvatarNotFound            = errors.New("avatar not found")
+	ErrCoverNotFound             = errors.New("cover not found")
 
-	// ErrUserSettingsNotFound is returned when a user_settings row is expected
-	// to exist but cannot be found. Semantically distinct from
-	// ErrUserStorageNotProvisioned: use this when the lookup itself indicates a
-	// missing record rather than an incomplete provisioning flow.
-	ErrUserSettingsNotFound = errors.New("user settings not found")
-
-	// ErrAvatarNotFound is returned when a user attempts to delete an avatar
-	// that has not been uploaded.
-	ErrAvatarNotFound = errors.New("avatar not found")
-
-	// ErrCoverNotFound is returned when a user attempts to delete a cover
-	// that has not been uploaded.
-	ErrCoverNotFound = errors.New("cover not found")
-
-	// Stories
 	ErrStoryNotFound       = errors.New("story not found")
 	ErrInvalidStoryPayload = errors.New("invalid story payload")
 
-	// Messenger
 	ErrConversationNotFound    = errors.New("conversation not found")
 	ErrMessageNotFound         = errors.New("message not found")
 	ErrMemberNotFound          = errors.New("conversation member not found")
@@ -54,9 +34,7 @@ var (
 	ErrDraftNotFound           = errors.New("message draft not found")
 	ErrCannotBlockSelf         = errors.New("cannot block yourself")
 	ErrMessagingNotAllowed     = errors.New("messaging is not allowed")
-	// ErrUserBlocked is returned when a sender attempts to message a user who
-	// has blocked them (or whom they have blocked) in an existing direct
-	// conversation. Mapped to 403 Forbidden at the transport layer.
+
 	ErrUserBlocked              = errors.New("user is blocked")
 	ErrNotConversationMember    = errors.New("user is not a conversation member")
 	ErrInsufficientChannelRole  = errors.New("insufficient channel role")
