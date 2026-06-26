@@ -32,7 +32,7 @@ func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, story
 		event.CommentReplied:        NewCommentRepliedHandler(userSettingsRepo, notificationRepo, hub),
 		event.CommentLiked:          NewCommentLikedHandler(userSettingsRepo, notificationRepo, hub),
 		// Messenger realtime events
-		event.MessengerMessageSent:     NewMessengerMessageSentHandler(hub),
+		event.MessengerMessageSent:     NewMessengerMessageSentHandler(hub, userSettingsRepo, notificationRepo),
 		event.MessengerScheduledReady:  NewMessengerScheduledReadyHandler(hub),
 		event.MessengerReactionAdded:   NewMessengerReactionHandler(event.MessengerReactionAdded, messengerMemberRepo, hub),
 		event.MessengerReactionRemoved: NewMessengerReactionHandler(event.MessengerReactionRemoved, messengerMemberRepo, hub),
@@ -44,6 +44,7 @@ func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, story
 		event.MessengerReadReceipt:     NewMessengerReadReceiptHandler(messengerMemberRepo, hub),
 		event.MessengerMemberAdded:     NewMessengerMemberAddedHandler(messengerMemberRepo, hub),
 		event.MessengerMemberRemoved:   NewMessengerMemberRemovedHandler(messengerMemberRepo, hub),
+		event.MessengerTyping:          NewMessengerTypingHandler(messengerMemberRepo, hub),
 	}
 
 	consumer, err := queue.NewConsumer(queue.ConsumerConfig{
@@ -491,11 +492,13 @@ func (b *messengerBroadcaster) broadcast(ctx context.Context, convID int64, wsTy
 // — MessengerMessageSentHandler —
 
 type MessengerMessageSentHandler struct {
-	hub *ws.Hub
+	hub         *ws.Hub
+	usersetRepo usersettings.Repository
+	notifRepo   notification.Repository
 }
 
-func NewMessengerMessageSentHandler(hub *ws.Hub) *MessengerMessageSentHandler {
-	return &MessengerMessageSentHandler{hub: hub}
+func NewMessengerMessageSentHandler(hub *ws.Hub, usersetRepo usersettings.Repository, notifRepo notification.Repository) *MessengerMessageSentHandler {
+	return &MessengerMessageSentHandler{hub: hub, usersetRepo: usersetRepo, notifRepo: notifRepo}
 }
 
 func (h *MessengerMessageSentHandler) EventName() event.Name { return event.MessengerMessageSent }
@@ -514,9 +517,70 @@ func (h *MessengerMessageSentHandler) Handle(ctx context.Context, payload []byte
 		ConversationID: p.ConversationID,
 		Message:        p.Message,
 	}
+
+	var offlineNotifs []*notification.Notification
+	mentionSet := make(map[int64]bool, len(p.Message.MentionUserIDs))
+	for _, uid := range p.Message.MentionUserIDs {
+		mentionSet[uid] = true
+	}
+
 	for _, uid := range p.RecipientIDs {
+		// always push WS if connected
 		if err := ws.SendMessengerEvent(h.hub, uid, "messenger.message_sent", wsPayload); err != nil {
 			logger.Log.WithError(err).Warnf("messenger: failed to push to user %d", uid)
+		}
+
+		// QA-2: create push notification for offline recipients (not the sender)
+		if uid == p.Message.SenderID {
+			continue
+		}
+		if h.hub.HasUser(uid) {
+			continue // already online, WS is enough
+		}
+
+		notifType := notification.TypeMessengerNewMessage
+		if mentionSet[uid] {
+			notifType = notification.TypeMessengerMentioned
+		}
+
+		prefs, err := h.usersetRepo.GetNotificationPreferences(ctx, uid)
+		if err != nil {
+			logger.Log.WithError(err).Warnf("messenger: failed to load prefs for user %d", uid)
+			continue
+		}
+		allow := true
+		if len(prefs) > 0 {
+			var mp map[string]bool
+			if err := json.Unmarshal(prefs, &mp); err == nil {
+				if v, ok := mp[string(notifType)]; ok {
+					allow = v
+				}
+			}
+		}
+		if !allow {
+			continue
+		}
+
+		notifPayload, _ := json.Marshal(map[string]any{
+			"conversation_id": p.ConversationID,
+			"message_id":      p.Message.ID,
+			"sender_id":       p.Message.SenderID,
+		})
+		offlineNotifs = append(offlineNotifs, &notification.Notification{
+			UserID:     uid,
+			ActorID:    p.Message.SenderID,
+			Type:       notifType,
+			EntityType: "message",
+			EntityID:   p.Message.ID,
+			Payload:    notifPayload,
+			IsRead:     false,
+			CreatedAt:  time.Now(),
+		})
+	}
+
+	if len(offlineNotifs) > 0 {
+		if err := h.notifRepo.CreateBatch(ctx, offlineNotifs); err != nil {
+			logger.Log.WithError(err).Warn("messenger: failed to create offline notifications")
 		}
 	}
 	return nil
@@ -755,6 +819,39 @@ func (h *MessengerMemberRemovedHandler) Handle(ctx context.Context, payload []by
 	return h.broadcast(ctx, p.ConversationID, "messenger.member_removed", p)
 }
 
+// — MessengerTypingHandler —
+
+type MessengerTypingHandler struct {
+	messengerBroadcaster
+}
+
+func NewMessengerTypingHandler(memberRepo messenger.MemberRepository, hub *ws.Hub) *MessengerTypingHandler {
+	return &MessengerTypingHandler{messengerBroadcaster: messengerBroadcaster{memberRepo: memberRepo, hub: hub}}
+}
+
+func (h *MessengerTypingHandler) EventName() event.Name { return event.MessengerTyping }
+
+func (h *MessengerTypingHandler) Handle(ctx context.Context, payload []byte) error {
+	var p ws.MessengerTypingPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return fmt.Errorf("invalid payload: %w", err)
+	}
+	// Fan-out to all members except the typer
+	members, err := h.memberRepo.ListMembers(ctx, p.ConversationID)
+	if err != nil {
+		return fmt.Errorf("list members: %w", err)
+	}
+	for _, m := range members {
+		if m.UserID == p.UserID {
+			continue // don't echo back to sender
+		}
+		if err := ws.SendMessengerEvent(h.hub, m.UserID, "messenger.typing", p); err != nil {
+			logger.Log.WithError(err).Warnf("typing: failed to push to user %d", m.UserID)
+		}
+	}
+	return nil
+}
+
 // Compile-time interface checks.
 var (
 	_ event.Handler = (*FriendRequestReceivedHandler)(nil)
@@ -775,4 +872,5 @@ var (
 	_ event.Handler = (*MessengerReadReceiptHandler)(nil)
 	_ event.Handler = (*MessengerMemberAddedHandler)(nil)
 	_ event.Handler = (*MessengerMemberRemovedHandler)(nil)
+	_ event.Handler = (*MessengerTypingHandler)(nil)
 )

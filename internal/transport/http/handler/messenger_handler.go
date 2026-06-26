@@ -715,11 +715,70 @@ func (h *MessengerHandler) ScheduleMessage(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *MessengerHandler) ListScheduled(w http.ResponseWriter, r *http.Request) {
-	response.SendNotImplemented(w, "listing scheduled messages is not implemented yet")
+	userID, ok := h.currentUserID(r)
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	convID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid conversation id")
+		return
+	}
+	msgs, err := h.svc.ListScheduledMessages(r.Context(), userID, convID)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	out := make([]dto.MessengerMessageResponse, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, msgDTO(m))
+	}
+
+	response.SendSuccess(w, http.StatusOK, out)
 }
 
 func (h *MessengerHandler) CancelScheduled(w http.ResponseWriter, r *http.Request) {
-	response.SendNotImplemented(w, "canceling scheduled messages is not implemented yet")
+	userID, ok := h.currentUserID(r)
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	msgID, err := strconv.ParseInt(chi.URLParam(r, "msgID"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid message id")
+		return
+	}
+	if err := h.svc.CancelScheduledMessage(r.Context(), userID, msgID); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	response.SendNoContent(w)
+}
+
+func (h *MessengerHandler) Typing(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.currentUserID(r)
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	convID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid conversation id")
+		return
+	}
+	var req struct {
+		IsTyping bool `json:"is_typing"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.SendBadRequest(w, "invalid body")
+		return
+	}
+	if err := h.svc.SendTyping(r.Context(), userID, convID, req.IsTyping); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	response.SendNoContent(w)
 }
 
 func (h *MessengerHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {

@@ -309,6 +309,10 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 	})
 }
 
+func SendNoContent(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // SendBadRequest sends a custom 400 Bad Request error response
 func SendBadRequest(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")

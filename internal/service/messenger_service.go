@@ -126,53 +126,54 @@ func (s *MessengerService) GetOrCreateDirect(ctx context.Context, requesterID, t
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
-	conv, err = s.convRepo.Create(ctx, conv)
-	if err != nil {
-		return nil, err
+	members := []*messenger.ConversationMember{
+		{UserID: requesterID, Role: messenger.RoleMember, JoinedAt: now},
+		{UserID: targetID, Role: messenger.RoleMember, JoinedAt: now},
 	}
-	if err := s.memberRepo.Add(ctx, &messenger.ConversationMember{ConversationID: conv.ID, UserID: requesterID, Role: messenger.RoleMember, JoinedAt: now}); err != nil {
-		return nil, err
-	}
-	if err := s.memberRepo.Add(ctx, &messenger.ConversationMember{ConversationID: conv.ID, UserID: targetID, Role: messenger.RoleMember, JoinedAt: now}); err != nil {
-		return nil, err
-	}
-	return conv, nil
+	return s.convRepo.CreateWithMembers(ctx, conv, members)
 }
 
 func (s *MessengerService) CreateGroup(ctx context.Context, creatorID int64, title, desc string, memberIDs []int64) (*messenger.Conversation, error) {
 	now := time.Now().UTC()
-	conv := &messenger.Conversation{Type: messenger.TypeGroup, Title: title, Description: desc, CreatedBy: creatorID, OwnerID: &creatorID, MembersCount: len(memberIDs) + 1, CreatedAt: now, UpdatedAt: now}
-	var err error
-	conv, err = s.convRepo.Create(ctx, conv)
-	if err != nil {
-		return nil, err
+	conv := &messenger.Conversation{
+		Type:         messenger.TypeGroup,
+		Title:        title,
+		Description:  desc,
+		CreatedBy:    creatorID,
+		OwnerID:      &creatorID,
+		MembersCount: 1,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
-	if err := s.memberRepo.Add(ctx, &messenger.ConversationMember{ConversationID: conv.ID, UserID: creatorID, Role: messenger.RoleOwner, JoinedAt: now}); err != nil {
-		return nil, err
+	members := []*messenger.ConversationMember{
+		{UserID: creatorID, Role: messenger.RoleOwner, JoinedAt: now},
 	}
 	for _, id := range memberIDs {
 		if id == creatorID {
 			continue
 		}
-		if err := s.memberRepo.Add(ctx, &messenger.ConversationMember{ConversationID: conv.ID, UserID: id, Role: messenger.RoleMember, JoinedAt: now}); err != nil {
-			return nil, err
-		}
+		members = append(members, &messenger.ConversationMember{UserID: id, Role: messenger.RoleMember, JoinedAt: now})
+		conv.MembersCount++
 	}
-	return conv, nil
+	return s.convRepo.CreateWithMembers(ctx, conv, members)
 }
 
 func (s *MessengerService) CreateChannel(ctx context.Context, ownerID int64, title, desc string) (*messenger.Conversation, error) {
 	now := time.Now().UTC()
-	conv := &messenger.Conversation{Type: messenger.TypeChannel, Title: title, Description: desc, CreatedBy: ownerID, OwnerID: &ownerID, MembersCount: 1, CreatedAt: now, UpdatedAt: now}
-	var err error
-	conv, err = s.convRepo.Create(ctx, conv)
-	if err != nil {
-		return nil, err
+	conv := &messenger.Conversation{
+		Type:         messenger.TypeChannel,
+		Title:        title,
+		Description:  desc,
+		CreatedBy:    ownerID,
+		OwnerID:      &ownerID,
+		MembersCount: 1,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
-	if err := s.memberRepo.Add(ctx, &messenger.ConversationMember{ConversationID: conv.ID, UserID: ownerID, Role: messenger.RoleOwner, JoinedAt: now}); err != nil {
-		return nil, err
+	members := []*messenger.ConversationMember{
+		{UserID: ownerID, Role: messenger.RoleOwner, JoinedAt: now},
 	}
-	return conv, nil
+	return s.convRepo.CreateWithMembers(ctx, conv, members)
 }
 
 func (s *MessengerService) GetConversation(ctx context.Context, userID, convID int64) (*messenger.Conversation, error) {
@@ -840,6 +841,21 @@ func (s *MessengerService) CancelScheduledMessage(ctx context.Context, userID, m
 		return errs.ErrMessageNotScheduled
 	}
 	return s.msgRepo.HardDeleteByID(ctx, msgID)
+}
+
+func (s *MessengerService) SendTyping(ctx context.Context, userID, convID int64, isTyping bool) error {
+	if _, err := s.memberRepo.GetMember(ctx, convID, userID); err != nil {
+		return errs.ErrNotConversationMember
+	}
+	if s.eventBus != nil {
+		payload, _ := json.Marshal(map[string]any{
+			"conversation_id": convID,
+			"user_id":         userID,
+			"is_typing":       isTyping,
+		})
+		_ = s.eventBus.Publish(ctx, event.Event{Name: event.MessengerTyping, Payload: payload})
+	}
+	return nil
 }
 
 var _ messenger.Service = (*MessengerService)(nil)

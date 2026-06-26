@@ -9,6 +9,9 @@ import (
 
 type ConversationRepository interface {
 	Create(ctx context.Context, c *Conversation) (*Conversation, error)
+	// CreateWithMembers inserts a conversation and its initial members atomically
+	// in a single transaction. Either all writes succeed or nothing is persisted.
+	CreateWithMembers(ctx context.Context, c *Conversation, members []*ConversationMember) (*Conversation, error)
 	GetByID(ctx context.Context, id int64) (*Conversation, error)
 	GetDirect(ctx context.Context, userA, userB int64) (*Conversation, error)
 	ListForUser(ctx context.Context, userID int64, page pagination.Query) ([]*Conversation, int64, error)
@@ -123,4 +126,5 @@ type Service interface {
 	ListBlocked(ctx context.Context, blockerID int64) ([]int64, error)
 	ListScheduledMessages(ctx context.Context, userID, convID int64) ([]*Message, error)
 	CancelScheduledMessage(ctx context.Context, userID, msgID int64) error
+	SendTyping(ctx context.Context, userID, convID int64, isTyping bool) error
 }
