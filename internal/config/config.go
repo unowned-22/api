@@ -11,8 +11,8 @@ import (
 )
 
 type Config struct {
-	AppPort            string `envconfig:"APP_PORT" default:"8080"`
-	AppEnv             string `envconfig:"APP_ENV" default:"development"`
+	AppPort            string `envconfig:"APP_PORT"`
+	AppEnv             string `envconfig:"APP_ENV"`
 	CORSAllowedOrigins string `envconfig:"CORS_ALLOWED_ORIGINS"`
 
 	RateLimitRPS       float64 `envconfig:"RATE_LIMIT_RPS" default:"10"`

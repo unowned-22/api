@@ -1,4 +1,4 @@
-package inmemory
+package eventbus
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	dom "github.com/unowned-22/api/internal/domain/eventbus"
+	"github.com/unowned-22/api/internal/infrastructure/eventbus"
 	"github.com/unowned-22/api/internal/logger"
 )
 
@@ -21,7 +22,7 @@ func (f funcHandler) Handle(ctx context.Context, event dom.Event) error { return
 func TestMultipleSubscribersReceiveEvent(t *testing.T) {
 	// ensure logger is initialized for structured logs used by the bus
 	_ = logger.Init()
-	bus := NewInMemoryBus()
+	bus := inmemory.NewInMemoryBus()
 
 	ch1 := make(chan struct{}, 1)
 	ch2 := make(chan struct{}, 1)
@@ -54,7 +55,7 @@ func TestMultipleSubscribersReceiveEvent(t *testing.T) {
 }
 
 func TestHandlerIsolationAndFailure(t *testing.T) {
-	bus := NewInMemoryBus()
+	bus := inmemory.NewInMemoryBus()
 
 	okCh := make(chan struct{}, 1)
 	errCh := make(chan struct{}, 1)
@@ -96,7 +97,7 @@ func TestHandlerIsolationAndFailure(t *testing.T) {
 }
 
 func TestPublishIsNonBlocking(t *testing.T) {
-	bus := NewInMemoryBus()
+	bus := inmemory.NewInMemoryBus()
 
 	block := make(chan struct{})
 	bus.Subscribe("user.registered", funcHandler(func(ctx context.Context, event dom.Event) error {
@@ -118,7 +119,7 @@ func TestPublishIsNonBlocking(t *testing.T) {
 }
 
 func TestContextAwareness(t *testing.T) {
-	bus := NewInMemoryBus()
+	bus := inmemory.NewInMemoryBus()
 
 	gotCanceled := make(chan bool, 1)
 

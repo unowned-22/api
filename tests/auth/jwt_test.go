@@ -3,13 +3,15 @@ package auth
 import (
 	"testing"
 	"time"
+
+	auth2 "github.com/unowned-22/api/internal/auth"
 )
 
 func TestJWTManager(t *testing.T) {
 	secret := "test-secret-key-12345"
 	issuer := "api-service"
 	audience := "client-app"
-	manager := NewJWTManager(secret, issuer, audience, 15*time.Minute)
+	manager := auth2.NewJWTManager(secret, issuer, audience, 15*time.Minute)
 
 	userID := int64(9876)
 	token, err := manager.Generate(userID)

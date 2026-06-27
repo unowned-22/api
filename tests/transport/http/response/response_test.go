@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/unowned-22/api/internal/errs"
+	response2 "github.com/unowned-22/api/internal/transport/http/response"
 )
 
 func TestSendErrorMappings(t *testing.T) {
@@ -40,13 +41,13 @@ func TestSendErrorMappings(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-			SendError(rr, req, tc.err)
+			response2.SendError(rr, req, tc.err)
 
 			if rr.Code != tc.wantStatus {
 				t.Fatalf("status mismatch: got %d want %d", rr.Code, tc.wantStatus)
 			}
 
-			var got ErrorResponse
+			var got response2.ErrorResponse
 			if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 				t.Fatalf("unmarshal failed: %v", err)
 			}
@@ -67,13 +68,13 @@ func TestSendErrorUnknownFallsBackTo500(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	SendError(rr, req, errors.New("boom"))
+	response2.SendError(rr, req, errors.New("boom"))
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("status mismatch: got %d want %d", rr.Code, http.StatusInternalServerError)
 	}
 
-	var got ErrorResponse
+	var got response2.ErrorResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}

@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	config2 "github.com/unowned-22/api/internal/config"
 )
 
 func TestConfigLoad(t *testing.T) {
@@ -34,7 +36,7 @@ func TestConfigLoad(t *testing.T) {
 		os.Unsetenv("REFRESH_TOKEN_TTL")
 	}()
 
-	cfg, err := Load()
+	cfg, err := config2.Load()
 	if err != nil {
 		t.Fatalf("failed to load config: %v", err)
 	}

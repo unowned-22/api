@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/unowned-22/api/internal/domain/notification"
+	ws2 "github.com/unowned-22/api/internal/transport/ws"
 )
 
 func TestSendNotificationEnvelope(t *testing.T) {
@@ -13,8 +14,8 @@ func TestSendNotificationEnvelope(t *testing.T) {
 		Type: notification.TypeFriendRequestReceived,
 	}
 
-	b, err := json.Marshal(WSMessage{
-		Type: WSMessageNotification,
+	b, err := json.Marshal(ws2.WSMessage{
+		Type: ws2.WSMessageNotification,
 		Data: n,
 	})
 	if err != nil {
@@ -32,7 +33,7 @@ func TestSendNotificationEnvelope(t *testing.T) {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
-	if got.Type != WSMessageNotification {
+	if got.Type != ws2.WSMessageNotification {
 		t.Fatalf("outer type mismatch: got %q", got.Type)
 	}
 	if got.Data.ID != 1 {

@@ -11,6 +11,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/usersettings"
 	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/pagination"
+	realtime2 "github.com/unowned-22/api/internal/realtime"
 	ws "github.com/unowned-22/api/internal/transport/ws"
 )
 
@@ -78,7 +79,7 @@ func TestFriendRequestReceivedUsesFriendshipID(t *testing.T) {
 	logger.Log = logrus.New()
 	logger.Log.SetOutput(io.Discard)
 
-	h := &FriendRequestReceivedHandler{
+	h := &realtime2.FriendRequestReceivedHandler{
 		usersetRepo: stubUserSettingsRepo{},
 		notifRepo:   &stubNotificationRepo{},
 		hub:         ws.NewHub(),

@@ -430,15 +430,52 @@ func (r *MessageRepository) listMessagesByQuery(ctx context.Context, userID int6
 		if err != nil {
 			return nil, 0, err
 		}
+
+		senderIDs := make([]int64, 0, len(out))
+		for _, m := range out {
+			senderIDs = append(senderIDs, m.SenderID)
+		}
+		senders, err := r.GetSendersBatch(ctx, senderIDs)
+		if err != nil {
+			return nil, 0, err
+		}
+
 		for _, m := range out {
 			if aa, ok := attachMap[m.ID]; ok {
 				m.Attachments = aa
 			}
 			m.Reactions = reactionsMap[m.ID]
+			if s, ok := senders[m.SenderID]; ok {
+				m.SenderName = s.Name
+				m.SenderAvatar = s.Avatar
+			}
 		}
 	}
 
 	return out, total, nil
+}
+
+func (r *MessageRepository) GetSendersBatch(ctx context.Context, senderIDs []int64) (map[int64]struct{ Name, Avatar string }, error) {
+	out := make(map[int64]struct{ Name, Avatar string })
+	if len(senderIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT id, COALESCE(full_name, username, ''), COALESCE(avatar_url, '') FROM users WHERE id = ANY($1)`,
+		senderIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var v struct{ Name, Avatar string }
+		if err := rows.Scan(&id, &v.Name, &v.Avatar); err != nil {
+			return nil, err
+		}
+		out[id] = v
+	}
+	return out, nil
 }
 
 func (r *MessageRepository) EnrichMessage(ctx context.Context, m *domainmessenger.Message) {
