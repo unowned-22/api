@@ -32,22 +32,7 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u, err := h.userService.GetProfile(r.Context(), userID)
-	if err != nil {
-		response.SendError(w, r, err)
-		return
-	}
-
-	response.SendSuccess(w, http.StatusOK, dto.UserResponse{
-		ID:        u.ID,
-		Email:     u.Email,
-		FullName:  u.FullName,
-		Username:  u.Username,
-		Phone:     u.Phone,
-		AvatarURL: u.AvatarURL,
-		CoverURL:  u.CoverURL,
-		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	h.getMe(userID, w, r)
 }
 
 // UpdateProfile updates the profile of the currently authenticated user.
@@ -78,23 +63,7 @@ func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return updated profile
-	u, err := h.userService.GetProfile(r.Context(), userID)
-	if err != nil {
-		response.SendError(w, r, err)
-		return
-	}
-
-	response.SendSuccess(w, http.StatusOK, dto.UserResponse{
-		ID:        u.ID,
-		Email:     u.Email,
-		FullName:  u.FullName,
-		Username:  u.Username,
-		Phone:     u.Phone,
-		AvatarURL: u.AvatarURL,
-		CoverURL:  u.CoverURL,
-		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-	})
+	h.getMe(userID, w, r)
 }
 
 func (h *UserHandler) GetMySettings(w http.ResponseWriter, r *http.Request) {
@@ -166,4 +135,23 @@ func (h *UserHandler) UpdateMyNotificationPreferences(w http.ResponseWriter, r *
 		return
 	}
 	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "notification preferences updated"})
+}
+
+func (h *UserHandler) getMe(userID int64, w http.ResponseWriter, r *http.Request) {
+	u, err := h.userService.GetProfile(r.Context(), userID)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.UserResponse{
+		ID:        u.ID,
+		Email:     u.Email,
+		FullName:  u.FullName,
+		Username:  u.Username,
+		Phone:     u.Phone,
+		AvatarURL: u.AvatarURL,
+		CoverURL:  u.CoverURL,
+		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	})
 }

@@ -39,7 +39,6 @@ func (h *PhotoHandler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// limit body to 20MB
 	r.Body = http.MaxBytesReader(w, r.Body, 20*1024*1024)
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -69,14 +68,12 @@ func (h *PhotoHandler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// validate content type
 	allowed := map[string]bool{"image/jpeg": true, "image/png": true, "image/webp": true}
 	if !allowed[contentType] {
 		response.SendBadRequest(w, "unsupported content type")
 		return
 	}
 
-	// read into buffer to get size
 	data, err := io.ReadAll(part)
 	if err != nil {
 		response.SendBadRequest(w, "failed to read file")
@@ -87,7 +84,6 @@ func (h *PhotoHandler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// parse user-agent for device info
 	di := uaparser.Parse(r.Header.Get("User-Agent"))
 	p, err := h.photos.Upload(r.Context(), userID, photo.UploadInput{Reader: bytes.NewReader(data), Size: int64(len(data)), Filename: filename, ContentType: contentType, AlbumID: albumID, DeviceName: new(di.Browser), DeviceOS: new(di.OS), DeviceType: new(di.DeviceType)})
 	if err != nil {
@@ -98,6 +94,7 @@ func (h *PhotoHandler) UploadPhoto(w http.ResponseWriter, r *http.Request) {
 	resp := dto.PhotoResponse{
 		ID: p.ID, AlbumID: p.AlbumID, DisplayName: p.DisplayName, URL: p.URL, SizeBytes: p.SizeBytes, Width: p.Width, Height: p.Height, MimeType: p.MimeType, Visibility: string(p.Visibility), CreatedAt: p.CreatedAt.Format(time.RFC3339),
 	}
+
 	response.SendSuccess(w, http.StatusCreated, resp)
 }
 
@@ -108,20 +105,8 @@ func (h *PhotoHandler) ListMyPhotos(w http.ResponseWriter, r *http.Request) {
 		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
-	q := r.URL.Query()
-	limit := 20
-	offset := 0
-	if l := q.Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil {
-			limit = v
-		}
-	}
-	if o := q.Get("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil {
-			offset = v
-		}
-	}
 
+	limit, offset := getPaginationQueries(r)
 	items, _, err := h.photos.ListUserPhotos(r.Context(), userID, userID, limit, offset)
 	if err != nil {
 		response.SendError(w, r, err)
@@ -146,19 +131,8 @@ func (h *PhotoHandler) ListUserPhotosByUsername(w http.ResponseWriter, r *http.R
 		response.SendError(w, r, err)
 		return
 	}
-	q := r.URL.Query()
-	limit := 20
-	offset := 0
-	if l := q.Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil {
-			limit = v
-		}
-	}
-	if o := q.Get("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil {
-			offset = v
-		}
-	}
+
+	limit, offset := getPaginationQueries(r)
 	items, _, err := h.photos.ListUserPhotos(r.Context(), p.ID, viewerID, limit, offset)
 	if err != nil {
 		response.SendError(w, r, err)
@@ -261,4 +235,22 @@ func (h *PhotoHandler) DeletePhoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response.SendSuccess(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func getPaginationQueries(r *http.Request) (int, int) {
+	q := r.URL.Query()
+	limit := 20
+	offset := 0
+	if l := q.Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil {
+			limit = v
+		}
+	}
+	if o := q.Get("offset"); o != "" {
+		if v, err := strconv.Atoi(o); err == nil {
+			offset = v
+		}
+	}
+
+	return limit, offset
 }
