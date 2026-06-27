@@ -2,33 +2,6 @@
 
 Production-ready REST API built with Go using Clean Architecture, Cobra CLI, pgx (PostgreSQL), JWT authentication, and logrus for structured logging.
 
-The API supports role-based access control with the following roles:
-
-* `admin`
-* `moderator`
-* `user`
-
-Newly registered users receive the `user` role by default.
-Roles own permissions, and users inherit permissions through their assigned role.
-New protected features should prefer permission checks over direct role checks.
-
-Initial permissions:
-
-* `users.read`
-* `users.create`
-* `users.update`
-* `users.delete`
-* `roles.read`
-* `roles.update`
-* `admin.access`
-
-## Requirements
-
-* Go 1.26+
-* PostgreSQL
-
----
-
 ## Quick Start
 
 ### 1. Environment Configuration

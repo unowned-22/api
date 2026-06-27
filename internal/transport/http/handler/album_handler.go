@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -50,7 +51,7 @@ func (h *AlbumHandler) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 		response.SendError(w, r, err)
 		return
 	}
-	resp := dto.AlbumResponse{ID: a.ID, Title: a.Title, Description: a.Description, Visibility: string(a.Visibility), CreatedAt: a.CreatedAt.Format(time.RFC3339)}
+	resp := h.toAlbumResponse(r.Context(), a)
 	response.SendSuccess(w, http.StatusCreated, resp)
 }
 
@@ -60,28 +61,14 @@ func (h *AlbumHandler) ListMyAlbums(w http.ResponseWriter, r *http.Request) {
 		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
-	q := r.URL.Query()
-	limit := 20
-	offset := 0
-	if l := q.Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil {
-			limit = v
-		}
-	}
-	if o := q.Get("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil {
-			offset = v
-		}
-	}
+
+	limit, offset := getPaginationQueries(r)
 	items, _, err := h.albums.ListUserAlbums(r.Context(), userID, userID, limit, offset)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
 	}
-	out := make([]dto.AlbumResponse, 0, len(items))
-	for _, a := range items {
-		out = append(out, dto.AlbumResponse{ID: a.ID, Title: a.Title, Description: a.Description, Visibility: string(a.Visibility), CreatedAt: a.CreatedAt.Format(time.RFC3339)})
-	}
+	out := h.toAlbumResponses(r.Context(), items)
 	response.SendSuccess(w, http.StatusOK, out)
 }
 
@@ -97,28 +84,14 @@ func (h *AlbumHandler) ListUserAlbumsByUsername(w http.ResponseWriter, r *http.R
 		response.SendError(w, r, err)
 		return
 	}
-	q := r.URL.Query()
-	limit := 20
-	offset := 0
-	if l := q.Get("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil {
-			limit = v
-		}
-	}
-	if o := q.Get("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil {
-			offset = v
-		}
-	}
+
+	limit, offset := getPaginationQueries(r)
 	items, _, err := h.albums.ListUserAlbums(r.Context(), p.ID, viewerID, limit, offset)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
 	}
-	out := make([]dto.AlbumResponse, 0, len(items))
-	for _, a := range items {
-		out = append(out, dto.AlbumResponse{ID: a.ID, Title: a.Title, Description: a.Description, Visibility: string(a.Visibility), CreatedAt: a.CreatedAt.Format(time.RFC3339)})
-	}
+	out := h.toAlbumResponses(r.Context(), items)
 	response.SendSuccess(w, http.StatusOK, out)
 }
 
@@ -135,7 +108,7 @@ func (h *AlbumHandler) GetAlbum(w http.ResponseWriter, r *http.Request) {
 		response.SendError(w, r, err)
 		return
 	}
-	resp := dto.AlbumResponse{ID: a.ID, Title: a.Title, Description: a.Description, Visibility: string(a.Visibility), CreatedAt: a.CreatedAt.Format(time.RFC3339)}
+	resp := h.toAlbumResponse(r.Context(), a)
 	response.SendSuccess(w, http.StatusOK, resp)
 }
 
@@ -169,7 +142,7 @@ func (h *AlbumHandler) UpdateAlbum(w http.ResponseWriter, r *http.Request) {
 		response.SendError(w, r, err)
 		return
 	}
-	resp := dto.AlbumResponse{ID: a.ID, Title: a.Title, Description: a.Description, Visibility: string(a.Visibility), CreatedAt: a.CreatedAt.Format(time.RFC3339)}
+	resp := h.toAlbumResponse(r.Context(), a)
 	response.SendSuccess(w, http.StatusOK, resp)
 }
 
@@ -252,6 +225,56 @@ func (h *AlbumHandler) ListAlbumPhotos(w http.ResponseWriter, r *http.Request) {
 		out = append(out, dto.PhotoResponse{ID: p.ID, AlbumID: p.AlbumID, DisplayName: p.DisplayName, URL: p.URL, SizeBytes: p.SizeBytes, Width: p.Width, Height: p.Height, MimeType: p.MimeType, Visibility: string(p.Visibility), LikesCount: p.LikesCount, CommentsCount: p.CommentsCount, DeviceName: derefString(p.DeviceName), DeviceOS: derefString(p.DeviceOS), DeviceType: derefString(p.DeviceType), Latitude: p.Latitude, Longitude: p.Longitude, LocationName: derefStringPtr(p.LocationName), ExifData: p.ExifData, CreatedAt: p.CreatedAt.Format(time.RFC3339)})
 	}
 	response.SendSuccess(w, http.StatusOK, out)
+}
+
+func (h *AlbumHandler) toAlbumResponse(ctx context.Context, a *album.Album) dto.AlbumResponse {
+	resp := dto.AlbumResponse{
+		ID:          a.ID,
+		Title:       a.Title,
+		Description: a.Description,
+		Visibility:  string(a.Visibility),
+		CreatedAt:   a.CreatedAt.Format(time.RFC3339),
+	}
+	if a.CoverPhotoID != nil {
+		urls, err := h.photos.GetURLsByIDs(ctx, []int64{*a.CoverPhotoID})
+		if err == nil {
+			if url, ok := urls[*a.CoverPhotoID]; ok {
+				resp.CoverURL = &url
+			}
+		}
+	}
+	return resp
+}
+
+func (h *AlbumHandler) toAlbumResponses(ctx context.Context, albums []*album.Album) []dto.AlbumResponse {
+	ids := make([]int64, 0, len(albums))
+	for _, a := range albums {
+		if a.CoverPhotoID != nil {
+			ids = append(ids, *a.CoverPhotoID)
+		}
+	}
+	urls, err := h.photos.GetURLsByIDs(ctx, ids)
+	if err != nil {
+		urls = map[int64]string{}
+	}
+
+	out := make([]dto.AlbumResponse, 0, len(albums))
+	for _, a := range albums {
+		resp := dto.AlbumResponse{
+			ID:          a.ID,
+			Title:       a.Title,
+			Description: a.Description,
+			Visibility:  string(a.Visibility),
+			CreatedAt:   a.CreatedAt.Format(time.RFC3339),
+		}
+		if a.CoverPhotoID != nil {
+			if url, ok := urls[*a.CoverPhotoID]; ok {
+				resp.CoverURL = &url
+			}
+		}
+		out = append(out, resp)
+	}
+	return out
 }
 
 func derefString(v *string) string {

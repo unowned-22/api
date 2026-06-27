@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -17,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
+	domainusersettings "github.com/unowned-22/api/internal/domain/usersettings"
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/repository/postgres"
 
@@ -149,6 +151,7 @@ var seedCmd = &cobra.Command{
 		defer pool.Close()
 
 		userRepo := postgres.NewUserRepository(pool)
+		userSettingsRepo := postgres.NewUserSettingsRepository(pool)
 
 		log.Println("Parsing and building users from YAML...")
 		usersToCreate, err := bootstrap.LoadUserFixtures()
@@ -170,6 +173,22 @@ var seedCmd = &cobra.Command{
 			err = userRepo.MarkEmailVerified(ctx, u.ID)
 			if err != nil {
 				log.Fatalf("Failed to mark email verified for user %s: %v", u.Email, err)
+			}
+
+			quotaBytes := int64(10 * 1024 * 1024 * 1024)
+			bucketName := fmt.Sprintf("user-%d", u.ID)
+
+			us := &domainusersettings.UserSettings{
+				UserID:                  u.ID,
+				StorageQuotaBytes:       quotaBytes,
+				StorageUsedBytes:        0,
+				BucketName:              bucketName,
+				Theme:                   json.RawMessage(`{}`),
+				NotificationPreferences: json.RawMessage(`{}`),
+			}
+
+			if err := userSettingsRepo.Create(ctx, us); err != nil {
+				log.Fatalf("Failed to create user_settings for user %s: %v", u.Email, err)
 			}
 
 			log.Printf("Successfully created user: %s (ID: %d)\n", u.Email, u.ID)

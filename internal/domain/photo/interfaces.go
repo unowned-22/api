@@ -14,7 +14,7 @@ type Repository interface {
 	MoveToAlbum(ctx context.Context, id int64, albumID *int64) error
 	Delete(ctx context.Context, id int64) error
 	GetByStorageKey(ctx context.Context, key string) (*Photo, error)
-	// Likes
+	GetURLsByIDs(ctx context.Context, ids []int64) (map[int64]string, error)
 	AddLike(ctx context.Context, userID, photoID int64) error
 	RemoveLike(ctx context.Context, userID, photoID int64) error
 	IsLiked(ctx context.Context, userID, photoID int64) (bool, error)
@@ -30,6 +30,7 @@ type Service interface {
 	Delete(ctx context.Context, id int64, requesterID int64) error
 	LikePhoto(ctx context.Context, photoID int64, userID int64) error
 	UnlikePhoto(ctx context.Context, photoID int64, userID int64) error
+	GetURLsByIDs(ctx context.Context, ids []int64) (map[int64]string, error)
 }
 
 type UploadInput struct {
@@ -39,12 +40,10 @@ type UploadInput struct {
 	ContentType string
 	AlbumID     *int64
 
-	// Geolocation (optional)
 	Latitude     *float64
 	Longitude    *float64
 	LocationName *string
 
-	// Device info (populated by handler from User-Agent)
 	DeviceName *string
 	DeviceOS   *string
 	DeviceType *string

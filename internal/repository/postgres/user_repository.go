@@ -102,7 +102,6 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
-		JOIN roles r ON r.id = u.role_id
 		WHERE u.id = $1
 	`
 	var u user.User
@@ -224,7 +223,6 @@ func (r *UserRepository) GetByVerificationToken(ctx context.Context, token strin
 		       u.created_at,
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
 		FROM users u
-		JOIN roles r ON r.id = u.role_id
 		WHERE u.verification_token = $1
 	`
 	var u user.User

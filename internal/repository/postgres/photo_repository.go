@@ -292,6 +292,29 @@ func (r *PhotoRepository) IsLiked(ctx context.Context, userID, photoID int64) (b
 	return exists, nil
 }
 
+func (r *PhotoRepository) GetURLsByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := `SELECT id, url FROM photos WHERE id = ANY($1)`
+	rows, err := r.db.Query(ctx, q, ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get photo urls: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		var url string
+		if err := rows.Scan(&id, &url); err != nil {
+			return nil, fmt.Errorf("failed to scan photo url row: %w", err)
+		}
+		out[id] = url
+	}
+	return out, nil
+}
+
 func (r *PhotoRepository) MoveToAlbum(ctx context.Context, id int64, albumID *int64) error {
 	q := `UPDATE photos SET album_id = $1, updated_at = NOW() WHERE id = $2`
 	cmd, err := r.db.Exec(ctx, q, albumID, id)

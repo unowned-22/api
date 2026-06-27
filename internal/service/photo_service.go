@@ -11,6 +11,7 @@ import (
 	"path"
 
 	"encoding/json"
+
 	"github.com/google/uuid"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/unowned-22/api/internal/domain/album"
@@ -276,6 +277,10 @@ func (s *photoService) Delete(ctx context.Context, id int64, requesterID int64) 
 		return err
 	}
 	return nil
+}
+
+func (s *photoService) GetURLsByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	return s.photos.GetURLsByIDs(ctx, ids)
 }
 
 func (s *photoService) LikePhoto(ctx context.Context, photoID int64, userID int64) error {
