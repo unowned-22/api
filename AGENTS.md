@@ -279,7 +279,7 @@ Parse(token string) (int64, error)
 type ManagerExtended interface {
 Manager
 // GenerateWithRole creates a token embedding role and the user's token version.
-GenerateWithRole(userID int64, role string, tokenVersion int) (string, error)
+GenerateWithRole(userID int64, tokenVersion int) (string, error)
 // ParseWithRole returns userID, role, and tokenVersion extracted from the token.
 ParseWithRole(token string) (int64, string, int, error)
 }
@@ -711,8 +711,6 @@ When adding photo metadata, comments, and likes, follow these rules and patterns
 - Realtime delivery: `serve` owns the WebSocket hub and RabbitMQ realtime consumers. `worker` must not create or depend on a `ws.Hub`.
 
 - OpenAPI: document every new endpoint, request/response schema, and response codes in `internal/docs/openapi.yaml` and keep `operationId` values consistent with handler names.
-
-- Tests: add unit tests for repository transactional behavior, service validation (reply depth), and notification creation. Integration tests are encouraged for end-to-end validation of counters and notifications.
 
 Add this section to PR descriptions when introducing photos/comments changes so reviewers can verify migration, OpenAPI, and transactional correctness.
 

@@ -16,7 +16,6 @@ import (
 	"github.com/unowned-22/api/internal/database"
 	"github.com/unowned-22/api/internal/domain/event"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
-	"github.com/unowned-22/api/internal/domain/role"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/domain/userdevice"
@@ -65,7 +64,6 @@ type authService struct {
 	refreshTokenRepo  token.RefreshTokenRepository
 	userSessionRepo   usersession.UserSessionRepository
 	userDeviceRepo    userdevice.Repository
-	roleRepo          role.RoleRepository
 	tokenManager      token.ManagerExtended
 	mailer            domainmailer.Mailer
 	publisher         event.Publisher
@@ -84,7 +82,6 @@ func NewAuthService(
 	refreshTokenRepo token.RefreshTokenRepository,
 	userSessionRepo usersession.UserSessionRepository,
 	userDeviceRepo userdevice.Repository,
-	roleRepo role.RoleRepository,
 	tokenManager token.ManagerExtended,
 	mailer domainmailer.Mailer,
 	publisher event.Publisher,
@@ -99,7 +96,6 @@ func NewAuthService(
 		refreshTokenRepo:  refreshTokenRepo,
 		userSessionRepo:   userSessionRepo,
 		userDeviceRepo:    userDeviceRepo,
-		roleRepo:          roleRepo,
 		tokenManager:      tokenManager,
 		mailer:            mailer,
 		publisher:         publisher,
@@ -124,15 +120,9 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	defaultRole, err := s.roleRepo.GetByName(ctx, "user")
-	if err != nil {
-		return fmt.Errorf("failed to resolve default role: %w", err)
-	}
-
 	u := &user.User{
 		Email:     req.Email,
 		Password:  string(hashedPassword),
-		RoleID:    defaultRole.ID,
 		FullName:  req.FullName,
 		Username:  req.Username,
 		Phone:     req.Phone,
@@ -145,19 +135,16 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 	}
 	expiresAt := time.Now().Add(24 * time.Hour)
 
-	// txUserRepo asserts the repo supports transactional writes.
 	txUserRepo, hasTx := s.userRepo.(interface {
 		CreateTx(ctx context.Context, tx pgx.Tx, u *user.User) error
 		SetVerificationTokenTx(ctx context.Context, tx pgx.Tx, userID int64, token string, expiresAt time.Time) error
 	})
 
-	// txPublisher asserts the publisher supports writing into the outbox within a tx.
 	txPublisher, hasTxPub := s.publisher.(interface {
 		PublishTx(ctx context.Context, tx pgx.Tx, e event.Event) error
 	})
 
 	if hasTx && hasTxPub && s.pool != nil {
-		// Production path: atomic transaction.
 		err = database.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
 			if err := txUserRepo.CreateTx(ctx, tx, u); err != nil {
 				return err
@@ -179,7 +166,6 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 			})
 		})
 	} else {
-		// Fallback path: sequential calls (used in tests with mock repositories).
 		if err = s.userRepo.Create(ctx, u); err != nil {
 			return err
 		}
@@ -202,7 +188,6 @@ func (s *authService) Register(ctx context.Context, req RegisterRequest) error {
 		return err
 	}
 
-	// Best-effort audit event published after the transaction commits.
 	auditPayload, _ := json.Marshal(map[string]interface{}{"user_id": u.ID, "email": u.Email})
 	if err := s.publisher.Publish(ctx, event.Event{Name: event.VerificationSent, Payload: auditPayload}); err != nil {
 		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": u.ID}).Warn("failed to publish audit.verification_sent")
@@ -407,13 +392,11 @@ func (s *authService) Login(ctx context.Context, req LoginRequest) (string, stri
 		return "", "", fmt.Errorf("failed to save refresh token: %w", err)
 	}
 
-	// Step 5: Generate access token
-	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName, u.TokenVersion)
+	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.TokenVersion)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	// Publish login_success audit event
 	loginSuccessPayload, _ := json.Marshal(map[string]interface{}{
 		"user_id":    u.ID,
 		"ip_address": ipAddress,
@@ -540,7 +523,7 @@ func (s *authService) Refresh(ctx context.Context, refreshTokenStr string, userA
 	}
 
 	// Step 7: generate access token
-	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.RoleName, u.TokenVersion)
+	accessToken, err := s.tokenManager.GenerateWithRole(u.ID, u.TokenVersion)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to generate access token: %w", err)
 	}

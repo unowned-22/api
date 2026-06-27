@@ -44,9 +44,6 @@ release: ## Build release binary
 run: ## Run application
 	go run $(CMD_DIR) serve
 
-test: ## Run tests
-	go test ./tests/...
-
 coverage: ## Run coverage
 	go test -coverprofile=coverage.out ./...
 	go tool cover -html=coverage.out

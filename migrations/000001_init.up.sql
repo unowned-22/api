@@ -1,9 +1,3 @@
-CREATE TABLE IF NOT EXISTS roles (
-    id         BIGSERIAL PRIMARY KEY,
-    name       VARCHAR(100) NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS users (
     id                            BIGSERIAL    PRIMARY KEY,
     email                         VARCHAR(255) NOT NULL UNIQUE,
@@ -11,7 +5,6 @@ CREATE TABLE IF NOT EXISTS users (
     full_name                     VARCHAR(128) NOT NULL,
     username                      VARCHAR(64)  NOT NULL,
     phone                         VARCHAR(16)  NULL,
-    role_id                       BIGINT       NOT NULL,
     is_bot                        BOOLEAN      NOT NULL DEFAULT FALSE,
     email_verified_at             TIMESTAMPTZ,
     verification_token            TEXT,
@@ -35,23 +28,6 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     status     VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS permissions (
-    id          BIGSERIAL    PRIMARY KEY,
-    name        VARCHAR(100) NOT NULL UNIQUE,
-    description TEXT,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS role_permissions (
-    role_id       BIGINT NOT NULL,
-    permission_id BIGINT NOT NULL,
-    PRIMARY KEY (role_id, permission_id),
-    CONSTRAINT fk_role_permissions_role
-        FOREIGN KEY (role_id) REFERENCES roles(id),
-    CONSTRAINT fk_role_permissions_permission
-        FOREIGN KEY (permission_id) REFERENCES permissions(id)
 );
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -149,16 +125,16 @@ CREATE TABLE story_views (
 );
 
 CREATE TABLE IF NOT EXISTS story_likes (
-   id BIGSERIAL PRIMARY KEY,
-   story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
     viewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (story_id, viewer_id)
 );
 
 CREATE TABLE IF NOT EXISTS story_replies (
-     id BIGSERIAL PRIMARY KEY,
-     story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
     viewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     message TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -270,42 +246,6 @@ CREATE TABLE photo_comment_likes (
     PRIMARY KEY (comment_id, user_id)
 );
 
-INSERT INTO roles (name) VALUES ('admin'), ('moderator'), ('user');
-INSERT INTO permissions (name, description)
-VALUES
-    ('users.read',   'Read user data'),
-    ('users.create', 'Create users'),
-    ('users.update', 'Update user data'),
-    ('users.delete', 'Delete users'),
-    ('roles.read',   'Read roles'),
-    ('roles.update', 'Update roles'),
-    ('admin.access', 'Access administration endpoints')
-ON CONFLICT (name) DO NOTHING;
-
--- admin gets all permissions
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r
-         CROSS JOIN permissions p
-WHERE r.name = 'admin'
-    ON CONFLICT (role_id, permission_id) DO NOTHING;
-
--- moderator gets read + update users
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r
-         JOIN permissions p ON p.name IN ('users.read', 'users.update')
-WHERE r.name = 'moderator'
-    ON CONFLICT (role_id, permission_id) DO NOTHING;
-
--- user gets read users
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM roles r
-         JOIN permissions p ON p.name = 'users.read'
-WHERE r.name = 'user'
-    ON CONFLICT (role_id, permission_id) DO NOTHING;
-
 INSERT INTO system_settings (key, value) VALUES
     ('default_storage_quota_bytes', '1073741824'),
     ('default_bucket_policy',       '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::app-uploads/*"]}]}'),
@@ -314,14 +254,8 @@ ON CONFLICT (key) DO NOTHING;
 
 ALTER TABLE users ADD CONSTRAINT users_username_key UNIQUE (username);
 
-ALTER TABLE users
-    ADD CONSTRAINT fk_users_role
-        FOREIGN KEY (role_id) REFERENCES roles(id);
-
-CREATE INDEX IF NOT EXISTS idx_users_role_id                  ON users(role_id);
 CREATE INDEX IF NOT EXISTS idx_users_deactivated_at           ON users(deactivated_at);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id         ON refresh_tokens(user_id);
-CREATE INDEX IF NOT EXISTS idx_role_permissions_permission_id ON role_permissions(permission_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token    ON password_reset_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id  ON password_reset_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id          ON user_sessions(user_id);

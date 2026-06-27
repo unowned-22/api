@@ -37,14 +37,11 @@ var (
 
 func init() {
 	validate = validator.New(validator.WithRequiredStructEnabled())
-
-	// username: only Latin letters, digits, dot, dash, underscore
 	_ = validate.RegisterValidation("username", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
 		return usernameRegex.MatchString(val)
 	})
 
-	// phone: if present, must start with '+'
 	_ = validate.RegisterValidation("phone", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
 		if val == "" {
@@ -54,8 +51,6 @@ func init() {
 	})
 }
 
-// Validate runs structural validation on v and returns a *ValidationErrors on failure.
-// Returns nil when all constraints pass.
 func Validate(v any) error {
 	err := validate.Struct(v)
 	if err == nil {
@@ -78,12 +73,10 @@ func Validate(v any) error {
 	return &ValidationErrors{Fields: fields}
 }
 
-// fieldName returns the lowercased struct field name for use in error responses.
 func fieldName(fe validator.FieldError) string {
 	return strings.ToLower(fe.Field())
 }
 
-// messageForTag maps validator tags to human-readable error messages.
 func messageForTag(fe validator.FieldError) string {
 	switch fe.Tag() {
 	case "required":

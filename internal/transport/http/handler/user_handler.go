@@ -5,8 +5,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/unowned-22/api/internal/pagination"
-
 	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/domain/usersettings"
@@ -48,7 +46,6 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 		Phone:     u.Phone,
 		AvatarURL: u.AvatarURL,
 		CoverURL:  u.CoverURL,
-		Role:      u.RoleName,
 		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
@@ -96,41 +93,10 @@ func (h *UserHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		Phone:     u.Phone,
 		AvatarURL: u.AvatarURL,
 		CoverURL:  u.CoverURL,
-		Role:      u.RoleName,
 		CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
 }
 
-// List returns paginated users. Requires caller to have been authorized by middleware.
-func (h *UserHandler) List(w http.ResponseWriter, r *http.Request) {
-	q := pagination.ParseQuery(r)
-
-	users, total, err := h.userService.ListUsers(r.Context(), q.Page, q.Limit)
-	if err != nil {
-		response.SendError(w, r, err)
-		return
-	}
-
-	var out []dto.UserResponse
-	for _, u := range users {
-		out = append(out, dto.UserResponse{
-			ID:        u.ID,
-			Email:     u.Email,
-			FullName:  u.FullName,
-			Username:  u.Username,
-			Phone:     u.Phone,
-			AvatarURL: u.AvatarURL,
-			CoverURL:  u.CoverURL,
-			Role:      u.RoleName,
-			CreatedAt: u.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
-		})
-	}
-
-	resp := pagination.BuildResponse(out, q.Page, q.Limit, total)
-	response.SendSuccess(w, http.StatusOK, resp)
-}
-
-// GetMySettings returns the authenticated user's settings.
 func (h *UserHandler) GetMySettings(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {

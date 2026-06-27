@@ -135,7 +135,7 @@ var seedCmd = &cobra.Command{
 
 		cfg, err := config.Load()
 		if err != nil {
-			fmt.Errorf("failed to load config: %w", err)
+			log.Fatalf("failed to load config: %v", err)
 		}
 
 		connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",

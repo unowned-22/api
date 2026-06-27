@@ -77,6 +77,6 @@ type Manager interface {
 // information must be embedded in or extracted from the access token.
 type ManagerExtended interface {
 	Manager
-	GenerateWithRole(userID int64, role string, tokenVersion int) (string, error)
+	GenerateWithRole(userID int64, tokenVersion int) (string, error)
 	ParseWithRole(token string) (int64, string, int, error)
 }

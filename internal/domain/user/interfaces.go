@@ -32,8 +32,6 @@ type UserRepository interface {
 // UserService defines the application-level contract for user operations.
 type UserService interface {
 	GetProfile(ctx context.Context, userID int64) (*User, error)
-	// ListUsers returns paginated users and the total count.
-	ListUsers(ctx context.Context, page int, limit int) ([]*User, int64, error)
 	UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error
 	UploadAvatar(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error)
 	UploadCover(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error)

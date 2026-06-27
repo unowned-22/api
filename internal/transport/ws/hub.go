@@ -195,8 +195,6 @@ func (h *Hub) onLastDisconnect(userID int64) {
 	defer lock.Unlock()
 
 	if h.HasUser(userID) {
-		// The user reconnected before this stale callback got to run —
-		// they are still online, so there is nothing to broadcast.
 		return
 	}
 
@@ -213,7 +211,6 @@ func (h *Hub) onLastDisconnect(userID int64) {
 		logger.Log.WithError(err).Warnf(
 			"Hub.onLastDisconnect: failed to get presence for user %d, broadcasting without last_seen_at", userID,
 		)
-		// продолжаем — last_seen_at будет nil, это допустимо
 	}
 
 	if h.friendRepo == nil {
@@ -243,13 +240,6 @@ func (h *Hub) HasUser(userID int64) bool {
 	return ok && len(conns) > 0
 }
 
-// SendToUser fans msg out to every connection currently open for userID.
-//
-// Each connection has a dedicated write-mutex (set up in Register) which is
-// held for the duration of the write. gorilla/websocket forbids concurrent
-// writers on the same *websocket.Conn; without this lock, two events for the
-// same user arriving close together (e.g. a message + a presence update)
-// could race on the same connection and corrupt the WS stream or panic.
 func (h *Hub) SendToUser(userID int64, msg []byte) {
 	h.mu.RLock()
 	conns := h.conns[userID]

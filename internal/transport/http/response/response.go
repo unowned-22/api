@@ -22,14 +22,12 @@ type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
 }
 
-// SendSuccess sends a JSON response with status 2xx and data wrapper
 func SendSuccess(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(SuccessResponse{Data: data})
 }
 
-// SendError maps application errors to standard HTTP response formats and writes to ResponseWriter
 func SendError(w http.ResponseWriter, r *http.Request, err error) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -286,8 +284,6 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "INVALID_STORY_PAYLOAD"
 		message = "invalid story payload"
 
-	// ErrUserStorageNotProvisioned is a transient state: the email_verified worker
-	// provisions the bucket asynchronously. Return 503 so clients know to retry.
 	case errors.Is(err, errs.ErrUserStorageNotProvisioned):
 		status = http.StatusServiceUnavailable
 		code = "STORAGE_NOT_PROVISIONED"
@@ -313,7 +309,6 @@ func SendNoContent(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// SendBadRequest sends a custom 400 Bad Request error response
 func SendBadRequest(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
@@ -325,7 +320,6 @@ func SendBadRequest(w http.ResponseWriter, message string) {
 	})
 }
 
-// SendUnauthorized sends a custom 401 Unauthorized error response
 func SendUnauthorized(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
@@ -337,7 +331,6 @@ func SendUnauthorized(w http.ResponseWriter, message string) {
 	})
 }
 
-// SendTooManyRequests sends a 429 Too Many Requests error response
 func SendTooManyRequests(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusTooManyRequests)
@@ -349,7 +342,6 @@ func SendTooManyRequests(w http.ResponseWriter, message string) {
 	})
 }
 
-// SendForbidden sends a custom 403 Forbidden error response
 func SendForbidden(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusForbidden)
@@ -361,25 +353,21 @@ func SendForbidden(w http.ResponseWriter, message string) {
 	})
 }
 
-// ValidationFieldError represents a single field that failed validation.
 type ValidationFieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }
 
-// ValidationErrorDetail extends ErrorDetail with per-field validation details.
 type ValidationErrorDetail struct {
 	Code    string                 `json:"code"`
 	Message string                 `json:"message"`
 	Details []ValidationFieldError `json:"details"`
 }
 
-// ValidationErrorResponse is the envelope for validation errors.
 type ValidationErrorResponse struct {
 	Error ValidationErrorDetail `json:"error"`
 }
 
-// SendValidationError sends a 422 Unprocessable Entity response with per-field validation details.
 func SendValidationError(w http.ResponseWriter, fields []ValidationFieldError) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnprocessableEntity)
@@ -392,7 +380,6 @@ func SendValidationError(w http.ResponseWriter, fields []ValidationFieldError) {
 	})
 }
 
-// SendNotFound sends a 404 Not Found error with a custom message.
 func SendNotFound(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotFound)
@@ -404,7 +391,6 @@ func SendNotFound(w http.ResponseWriter, message string) {
 	})
 }
 
-// SendNotImplemented sends a 501 Not Implemented error with a custom message.
 func SendNotImplemented(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusNotImplemented)

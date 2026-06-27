@@ -2,13 +2,11 @@ package dto
 
 import "encoding/json"
 
-// AuthResponse is the HTTP response body for login and token refresh.
 type AuthResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
-// UserResponse is the HTTP response body for user profile endpoints.
 type UserResponse struct {
 	ID        int64  `json:"id"`
 	Email     string `json:"email"`
@@ -19,24 +17,6 @@ type UserResponse struct {
 	CoverURL  string `json:"cover_url"`
 	Role      string `json:"role"`
 	CreatedAt string `json:"created_at"`
-}
-
-// AdminPingResponse is the HTTP response body for the admin ping endpoint.
-type AdminPingResponse struct {
-	Message string `json:"message"`
-}
-
-// PermissionResponse represents a single permission in HTTP responses.
-type PermissionResponse struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"created_at"`
-}
-
-// AdminPermissionsResponse is the HTTP response body for the admin permissions endpoint.
-type AdminPermissionsResponse struct {
-	Permissions []PermissionResponse `json:"permissions"`
 }
 
 type PresignedUploadResponse struct {
@@ -94,9 +74,6 @@ type StoryMediaResponse struct {
 	MediaType string `json:"media_type"`
 }
 
-// FeedSlideResponse — stripped slide shape returned in GET /stories/feed.
-// Only the pre-rendered composite image and seen flag are exposed; the raw
-// layer data (background, elements, adjustments) is intentionally omitted.
 type FeedSlideResponse struct {
 	ID          string `json:"id"`
 	RenderedURL string `json:"rendered_url,omitempty"`

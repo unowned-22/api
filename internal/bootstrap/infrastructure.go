@@ -50,10 +50,6 @@ func InitInfrastructure(cfg *config.Config) (
 		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to initialize MinIO storage: %w", err)
 	}
 
-	// Ensure public bucket has a public-read policy so avatars/covers are
-	// accessible via constructed public URLs. Use a sensible default policy
-	// that allows GetObject for all principals. Errors are logged but do not
-	// abort startup.
 	if minio != nil {
 		if err := minio.CreateBucket(context.Background(), cfg.MinIOBucket); err != nil {
 			logger.Log.WithError(err).Warnf("failed to create bucket %s", cfg.MinIOBucket)
@@ -65,9 +61,6 @@ func InitInfrastructure(cfg *config.Config) (
 			logger.Log.Infof("applied public-read policy to bucket %s", cfg.MinIOBucket)
 		}
 	}
-
-	// Private bucket removed; stories and other uploads are stored in the
-	// public bucket under appropriate prefixes (e.g. stories/, avatars/).
 
 	publisher, err = queue.New(queue.Config{URL: cfg.RabbitMQURL, Exchange: cfg.RabbitMQExchange})
 	if err != nil {
@@ -83,11 +76,9 @@ func InitInfrastructure(cfg *config.Config) (
 		From:     cfg.SMTPFrom,
 	})
 
-	// token manager
 	tm := auth.NewTokenManager(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.AccessTokenTTL)
 	tokenManager = tm
 
-	// cache
 	if strings.TrimSpace(cfg.RedisURL) != "" {
 		var rClient *redis.Client
 		if strings.HasPrefix(cfg.RedisURL, "redis://") || strings.HasPrefix(cfg.RedisURL, "rediss://") {

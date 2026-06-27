@@ -26,12 +26,12 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 // Create inserts a new user record including its role_id and profile fields.
 func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	query := `
-		INSERT INTO users (email, password, role_id, full_name, username, phone, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO users (email, password, full_name, username, phone, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id
 	`
 	err := r.db.QueryRow(ctx, query,
-		u.Email, u.Password, u.RoleID, u.FullName, u.Username, u.Phone, u.CreatedAt,
+		u.Email, u.Password, u.FullName, u.Username, u.Phone, u.CreatedAt,
 	).Scan(&u.ID)
 	if err != nil {
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
@@ -45,19 +45,18 @@ func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	return nil
 }
 
-// CreateTx inserts a new user record including its role_id and profile fields within a transaction.
+// CreateTx inserts a new user record including its profile fields within a transaction.
 func (r *UserRepository) CreateTx(ctx context.Context, tx pgx.Tx, u *user.User) error {
 	query := `
-		INSERT INTO users (email, password, role_id, full_name, username, phone, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO users (email, password, full_name, username, phone, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id
 	`
 	err := tx.QueryRow(ctx, query,
-		u.Email, u.Password, u.RoleID, u.FullName, u.Username, u.Phone, u.CreatedAt,
+		u.Email, u.Password, u.FullName, u.Username, u.Phone, u.CreatedAt,
 	).Scan(&u.ID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 			if pgErr.ConstraintName == "users_username_key" {
 				return errs.ErrUsernameAlreadyExists
 			}
@@ -71,18 +70,17 @@ func (r *UserRepository) CreateTx(ctx context.Context, tx pgx.Tx, u *user.User) 
 // GetByEmail retrieves a user (with role name) by email address.
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
+		SELECT u.id, u.email, u.password, u.token_version,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 	       u.created_at,
 	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
-		JOIN roles r ON r.id = u.role_id
 		WHERE u.email = $1
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, email).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
+		Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
@@ -98,7 +96,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 // GetByID retrieves a user (with role name) by primary key.
 func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
+		SELECT u.id, u.email, u.password, u.token_version,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 	       u.created_at,
 	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
@@ -109,7 +107,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, id).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
+		Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
@@ -221,7 +219,7 @@ func (r *UserRepository) UpdateProfile(ctx context.Context, userID int64, fullNa
 // GetByVerificationToken retrieves a user by verification token.
 func (r *UserRepository) GetByVerificationToken(ctx context.Context, token string) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
+		SELECT u.id, u.email, u.password, u.token_version,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 		       u.created_at,
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at
@@ -231,7 +229,7 @@ func (r *UserRepository) GetByVerificationToken(ctx context.Context, token strin
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, token).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
+		Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt)
@@ -247,18 +245,17 @@ func (r *UserRepository) GetByVerificationToken(ctx context.Context, token strin
 // GetByUsername retrieves a user (with role name) by username.
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
+		SELECT u.id, u.email, u.password, u.token_version,
 			   u.full_name, u.username, COALESCE(u.phone, ''),
 			   u.created_at,
 			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
 			   u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
-		JOIN roles r ON r.id = u.role_id
 		WHERE u.username = $1
 	`
 	var u user.User
 	err := r.db.QueryRow(ctx, query, username).
-		Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
+		Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
@@ -310,13 +307,12 @@ func (r *UserRepository) SetDeactivatedAt(ctx context.Context, userID int64, t *
 // List returns a page of users ordered by created_at desc.
 func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*user.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role_id, r.name, u.token_version,
+		SELECT u.id, u.email, u.password, u.token_version,
 			   u.full_name, u.username, COALESCE(u.phone, ''),
 			   u.created_at,
 			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
 			   u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
-		JOIN roles r ON r.id = u.role_id
 		ORDER BY u.created_at DESC
 		LIMIT $1 OFFSET $2
 	`
@@ -329,7 +325,7 @@ func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*us
 	var out []*user.User
 	for rows.Next() {
 		var u user.User
-		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.RoleID, &u.RoleName, &u.TokenVersion,
+		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
 			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt); err != nil {
