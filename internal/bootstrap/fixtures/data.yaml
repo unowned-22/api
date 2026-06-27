@@ -1,0 +1,12 @@
+users:
+  - email: "mark@unowned.com"
+    username: "mark.unowned"
+    full_name: "Mark Roberts"
+    phone: "+1234567890"
+    plain_password: "mark@unowned.com"
+
+  - email: "mxmv@unowned.com"
+    username: "mxmv.unowned"
+    full_name: "MXMV"
+    phone: "+9876543210"
+    plain_password: "mxmv@unowned.com"

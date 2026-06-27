@@ -8,6 +8,7 @@ import (
 
 	domaev "github.com/unowned-22/api/internal/domain/event"
 	dom "github.com/unowned-22/api/internal/domain/outbox"
+	outbox2 "github.com/unowned-22/api/internal/worker/outbox"
 )
 
 type fakeRepo struct {
@@ -44,7 +45,7 @@ func (p *fakePub) Close() error { return nil }
 func TestWorkerPublishesAndMarksProcessed(t *testing.T) {
 	repo := &fakeRepo{events: []*dom.OutboxEvent{{ID: "1", EventType: string(domaev.UserRegistered), Payload: []byte(`{"a":1}`), Status: dom.StatusPending, CreatedAt: time.Now()}}}
 	pub := &fakePub{fail: false}
-	w := NewWorker(repo, pub, RetryPolicy{MaxRetries: 3, Interval: 10 * time.Millisecond}, 10)
+	w := outbox2.NewWorker(repo, pub, outbox2.RetryPolicy{MaxRetries: 3, Interval: 10 * time.Millisecond}, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { w.Start(ctx) }()

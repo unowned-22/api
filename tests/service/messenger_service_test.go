@@ -9,6 +9,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/messenger"
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/pagination"
+	service2 "github.com/unowned-22/api/internal/service"
 )
 
 // ---------------------------------------------------------------------------
@@ -197,9 +198,9 @@ func newServiceForTest(
 	memberRepo messenger.MemberRepository,
 	draftErr error,
 	updateLastMsgErr error,
-) *MessengerService {
+) *service2.MessengerService {
 	convRepo := &stubConvRepo{conv: conv, updateLastMsgErr: updateLastMsgErr}
-	return NewMessengerService(
+	return service2.NewMessengerService(
 		convRepo,
 		&stubMsgRepo{},
 		memberRepo,
@@ -319,7 +320,7 @@ func TestSendMessage_Direct_BlockedBySender_ReturnsError(t *testing.T) {
 	blockedPrivacy := &blockingPrivacyRepo{blockerID: otherID, blockedID: senderID}
 	memberRepo := &countingMemberRepo{members: twoMembers(convID, senderID, otherID)}
 
-	svc := NewMessengerService(
+	svc := service2.NewMessengerService(
 		&stubConvRepo{conv: directConv(convID)},
 		&stubMsgRepo{},
 		memberRepo,

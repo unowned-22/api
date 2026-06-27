@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	cache2 "github.com/unowned-22/api/internal/infrastructure/cache"
 )
 
 func TestMemoryCache_GetSetDelete(t *testing.T) {
 	ctx := context.Background()
-	c := NewMemoryCache()
+	c := cache2.NewMemoryCache()
 
 	// 1. Get non-existent
 	val, found, err := c.Get(ctx, 42)
@@ -83,7 +84,7 @@ func TestRedisCache_GetSetDelete(t *testing.T) {
 		t.Skip("local Redis is not running at localhost:6379; skipping RedisCache test")
 	}
 
-	c := NewRedisCache(client, "testapp")
+	c := cache2.NewRedisCache(client, "testapp")
 
 	// Clean up key just in case
 	_ = c.Delete(ctx, 100)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/errs"
+	service2 "github.com/unowned-22/api/internal/service"
 )
 
 // ── mock: UserRepository ─────────────────────────────────────────────────────
@@ -183,7 +184,7 @@ func (m *mockUserRepo) GetByUsername(ctx context.Context, username string) (*use
 
 func TestUserService_GetProfile(t *testing.T) {
 	repo := newMockUserRepo()
-	srv := NewUserService(repo, nil, nil, "app-uploads")
+	srv := service2.NewUserService(repo, nil, nil, "app-uploads")
 
 	ctx := context.Background()
 

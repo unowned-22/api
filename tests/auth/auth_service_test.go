@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	auth2 "github.com/unowned-22/api/internal/auth"
 	domainevent "github.com/unowned-22/api/internal/domain/event"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 	domainRole "github.com/unowned-22/api/internal/domain/role"
@@ -488,8 +489,8 @@ func newTestService(
 	rtRepo *mockRefreshTokenRepo,
 	sessionRepo *mockUserSessionRepo,
 	deviceRepo userdevice.Repository,
-) AuthService {
-	return NewAuthService(
+) auth2.AuthService {
+	return auth2.NewAuthService(
 		userRepo,
 		rtRepo,
 		sessionRepo,
@@ -507,10 +508,10 @@ func newTestService(
 }
 
 // registerAndVerify registers a user and force-marks the email as verified.
-func registerAndVerify(t *testing.T, srv AuthService, userRepo *mockUserRepo, email, password string) *domainUser.User {
+func registerAndVerify(t *testing.T, srv auth2.AuthService, userRepo *mockUserRepo, email, password string) *domainUser.User {
 	t.Helper()
 	ctx := context.Background()
-	if err := srv.Register(ctx, RegisterRequest{Email: email, Password: password}); err != nil {
+	if err := srv.Register(ctx, auth2.RegisterRequest{Email: email, Password: password}); err != nil {
 		t.Fatalf("Register(%s) failed: %v", email, err)
 	}
 	u, err := userRepo.GetByEmail(ctx, email)
@@ -532,7 +533,7 @@ func TestAuthService(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Register
-	if err := srv.Register(ctx, RegisterRequest{Email: "test@example.com", Password: "password123"}); err != nil {
+	if err := srv.Register(ctx, auth2.RegisterRequest{Email: "test@example.com", Password: "password123"}); err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
 
@@ -541,12 +542,12 @@ func TestAuthService(t *testing.T) {
 	u.EmailVerifiedAt = &now
 
 	// 2. Duplicate register
-	if err := srv.Register(ctx, RegisterRequest{Email: "test@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserAlreadyExists) {
+	if err := srv.Register(ctx, auth2.RegisterRequest{Email: "test@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserAlreadyExists) {
 		t.Errorf("expected ErrUserAlreadyExists, got %v", err)
 	}
 
 	// 3. Login success
-	accessToken, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "test@example.com", Password: "password123"})
+	accessToken, refreshToken, err := srv.Login(ctx, auth2.LoginRequest{Email: "test@example.com", Password: "password123"})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -568,12 +569,12 @@ func TestAuthService(t *testing.T) {
 	originalLastActivity := sessions[0].LastActivityAt
 
 	// 4. Invalid password
-	if _, _, err = srv.Login(ctx, LoginRequest{Email: "test@example.com", Password: "wrongpassword"}); !errors.Is(err, errs.ErrInvalidCredentials) {
+	if _, _, err = srv.Login(ctx, auth2.LoginRequest{Email: "test@example.com", Password: "wrongpassword"}); !errors.Is(err, errs.ErrInvalidCredentials) {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
 
 	// 5. Unknown user
-	if _, _, err = srv.Login(ctx, LoginRequest{Email: "nobody@example.com", Password: "password123"}); !errors.Is(err, errs.ErrInvalidCredentials) {
+	if _, _, err = srv.Login(ctx, auth2.LoginRequest{Email: "nobody@example.com", Password: "password123"}); !errors.Is(err, errs.ErrInvalidCredentials) {
 		t.Errorf("expected ErrInvalidCredentials, got %v", err)
 	}
 
@@ -653,7 +654,7 @@ func TestRevokeSessionPreventsRefresh(t *testing.T) {
 
 	u := registerAndVerify(t, srv, userRepo, "sessions@example.com", "password123")
 
-	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "sessions@example.com", Password: "password123", DeviceName: "Test Device"})
+	_, refreshToken, err := srv.Login(ctx, auth2.LoginRequest{Email: "sessions@example.com", Password: "password123", DeviceName: "Test Device"})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -688,7 +689,7 @@ func TestRegisterAssignsDefaultRole(t *testing.T) {
 	srv := newTestService(userRepo, newMockRefreshTokenRepo(), newMockUserSessionRepo(), nil)
 	ctx := context.Background()
 
-	if err := srv.Register(ctx, RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
+	if err := srv.Register(ctx, auth2.RegisterRequest{Email: "newuser@example.com", Password: "pass"}); err != nil {
 		t.Fatalf("Register failed: %v", err)
 	}
 
@@ -713,7 +714,7 @@ func TestDeactivateUserRevokesSessionsAndDeniesAuth(t *testing.T) {
 
 	u := registerAndVerify(t, srv, userRepo, "disable@example.com", "password123")
 
-	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "disable@example.com", Password: "password123"})
+	_, refreshToken, err := srv.Login(ctx, auth2.LoginRequest{Email: "disable@example.com", Password: "password123"})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -732,7 +733,7 @@ func TestDeactivateUserRevokesSessionsAndDeniesAuth(t *testing.T) {
 		t.Fatalf("expected no active sessions after deactivate, got %d", len(activeSessions))
 	}
 
-	if _, _, err = srv.Login(ctx, LoginRequest{Email: "disable@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserDeactivated) {
+	if _, _, err = srv.Login(ctx, auth2.LoginRequest{Email: "disable@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserDeactivated) {
 		t.Errorf("expected ErrUserDeactivated on login after deactivation, got %v", err)
 	}
 
@@ -752,7 +753,7 @@ func TestReactivateUserAllowsLogin(t *testing.T) {
 	if err := srv.DeactivateUser(ctx, u.ID); err != nil {
 		t.Fatalf("DeactivateUser failed: %v", err)
 	}
-	if _, _, err := srv.Login(ctx, LoginRequest{Email: "reactivate@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserDeactivated) {
+	if _, _, err := srv.Login(ctx, auth2.LoginRequest{Email: "reactivate@example.com", Password: "password123"}); !errors.Is(err, errs.ErrUserDeactivated) {
 		t.Fatalf("expected ErrUserDeactivated after deactivate, got %v", err)
 	}
 
@@ -760,7 +761,7 @@ func TestReactivateUserAllowsLogin(t *testing.T) {
 		t.Fatalf("ReactivateUser failed: %v", err)
 	}
 
-	if _, _, err := srv.Login(ctx, LoginRequest{Email: "reactivate@example.com", Password: "password123"}); err != nil {
+	if _, _, err := srv.Login(ctx, auth2.LoginRequest{Email: "reactivate@example.com", Password: "password123"}); err != nil {
 		t.Fatalf("expected login to succeed after reactivate, got %v", err)
 	}
 }
@@ -774,7 +775,7 @@ func TestLoginStoresRefreshTokenHashOnly(t *testing.T) {
 	u := registerAndVerify(t, srv, userRepo, "security@example.com", "password123")
 	_ = u
 
-	_, refreshToken, err := srv.Login(ctx, LoginRequest{Email: "security@example.com", Password: "password123"})
+	_, refreshToken, err := srv.Login(ctx, auth2.LoginRequest{Email: "security@example.com", Password: "password123"})
 	if err != nil {
 		t.Fatalf("Login failed: %v", err)
 	}
@@ -795,7 +796,7 @@ func TestLoginNewDeviceCreatesDeviceRecord(t *testing.T) {
 	deviceRepo := newMockUserDeviceRepo()
 	publisher := &mockEventPublisher{}
 
-	srv := NewAuthService(
+	srv := auth2.NewAuthService(
 		userRepo, rtRepo, sessionRepo, deviceRepo,
 		newMockRoleRepo(), &mockTokenManager{}, &mockMailer{}, publisher,
 		720*time.Hour, "http://localhost:3222", "App", nil, nil,
@@ -805,7 +806,7 @@ func TestLoginNewDeviceCreatesDeviceRecord(t *testing.T) {
 	u := registerAndVerify(t, srv, userRepo, "notify@example.com", "password123")
 	_ = u
 
-	_, _, err := srv.Login(ctx, LoginRequest{
+	_, _, err := srv.Login(ctx, auth2.LoginRequest{
 		Email:      "notify@example.com",
 		Password:   "password123",
 		DeviceName: "MyPhone",

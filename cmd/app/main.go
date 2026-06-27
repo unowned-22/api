@@ -1,18 +1,24 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
+	"github.com/unowned-22/api/internal/errs"
+	"github.com/unowned-22/api/internal/repository/postgres"
 
 	"github.com/unowned-22/api/internal/bootstrap"
 	"github.com/unowned-22/api/internal/config"
@@ -120,6 +126,59 @@ var migrateCreateCmd = &cobra.Command{
 	},
 }
 
+var seedCmd = &cobra.Command{
+	Use:   "seed",
+	Short: "Seed development database using YAML fixtures",
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		cfg, err := config.Load()
+		if err != nil {
+			fmt.Errorf("failed to load config: %w", err)
+		}
+
+		connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s",
+			cfg.DBUser, cfg.DBPass, cfg.DBHost, cfg.DBPort, cfg.DBName, cfg.DBSSLMode,
+		)
+
+		pool, err := pgxpool.New(ctx, connStr)
+		if err != nil {
+			log.Fatalf("Database connection failed: %v", err)
+		}
+		defer pool.Close()
+
+		userRepo := postgres.NewUserRepository(pool)
+
+		log.Println("Parsing and building users from YAML...")
+		usersToCreate, err := bootstrap.LoadUserFixtures()
+		if err != nil {
+			log.Fatalf("Failed to build fixtures: %v", err)
+		}
+
+		log.Printf("Inserting %d users into database...\n", len(usersToCreate))
+		for _, u := range usersToCreate {
+			err := userRepo.Create(ctx, u)
+			if err != nil {
+				if errors.Is(err, errs.ErrUserAlreadyExists) || errors.Is(err, errs.ErrUsernameAlreadyExists) {
+					log.Printf("User %s already exists, skipping.\n", u.Email)
+					continue
+				}
+				log.Fatalf("Failed to seed user %s: %v", u.Email, err)
+			}
+
+			err = userRepo.MarkEmailVerified(ctx, u.ID)
+			if err != nil {
+				log.Fatalf("Failed to mark email verified for user %s: %v", u.Email, err)
+			}
+
+			log.Printf("Successfully created user: %s (ID: %d)\n", u.Email, u.ID)
+		}
+
+		log.Println("Database seeding completely finished!")
+	},
+}
+
 func init() {
 	migrateDownCmd.Flags().IntVar(&migrateDownSteps, "steps", 1, "number of migrations to roll back")
 	migrateResetCmd.Flags().BoolVar(&migrateResetForce, "force", false, "confirm full migration rollback")
@@ -134,6 +193,7 @@ func init() {
 	rootCmd.AddCommand(workerCmd)
 	rootCmd.AddCommand(migrateCmd)
 	rootCmd.AddCommand(versionCmd)
+	rootCmd.AddCommand(seedCmd)
 }
 
 func main() {

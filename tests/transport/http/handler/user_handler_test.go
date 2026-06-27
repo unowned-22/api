@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/unowned-22/api/internal/domain/user"
+	handler2 "github.com/unowned-22/api/internal/transport/http/handler"
 )
 
 // minimal mock service implementing ListUsers
@@ -62,7 +63,7 @@ func TestUserHandler_List(t *testing.T) {
 		users: []*user.User{{ID: 1, Email: "a@x.com", RoleName: "user", CreatedAt: time.Now()}},
 		total: 1,
 	}
-	h := &UserHandler{userService: svc}
+	h := &handler2.UserHandler{userService: svc}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/users?page=1&limit=10", nil)
 	w := httptest.NewRecorder()

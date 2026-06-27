@@ -45,7 +45,7 @@ run: ## Run application
 	go run $(CMD_DIR) serve
 
 test: ## Run tests
-	go test ./...
+	go test ./tests/...
 
 coverage: ## Run coverage
 	go test -coverprofile=coverage.out ./...
@@ -82,3 +82,6 @@ migrate-create: ## Create migration
 
 worker: ## Run worker
 	go run $(CMD_DIR) worker
+
+fixtures: ## Run fixtures
+	go run $(CMD_DIR) seed

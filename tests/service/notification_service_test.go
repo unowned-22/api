@@ -7,6 +7,7 @@ import (
 
 	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/pagination"
+	service2 "github.com/unowned-22/api/internal/service"
 )
 
 type mockNotifRepo struct {
@@ -68,7 +69,7 @@ func (m *mockNotifRepo) CountUnread(ctx context.Context, userID int64) (int64, e
 
 func TestNotificationService_Basic(t *testing.T) {
 	repo := &mockNotifRepo{}
-	svc := NewNotificationService(repo)
+	svc := service2.NewNotificationService(repo)
 
 	ctx := context.Background()
 

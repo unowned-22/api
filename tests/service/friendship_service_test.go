@@ -10,6 +10,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/friendship"
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/pagination"
+	service2 "github.com/unowned-22/api/internal/service"
 )
 
 // simple in-memory mock repository
@@ -116,7 +117,7 @@ func TestFriendship_SendAcceptRejectCancelRemove_IsFriend(t *testing.T) {
 	ctx := context.Background()
 	repo := newMockFriendRepo()
 	pub := &mockPub{}
-	svc := NewFriendshipService(repo, pub)
+	svc := service2.NewFriendshipService(repo, pub)
 
 	// send request
 	f, err := svc.SendRequest(ctx, 1, 2)
