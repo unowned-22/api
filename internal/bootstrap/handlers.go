@@ -41,7 +41,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	albumHandler := handler.NewAlbumHandler(svcs.Album, svcs.Photo, svcs.Profile)
 	photoCommentHandler := handler.NewPhotoCommentHandler(svcs.PhotoComment, svcs.Photo)
 	closeFriendHandler := handler.NewCloseFriendHandler(svcs.CloseFriend)
-	messengerHandler := handler.NewMessengerHandler(svcs.Messenger)
+	messengerHandler := handler.NewMessengerHandler(svcs.Messenger, storage, *cfg)
 
 	return &Handlers{
 		Auth:          authHandler,

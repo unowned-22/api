@@ -1,14 +1,23 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/contextx"
 	"github.com/unowned-22/api/internal/domain/messenger"
+	domainstorage "github.com/unowned-22/api/internal/domain/storage"
+	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/pagination"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
@@ -16,11 +25,13 @@ import (
 )
 
 type MessengerHandler struct {
-	svc messenger.Service
+	svc     messenger.Service
+	storage domainstorage.Storage
+	cfg     config.Config
 }
 
-func NewMessengerHandler(svc messenger.Service) *MessengerHandler {
-	return &MessengerHandler{svc: svc}
+func NewMessengerHandler(svc messenger.Service, storage domainstorage.Storage, cfg config.Config) *MessengerHandler {
+	return &MessengerHandler{svc: svc, storage: storage, cfg: cfg}
 }
 
 func (h *MessengerHandler) currentUserID(r *http.Request) (int64, bool) {
@@ -60,8 +71,6 @@ func msgDTO(m *messenger.Message) dto.MessengerMessageResponse {
 		IsEdited:        m.IsEdited,
 		EditedAt:        m.EditedAt,
 		Pinned:          m.Pinned,
-		LikesCount:      m.LikesCount,
-		LikedByMe:       m.LikedByMe,
 		DisappearsAt:    m.DisappearsAt,
 		ScheduledAt:     m.ScheduledAt,
 		IsScheduled:     m.IsScheduled,
@@ -71,6 +80,13 @@ func msgDTO(m *messenger.Message) dto.MessengerMessageResponse {
 		UpdatedAt:       m.UpdatedAt,
 		SenderName:      m.SenderName,
 		SenderAvatar:    m.SenderAvatar,
+	}
+	for _, r := range m.Reactions {
+		out.Reactions = append(out.Reactions, dto.ReactionSummaryResponse{
+			Emoji:       r.Emoji,
+			Count:       r.Count,
+			ReactedByMe: r.ReactedByMe,
+		})
 	}
 	for _, a := range m.Attachments {
 		out.Attachments = append(out.Attachments, dto.AttachmentResponse{
@@ -84,6 +100,15 @@ func msgDTO(m *messenger.Message) dto.MessengerMessageResponse {
 			Width:     a.Width,
 			Height:    a.Height,
 		})
+	}
+	if m.ReplyTo != nil {
+		preview := dto.MessagePreviewResponse{
+			ID:         m.ReplyTo.ID,
+			SenderID:   m.ReplyTo.SenderID,
+			SenderName: m.ReplyTo.SenderName,
+			Body:       m.ReplyTo.Body,
+		}
+		out.ReplyTo = &preview
 	}
 	return out
 }
@@ -469,12 +494,56 @@ func (h *MessengerHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 		response.SendBadRequest(w, "invalid request body")
 		return
 	}
-	msg, err := h.svc.SendMessage(r.Context(), userID, convID, &messenger.Message{Type: messenger.MessageTypeText, Body: req.Body}, nil)
+
+	base := strings.TrimSuffix(h.cfg.StoragePublicEndpoint, "/")
+	attachments := make([]messenger.Attachment, 0, len(req.AttachmentKeys))
+	for _, a := range req.AttachmentKeys {
+		info, err := h.storage.StatObject(r.Context(), h.cfg.MinIOBucket, a)
+		if err != nil {
+			logger.Log.WithError(err).Warnf("SendMessage: failed to stat object %s", a)
+			continue
+		}
+
+		filename := info.Metadata["filename"]
+		if filename == "" {
+			filename = path.Base(a)
+		}
+
+		attachments = append(attachments, messenger.Attachment{
+			Type:       attachmentTypeFromMime(info.ContentType),
+			StorageKey: a,
+			URL:        fmt.Sprintf("%s/%s/%s", base, h.cfg.MinIOBucket, a),
+			MimeType:   info.ContentType,
+			SizeBytes:  info.Size,
+			Filename:   filename,
+		})
+	}
+
+	msg, err := h.svc.SendMessage(r.Context(), userID, convID, &messenger.Message{
+		Type:      messenger.MessageTypeText,
+		Body:      req.Body,
+		ReplyToID: req.ReplyToID,
+	}, attachments)
+
 	if err != nil {
 		response.SendError(w, r, err)
 		return
 	}
+
 	response.SendSuccess(w, http.StatusCreated, msgDTO(msg))
+}
+
+func attachmentTypeFromMime(mime string) string {
+	switch {
+	case strings.HasPrefix(mime, "image/"):
+		return "image"
+	case strings.HasPrefix(mime, "video/"):
+		return "video"
+	case strings.HasPrefix(mime, "audio/"):
+		return "audio"
+	default:
+		return "document"
+	}
 }
 
 func (h *MessengerHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
@@ -654,42 +723,6 @@ func (h *MessengerHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "conversation marked as read"})
 }
 
-func (h *MessengerHandler) LikeMessage(w http.ResponseWriter, r *http.Request) {
-	userID, ok := h.currentUserID(r)
-	if !ok {
-		response.SendUnauthorized(w, "unauthorized")
-		return
-	}
-	msgID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		response.SendBadRequest(w, "invalid id")
-		return
-	}
-	if err := h.svc.LikeMessage(r.Context(), userID, msgID); err != nil {
-		response.SendError(w, r, err)
-		return
-	}
-	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "message liked"})
-}
-
-func (h *MessengerHandler) UnlikeMessage(w http.ResponseWriter, r *http.Request) {
-	userID, ok := h.currentUserID(r)
-	if !ok {
-		response.SendUnauthorized(w, "unauthorized")
-		return
-	}
-	msgID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		response.SendBadRequest(w, "invalid id")
-		return
-	}
-	if err := h.svc.UnlikeMessage(r.Context(), userID, msgID); err != nil {
-		response.SendError(w, r, err)
-		return
-	}
-	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "message unliked"})
-}
-
 func (h *MessengerHandler) ScheduleMessage(w http.ResponseWriter, r *http.Request) {
 	userID, ok := h.currentUserID(r)
 	if !ok {
@@ -850,5 +883,87 @@ func (h *MessengerHandler) ListMentions(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *MessengerHandler) UploadAttachment(w http.ResponseWriter, r *http.Request) {
-	response.SendNotImplemented(w, "attachment upload is not implemented yet")
+	userID, ok := h.currentUserID(r)
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 222*1024*1024)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		response.SendBadRequest(w, "invalid multipart request")
+		return
+	}
+
+	var part *multipart.Part
+	for p, pErr := mr.NextPart(); pErr == nil; p, pErr = mr.NextPart() {
+		if p.FormName() == "file" {
+			part = p
+			break
+		}
+	}
+	if part == nil {
+		response.SendBadRequest(w, "file part is required")
+		return
+	}
+
+	contentType := part.Header.Get("Content-Type")
+	data, err := io.ReadAll(part)
+	if err != nil {
+		response.SendBadRequest(w, "failed to read file")
+		return
+	}
+
+	storageKey, url, err := h.svc.UploadAttachment(r.Context(), userID, part.FileName(), contentType, bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+
+	response.SendSuccess(w, http.StatusOK, dto.UploadAttachmentResponse{StorageKey: storageKey, URL: url})
+}
+
+func (h *MessengerHandler) AddReaction(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.currentUserID(r)
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	msgID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid id")
+		return
+	}
+	var req struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.SendBadRequest(w, "invalid request body")
+		return
+	}
+	if err := h.svc.AddReaction(r.Context(), userID, msgID, req.Emoji); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "reaction added"})
+}
+
+func (h *MessengerHandler) RemoveReaction(w http.ResponseWriter, r *http.Request) {
+	userID, ok := h.currentUserID(r)
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	msgID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid id")
+		return
+	}
+	emoji := chi.URLParam(r, "emoji")
+	if err := h.svc.RemoveReaction(r.Context(), userID, msgID, emoji); err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "reaction removed"})
 }

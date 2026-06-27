@@ -68,9 +68,16 @@ type ConversationResponse struct {
 }
 
 type MessagePreviewResponse struct {
-	ID       int64  `json:"id"`
-	SenderID int64  `json:"sender_id"`
-	Body     string `json:"body"`
+	ID         int64  `json:"id"`
+	SenderID   int64  `json:"sender_id"`
+	SenderName string `json:"sender_name"`
+	Body       string `json:"body"`
+}
+
+type ReactionSummaryResponse struct {
+	Emoji       string `json:"emoji"`
+	Count       int    `json:"count"`
+	ReactedByMe bool   `json:"reacted_by_me"`
 }
 
 type AttachmentResponse struct {
@@ -86,30 +93,29 @@ type AttachmentResponse struct {
 }
 
 type MessengerMessageResponse struct {
-	ID              int64                   `json:"id"`
-	ConversationID  int64                   `json:"conversation_id"`
-	SenderID        int64                   `json:"sender_id"`
-	SenderName      string                  `json:"sender_name"`
-	SenderAvatar    string                  `json:"sender_avatar"`
-	Type            string                  `json:"type"`
-	Body            string                  `json:"body"`
-	ReplyToID       *int64                  `json:"reply_to_id,omitempty"`
-	ReplyTo         *MessagePreviewResponse `json:"reply_to,omitempty"`
-	ForwardedFromID *int64                  `json:"forwarded_from_id,omitempty"`
-	IsDeleted       bool                    `json:"is_deleted"`
-	IsEdited        bool                    `json:"is_edited"`
-	EditedAt        *time.Time              `json:"edited_at,omitempty"`
-	Pinned          bool                    `json:"pinned"`
-	LikesCount      int                     `json:"likes_count"`
-	LikedByMe       bool                    `json:"liked_by_me"`
-	DisappearsAt    *time.Time              `json:"disappears_at,omitempty"`
-	ScheduledAt     *time.Time              `json:"scheduled_at,omitempty"`
-	IsScheduled     bool                    `json:"is_scheduled"`
-	DeliveryStatus  string                  `json:"delivery_status"`
-	MentionUserIDs  []int64                 `json:"mention_user_ids"`
-	Attachments     []AttachmentResponse    `json:"attachments"`
-	CreatedAt       time.Time               `json:"created_at"`
-	UpdatedAt       time.Time               `json:"updated_at"`
+	ID              int64                     `json:"id"`
+	ConversationID  int64                     `json:"conversation_id"`
+	SenderID        int64                     `json:"sender_id"`
+	SenderName      string                    `json:"sender_name"`
+	SenderAvatar    string                    `json:"sender_avatar"`
+	Type            string                    `json:"type"`
+	Body            string                    `json:"body"`
+	ReplyToID       *int64                    `json:"reply_to_id,omitempty"`
+	ReplyTo         *MessagePreviewResponse   `json:"reply_to,omitempty"`
+	ForwardedFromID *int64                    `json:"forwarded_from_id,omitempty"`
+	IsDeleted       bool                      `json:"is_deleted"`
+	IsEdited        bool                      `json:"is_edited"`
+	EditedAt        *time.Time                `json:"edited_at,omitempty"`
+	Pinned          bool                      `json:"pinned"`
+	Reactions       []ReactionSummaryResponse `json:"reactions"`
+	DisappearsAt    *time.Time                `json:"disappears_at,omitempty"`
+	ScheduledAt     *time.Time                `json:"scheduled_at,omitempty"`
+	IsScheduled     bool                      `json:"is_scheduled"`
+	DeliveryStatus  string                    `json:"delivery_status"`
+	MentionUserIDs  []int64                   `json:"mention_user_ids"`
+	Attachments     []AttachmentResponse      `json:"attachments"`
+	CreatedAt       time.Time                 `json:"created_at"`
+	UpdatedAt       time.Time                 `json:"updated_at"`
 }
 
 type PrivacyResponse struct {

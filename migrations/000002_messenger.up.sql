@@ -16,8 +16,6 @@ CREATE TABLE conversations (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_conversations_invite_link ON conversations(invite_link) WHERE invite_link IS NOT NULL;
-
 CREATE TABLE conversation_members (
   conversation_id      BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   user_id              BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -30,9 +28,6 @@ CREATE TABLE conversation_members (
   is_archived          BOOLEAN NOT NULL DEFAULT FALSE,
   PRIMARY KEY (conversation_id, user_id)
 );
-
-CREATE INDEX idx_conv_members_user ON conversation_members(user_id);
-CREATE INDEX idx_conv_members_conv ON conversation_members(conversation_id);
 
 CREATE TABLE messages (
   id                BIGSERIAL PRIMARY KEY,
@@ -56,19 +51,6 @@ CREATE TABLE messages (
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE conversations
-  ADD CONSTRAINT fk_conversations_last_message
-  FOREIGN KEY (last_message_id) REFERENCES messages(id) ON DELETE SET NULL
-  DEFERRABLE INITIALLY DEFERRED;
-
-CREATE INDEX idx_messages_conv_created ON messages(conversation_id, created_at DESC);
-CREATE INDEX idx_messages_sender ON messages(sender_id);
-CREATE INDEX idx_messages_reply_to ON messages(reply_to_id);
-CREATE INDEX idx_messages_scheduled ON messages(scheduled_at) WHERE is_scheduled = TRUE;
-CREATE INDEX idx_messages_disappears ON messages(disappears_at) WHERE disappears_at IS NOT NULL;
-CREATE INDEX idx_messages_body_fts ON messages USING gin((to_tsvector('russian', COALESCE(body, '')) || to_tsvector('simple', COALESCE(body, ''))));
-CREATE INDEX idx_messages_mentions ON messages USING gin(mention_user_ids);
-
 CREATE TABLE message_attachments (
   id            BIGSERIAL PRIMARY KEY,
   message_id    BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -85,18 +67,13 @@ CREATE TABLE message_attachments (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_msg_attachments_msg ON message_attachments(message_id);
-
 CREATE TABLE message_reactions (
   message_id  BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
   user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   emoji       VARCHAR(32) NOT NULL DEFAULT '👍',
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (message_id, user_id)
+  PRIMARY KEY (message_id, user_id, emoji)
 );
-
-CREATE INDEX idx_msg_reactions_message ON message_reactions(message_id);
-CREATE INDEX idx_msg_reactions_user ON message_reactions(user_id);
 
 CREATE TABLE message_delivery_status (
   message_id BIGINT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
@@ -106,9 +83,6 @@ CREATE TABLE message_delivery_status (
   PRIMARY KEY (message_id, user_id)
 );
 
-CREATE INDEX idx_msg_delivery_message ON message_delivery_status(message_id);
-CREATE INDEX idx_msg_delivery_user ON message_delivery_status(user_id);
-
 CREATE TABLE message_drafts (
   conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -117,8 +91,6 @@ CREATE TABLE message_drafts (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (conversation_id, user_id)
 );
-
-CREATE INDEX idx_drafts_user ON message_drafts(user_id);
 
 CREATE TABLE messenger_privacy_settings (
   user_id         BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -134,8 +106,6 @@ CREATE TABLE messenger_blocked_users (
   PRIMARY KEY (blocker_id, blocked_id),
   CONSTRAINT chk_no_self_block CHECK (blocker_id <> blocked_id)
 );
-
-CREATE INDEX idx_msg_blocked_blocked_id ON messenger_blocked_users(blocked_id);
 
 CREATE TABLE user_presence (
   user_id      BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -154,7 +124,26 @@ CREATE TABLE bot_accounts (
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_bot_accounts_owner ON bot_accounts(owner_user_id);
+ALTER TABLE conversations
+    ADD CONSTRAINT fk_conversations_last_message
+        FOREIGN KEY (last_message_id) REFERENCES messages(id) ON DELETE SET NULL
+            DEFERRABLE INITIALLY DEFERRED;
 
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_bot BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE message_reactions ADD PRIMARY KEY (message_id, user_id, emoji);
+CREATE INDEX idx_conversations_invite_link ON conversations(invite_link) WHERE invite_link IS NOT NULL;
+CREATE INDEX idx_conv_members_user ON conversation_members(user_id);
+CREATE INDEX idx_conv_members_conv ON conversation_members(conversation_id);
+CREATE INDEX idx_messages_conv_created ON messages(conversation_id, created_at DESC);
+CREATE INDEX idx_messages_sender ON messages(sender_id);
+CREATE INDEX idx_messages_reply_to ON messages(reply_to_id);
+CREATE INDEX idx_messages_scheduled ON messages(scheduled_at) WHERE is_scheduled = TRUE;
+CREATE INDEX idx_messages_disappears ON messages(disappears_at) WHERE disappears_at IS NOT NULL;
+CREATE INDEX idx_messages_body_fts ON messages USING gin((to_tsvector('russian', COALESCE(body, '')) || to_tsvector('simple', COALESCE(body, ''))));
+CREATE INDEX idx_messages_mentions ON messages USING gin(mention_user_ids);
+CREATE INDEX idx_msg_attachments_msg ON message_attachments(message_id);
+CREATE INDEX idx_msg_reactions_message ON message_reactions(message_id);
+CREATE INDEX idx_msg_reactions_user ON message_reactions(user_id);
+CREATE INDEX idx_msg_delivery_message ON message_delivery_status(message_id);
+CREATE INDEX idx_msg_delivery_user ON message_delivery_status(user_id);
+CREATE INDEX idx_drafts_user ON message_drafts(user_id);
+CREATE INDEX idx_msg_blocked_blocked_id ON messenger_blocked_users(blocked_id);
+CREATE INDEX idx_bot_accounts_owner ON bot_accounts(owner_user_id);

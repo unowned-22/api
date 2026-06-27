@@ -22,30 +22,31 @@ const (
 )
 
 type Message struct {
-	ID              int64          `json:"id"`
-	ConversationID  int64          `json:"conversation_id"`
-	SenderID        int64          `json:"sender_id"`
-	Type            MessageType    `json:"type"`
-	Body            string         `json:"body"`
-	ReplyToID       *int64         `json:"reply_to_id"`
-	ForwardedFromID *int64         `json:"forwarded_from_id"`
-	IsDeleted       bool           `json:"is_deleted"`
-	IsEdited        bool           `json:"is_edited"`
-	EditedAt        *time.Time     `json:"edited_at"`
-	Pinned          bool           `json:"pinned"`
-	LikesCount      int            `json:"likes_count"`
-	DisappearsAt    *time.Time     `json:"disappears_at"`
-	ScheduledAt     *time.Time     `json:"scheduled_at"`
-	IsScheduled     bool           `json:"is_scheduled"`
-	DeliveryStatus  DeliveryStatus `json:"delivery_status"`
-	MentionUserIDs  []int64        `json:"mention_user_ids"`
-	CreatedAt       time.Time      `json:"created_at"`
-	UpdatedAt       time.Time      `json:"updated_at"`
-	Attachments     []Attachment   `json:"attachments,omitempty"`
-	SenderName      string         `json:"sender_name,omitempty"`
-	SenderAvatar    string         `json:"sender_avatar,omitempty"`
-	ReplyTo         *Message       `json:"reply_to,omitempty"`
-	LikedByMe       bool           `json:"liked_by_me"`
+	ID              int64             `json:"id"`
+	ConversationID  int64             `json:"conversation_id"`
+	SenderID        int64             `json:"sender_id"`
+	Type            MessageType       `json:"type"`
+	Body            string            `json:"body"`
+	ReplyToID       *int64            `json:"reply_to_id"`
+	ForwardedFromID *int64            `json:"forwarded_from_id"`
+	IsDeleted       bool              `json:"is_deleted"`
+	IsEdited        bool              `json:"is_edited"`
+	EditedAt        *time.Time        `json:"edited_at"`
+	Pinned          bool              `json:"pinned"`
+	DisappearsAt    *time.Time        `json:"disappears_at"`
+	ScheduledAt     *time.Time        `json:"scheduled_at"`
+	IsScheduled     bool              `json:"is_scheduled"`
+	DeliveryStatus  DeliveryStatus    `json:"delivery_status"`
+	MentionUserIDs  []int64           `json:"mention_user_ids"`
+	CreatedAt       time.Time         `json:"created_at"`
+	UpdatedAt       time.Time         `json:"updated_at"`
+	Attachments     []Attachment      `json:"attachments,omitempty"`
+	SenderName      string            `json:"sender_name,omitempty"`
+	SenderAvatar    string            `json:"sender_avatar,omitempty"`
+	ReplyTo         *Message          `json:"reply_to,omitempty"`
+	LikedByMe       bool              `json:"liked_by_me"`
+	LikesCount      int               `json:"likes_count"`
+	Reactions       []ReactionSummary `json:"reactions"`
 }
 
 type Attachment struct {
@@ -67,7 +68,14 @@ type Attachment struct {
 type Reaction struct {
 	MessageID int64     `json:"message_id"`
 	UserID    int64     `json:"user_id"`
+	Emoji     string    `json:"emoji"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type ReactionSummary struct {
+	Emoji       string `json:"emoji"`
+	Count       int    `json:"count"`
+	ReactedByMe bool   `json:"reacted_by_me"`
 }
 
 type MessageDeliveryStatus struct {

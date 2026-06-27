@@ -1,14 +1,18 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"path"
 	"regexp"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/friendship"
 	"github.com/unowned-22/api/internal/domain/messenger"
@@ -387,11 +391,6 @@ func (s *MessengerService) SendMessage(ctx context.Context, senderID, convID int
 		return nil, errs.ErrInsufficientChannelRole
 	}
 
-	// For direct conversations we need the member list twice: once for the
-	// block-check and once to embed recipient_ids in the publish payload.
-	// Load it here once and pass it down to avoid a duplicate DB round-trip.
-	// For group/channel convs convMembers stays nil — publishMessageSentWithMembers
-	// will fetch it itself inside that path.
 	var convMembers []*messenger.ConversationMember
 	if conv.Type == messenger.TypeDirect {
 		convMembers, err = s.memberRepo.ListMembers(ctx, convID)
@@ -399,9 +398,6 @@ func (s *MessengerService) SendMessage(ctx context.Context, senderID, convID int
 			return nil, err
 		}
 
-		// TASK-13.3: check block in both directions using the already-loaded list.
-		//   (a) recipient blocked sender  — sender cannot reach the recipient.
-		//   (b) sender blocked recipient  — keeps block semantics symmetric.
 		otherID, err := otherIDFromMembers(convMembers, senderID)
 		if err != nil {
 			return nil, err
@@ -429,30 +425,23 @@ func (s *MessengerService) SendMessage(ctx context.Context, senderID, convID int
 		msg.DeliveryStatus = messenger.DeliveryStatusSent
 	}
 
-	// Stamp attachment timestamps before the atomic insert so the tx sees the
-	// correct created_at values.
 	for i := range attachments {
 		attachments[i].CreatedAt = now
 	}
 
-	// TASK-13.2: message + attachments are written in a single transaction.
-	// A failure mid-way no longer leaves an orphaned message without its
-	// attachments; the entire operation is rolled back atomically.
 	created, err := s.msgRepo.CreateWithAttachments(ctx, msg, attachments)
 	if err != nil {
 		return nil, err
 	}
 
-	// draftRepo.Delete and convRepo.UpdateLastMessage are intentionally left
-	// outside the transaction: a draft that wasn't cleaned up is merely
-	// cosmetic, and last_message_id will be corrected by the next successful
-	// send. The critical atomicity constraint is message + attachments only.
 	if err := s.draftRepo.Delete(ctx, convID, senderID); err != nil {
 		logger.Log.WithError(err).Warnf("MessengerService.SendMessage: failed to delete draft for conv %d user %d", convID, senderID)
 	}
 	if err := s.convRepo.UpdateLastMessage(ctx, convID, created.ID); err != nil {
 		logger.Log.WithError(err).Warnf("MessengerService.SendMessage: failed to update last_message_id for conv %d", convID)
 	}
+
+	s.msgRepo.EnrichMessage(ctx, created)
 
 	if !created.IsScheduled {
 		s.publishMessageSentWithMembers(ctx, convID, created, convMembers)
@@ -597,7 +586,7 @@ func (s *MessengerService) ListMessages(ctx context.Context, userID, convID int6
 	if _, err := s.memberRepo.GetMember(ctx, convID, userID); err != nil {
 		return nil, 0, errs.ErrNotConversationMember
 	}
-	return s.msgRepo.List(ctx, convID, page)
+	return s.msgRepo.List(ctx, convID, userID, page)
 }
 
 func (s *MessengerService) PinMessage(ctx context.Context, userID, convID, msgID int64) error {
@@ -716,21 +705,14 @@ func (s *MessengerService) SearchMessages(ctx context.Context, userID, convID in
 	return s.msgRepo.Search(ctx, convID, query, page)
 }
 
-func (s *MessengerService) LikeMessage(ctx context.Context, userID, msgID int64) error {
-	msg, err := s.msgRepo.GetByID(ctx, msgID)
-	if err != nil {
-		return err
-	}
-	if msg == nil {
-		return errs.ErrMessageNotFound
-	}
-	if _, err := s.memberRepo.GetMember(ctx, msg.ConversationID, userID); err != nil {
-		return errs.ErrNotConversationMember
-	}
-	return s.msgRepo.AddReaction(ctx, msgID, userID)
+var allowedReactionEmojis = map[string]bool{
+	"👍": true, "❤️": true, "😂": true, "😮": true, "😢": true, "🔥": true,
 }
 
-func (s *MessengerService) UnlikeMessage(ctx context.Context, userID, msgID int64) error {
+func (s *MessengerService) AddReaction(ctx context.Context, userID, msgID int64, emoji string) error {
+	if !allowedReactionEmojis[emoji] {
+		return errs.ErrInvalidReactionEmoji
+	}
 	msg, err := s.msgRepo.GetByID(ctx, msgID)
 	if err != nil {
 		return err
@@ -741,7 +723,21 @@ func (s *MessengerService) UnlikeMessage(ctx context.Context, userID, msgID int6
 	if _, err := s.memberRepo.GetMember(ctx, msg.ConversationID, userID); err != nil {
 		return errs.ErrNotConversationMember
 	}
-	return s.msgRepo.RemoveReaction(ctx, msgID, userID)
+	return s.msgRepo.AddReaction(ctx, msgID, userID, emoji)
+}
+
+func (s *MessengerService) RemoveReaction(ctx context.Context, userID, msgID int64, emoji string) error {
+	msg, err := s.msgRepo.GetByID(ctx, msgID)
+	if err != nil {
+		return err
+	}
+	if msg == nil {
+		return errs.ErrMessageNotFound
+	}
+	if _, err := s.memberRepo.GetMember(ctx, msg.ConversationID, userID); err != nil {
+		return errs.ErrNotConversationMember
+	}
+	return s.msgRepo.RemoveReaction(ctx, msgID, userID, emoji)
 }
 
 func (s *MessengerService) SetDisappearingTimer(ctx context.Context, userID, convID int64, duration time.Duration) error {
@@ -856,6 +852,84 @@ func (s *MessengerService) SendTyping(ctx context.Context, userID, convID int64,
 		_ = s.eventBus.Publish(ctx, event.Event{Name: event.MessengerTyping, Payload: payload})
 	}
 	return nil
+}
+
+// messenger_service.go
+
+// Категории вложений с их лимитами размера
+var allowedAttachmentTypes = map[string]int64{
+	// изображения
+	"image/jpeg": 25 * 1024 * 1024,
+	"image/png":  25 * 1024 * 1024,
+	"image/gif":  25 * 1024 * 1024,
+	"image/webp": 25 * 1024 * 1024,
+	// видео
+	"video/mp4":       100 * 1024 * 1024,
+	"video/webm":      100 * 1024 * 1024,
+	"video/quicktime": 100 * 1024 * 1024,
+	// аудио
+	"audio/mpeg": 25 * 1024 * 1024,
+	"audio/ogg":  25 * 1024 * 1024,
+	"audio/wav":  25 * 1024 * 1024,
+	"audio/aac":  25 * 1024 * 1024,
+	// документы
+	"application/pdf":    50 * 1024 * 1024,
+	"application/zip":    100 * 1024 * 1024,
+	"text/plain":         10 * 1024 * 1024,
+	"application/msword": 50 * 1024 * 1024,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": 50 * 1024 * 1024,
+}
+
+func (s *MessengerService) UploadAttachment(
+	ctx context.Context,
+	userID int64,
+	filename, contentType string,
+	body io.Reader,
+	size int64,
+) (storageKey, url string, err error) {
+	// 1. Проверяем content-type
+	maxBytes, ok := allowedAttachmentTypes[contentType]
+	if !ok {
+		return "", "", fmt.Errorf("unsupported content type: %s", contentType)
+	}
+
+	// 2. Буферизуем, чтобы получить точный размер (не доверяем клиенту)
+	var buf bytes.Buffer
+	if _, err = io.Copy(&buf, body); err != nil {
+		return "", "", fmt.Errorf("failed to read attachment: %w", err)
+	}
+	size = int64(buf.Len())
+
+	// 3. Проверяем размер
+	if size == 0 {
+		return "", "", errs.ErrAttachmentEmpty
+	}
+	if size > maxBytes {
+		return "", "", errs.ErrAttachmentTooLarge
+	}
+
+	// 4. Строим безопасный ключ — не используем имя файла от клиента в пути,
+	//    только расширение, чтобы избежать path traversal
+	ext := path.Ext(filename)
+	if ext != "" {
+		// допускаем только буквы/цифры в расширении
+		for _, r := range ext[1:] {
+			if !('a' <= r && r <= 'z') && !('A' <= r && r <= 'Z') && !('0' <= r && r <= '9') {
+				ext = ""
+				break
+			}
+		}
+	}
+	key := path.Join("messenger", fmt.Sprintf("user-%d", userID), uuid.New().String()+ext)
+
+	// 5. Загружаем в хранилище — используем PutObject как в UploadAvatar,
+	//    чтобы получить постоянный публичный URL, а не временный presigned
+	url, err = s.storage.PutObject(ctx, s.publicBucket, key, bytes.NewReader(buf.Bytes()), size, contentType)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to upload attachment: %w", err)
+	}
+
+	return key, url, nil
 }
 
 var _ messenger.Service = (*MessengerService)(nil)

@@ -170,6 +170,22 @@ func (s *MinIOStorage) PutObject(ctx context.Context, bucketName, objectName str
 	return s.GetURL(ctx, bucketName, objectName, 15*time.Minute)
 }
 
+func (s *MinIOStorage) StatObject(ctx context.Context, bucket, key string) (*domainstorage.ObjectInfo, error) {
+	info, err := s.client.StatObject(ctx, bucket, key, minio.StatObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	meta := make(map[string]string)
+	for k, v := range info.UserMetadata {
+		meta[strings.ToLower(k)] = v
+	}
+	return &domainstorage.ObjectInfo{
+		Size:        info.Size,
+		ContentType: info.ContentType,
+		Metadata:    meta,
+	}, nil
+}
+
 // DeleteObject removes an object from a bucket.
 func (s *MinIOStorage) DeleteObject(ctx context.Context, bucketName, objectName string) error {
 	return s.Delete(ctx, bucketName, objectName)

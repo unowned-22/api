@@ -1,5 +1,3 @@
-ALTER TABLE users DROP COLUMN IF EXISTS is_bot;
-
 DROP TABLE IF EXISTS bot_accounts;
 DROP TABLE IF EXISTS user_presence;
 DROP TABLE IF EXISTS messenger_blocked_users;

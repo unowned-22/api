@@ -21,6 +21,12 @@ type UploadRequest struct {
 	ContentType string
 }
 
+type ObjectInfo struct {
+	Size        int64
+	ContentType string
+	Metadata    map[string]string // x-amz-meta-* поля
+}
+
 // Storage defines a higher-level storage contract used by services and workers.
 type Storage interface {
 	// BucketExists reports whether a bucket with the given name already exists.
@@ -31,4 +37,5 @@ type Storage interface {
 	PutObject(ctx context.Context, bucketName, objectName string, reader io.Reader, size int64, contentType string) (string, error)
 	DeleteObject(ctx context.Context, bucketName, objectName string) error
 	PresignURL(ctx context.Context, bucketName, objectName string, expiry time.Duration) (string, error)
+	StatObject(ctx context.Context, bucket, key string) (*ObjectInfo, error)
 }
