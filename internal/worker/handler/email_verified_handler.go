@@ -12,10 +12,6 @@ import (
 	"github.com/unowned-22/api/internal/logger"
 )
 
-// EmailVerifiedHandler processes user.email_verified events.
-// It creates the per-user MinIO bucket and the initial user_settings row.
-// This handler is intentionally separate from AuditHandler which consumes
-// the audit.email_verified event — two different events, two different concerns.
 type EmailVerifiedHandler struct {
 	storage          domainstorage.Storage
 	systemSettings   domainsys.Repository
@@ -40,13 +36,6 @@ func (h *EmailVerifiedHandler) EventName() event.Name {
 	return event.UserEmailVerified
 }
 
-// Handle provisions a bucket and user_settings for the newly verified user.
-//
-// Idempotency strategy:
-//  1. If user_settings already exist the handler returns early — safe to retry.
-//  2. BucketExists is called before CreateBucket so that a partial failure
-//     (bucket created, user_settings insert failed) does not cause an error on
-//     the next attempt from the DLQ.
 func (h *EmailVerifiedHandler) Handle(ctx context.Context, payload []byte) error {
 	var p struct {
 		UserID int64 `json:"user_id"`
@@ -58,8 +47,6 @@ func (h *EmailVerifiedHandler) Handle(ctx context.Context, payload []byte) error
 		return fmt.Errorf("email_verified_handler: user_id is required in event payload")
 	}
 
-	// Idempotency guard: if user_settings already exist (e.g. handler retried
-	// after a transient error) skip provisioning entirely.
 	if existing, err := h.userSettingsRepo.GetByUserID(ctx, p.UserID); err == nil && existing != nil {
 		logger.Log.WithFields(map[string]interface{}{
 			"user_id": p.UserID,
@@ -67,7 +54,6 @@ func (h *EmailVerifiedHandler) Handle(ctx context.Context, payload []byte) error
 		return nil
 	}
 
-	// Read default storage quota from system settings.
 	var quotaBytes int64
 	if h.systemSettings != nil {
 		if s, err := h.systemSettings.GetByKey(ctx, "default_storage_quota_bytes"); err == nil && s != nil {
@@ -83,7 +69,6 @@ func (h *EmailVerifiedHandler) Handle(ctx context.Context, payload []byte) error
 	bucketName := fmt.Sprintf("user-%d", p.UserID)
 
 	if h.storage != nil {
-		// Check existence first so retries after a partial failure don't error.
 		exists, err := h.storage.BucketExists(ctx, bucketName)
 		if err != nil {
 			return fmt.Errorf("email_verified_handler: failed to check bucket existence for %s: %w", bucketName, err)
@@ -96,7 +81,6 @@ func (h *EmailVerifiedHandler) Handle(ctx context.Context, payload []byte) error
 		}
 	}
 
-	// Persist initial user settings.
 	if h.userSettingsRepo != nil {
 		us := &domainusersettings.UserSettings{
 			UserID:                  p.UserID,
