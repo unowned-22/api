@@ -7,8 +7,6 @@ type User struct {
 	Email                      string
 	Password                   string
 	TokenVersion               int
-	RoleID                     int64
-	RoleName                   string
 	FullName                   string
 	Username                   string
 	Phone                      string

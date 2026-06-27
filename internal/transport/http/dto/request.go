@@ -2,7 +2,6 @@ package dto
 
 import "encoding/json"
 
-// RegisterRequest is the HTTP request body for user registration.
 type RegisterRequest struct {
 	Email    string `json:"email"     validate:"required,email"`
 	Password string `json:"password"  validate:"required,min=8"`
@@ -11,7 +10,6 @@ type RegisterRequest struct {
 	Phone    string `json:"phone"     validate:"omitempty,phone"`
 }
 
-// LoginRequest is the HTTP request body for user authentication.
 type LoginRequest struct {
 	Email      string `json:"email"       validate:"required,email"`
 	Password   string `json:"password"    validate:"required"`
@@ -19,65 +17,50 @@ type LoginRequest struct {
 	OS         string `json:"os"          validate:"omitempty,max=100"`
 }
 
-// RefreshRequest is the HTTP request body for token refresh.
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
-// LogoutRequest is the HTTP request body for user logout.
 type LogoutRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
 }
 
-// ResendVerificationRequest is the HTTP request body for resending verification emails.
 type ResendVerificationRequest struct {
 	Email string `json:"email" validate:"required,email"`
 }
 
-// ForgotPasswordRequest is the HTTP request body for password reset initiation.
 type ForgotPasswordRequest struct {
 	Email string `json:"email" validate:"required,email"`
 }
 
-// ResetPasswordRequest is the HTTP request body for resetting a password.
 type ResetPasswordRequest struct {
 	Token       string `json:"token" validate:"required"`
 	NewPassword string `json:"new_password" validate:"required,min=8"`
 }
 
-// PresignedUploadRequest содержит метаданные для генерации presigned URL.
 type PresignedUploadRequest struct {
 	Filename    string `json:"filename"     validate:"required"`
 	ContentType string `json:"content_type" validate:"required"`
 }
 
-// UpdateProfileRequest is the HTTP request body for updating the current user's profile.
 type UpdateProfileRequest struct {
 	FullName string `json:"full_name" validate:"required,min=2,max=100"`
 	Username string `json:"username"  validate:"required,min=3,max=30,username"`
 	Phone    string `json:"phone"     validate:"omitempty,phone"`
 }
 
-// ChangePasswordRequest is the HTTP request body for changing the current user's password.
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password" validate:"required"`
 	NewPassword     string `json:"new_password" validate:"required,min=8"`
 }
 
-// UpdateThemeRequest is used by users to update their theme.
 type UpdateThemeRequest struct {
 	Theme json.RawMessage `json:"theme" validate:"required"`
 }
 
-// CreateStoryRequest is the HTTP request body for publishing a story.
 type CreateStoryRequest struct {
 	Slides     []json.RawMessage `json:"slides"     validate:"required,min=1,max=20"`
 	Visibility string            `json:"visibility" validate:"required,oneof=everyone friends close"`
 	Duration   int               `json:"duration"   validate:"required,oneof=1 12 24 48"`
 	HiddenFrom []int64           `json:"hidden_from"`
-}
-
-// AdminUpdateQuotaRequest is used by admins to set a user's storage quota.
-type AdminUpdateQuotaRequest struct {
-	StorageQuotaBytes int64 `json:"storage_quota_bytes" validate:"required"`
 }

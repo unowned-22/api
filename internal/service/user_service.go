@@ -17,7 +17,6 @@ import (
 	domainusersettings "github.com/unowned-22/api/internal/domain/usersettings"
 )
 
-// UserService implements domain/user.UserService.
 type UserService struct {
 	repo             user.UserRepository
 	storage          domainstorage.Storage
@@ -25,37 +24,14 @@ type UserService struct {
 	publicBucket     string
 }
 
-// NewUserService creates a new instance of UserService.
 func NewUserService(repo user.UserRepository, storage domainstorage.Storage, userSettingsRepo domainusersettings.Repository, publicBucket string) *UserService {
 	return &UserService{repo: repo, storage: storage, userSettingsRepo: userSettingsRepo, publicBucket: publicBucket}
 }
 
-// GetProfile returns the full user record (including role) by ID.
 func (s *UserService) GetProfile(ctx context.Context, userID int64) (*user.User, error) {
 	return s.repo.GetByID(ctx, userID)
 }
 
-// ListUsers returns users for the requested page and limit along with total count.
-func (s *UserService) ListUsers(ctx context.Context, page int, limit int) ([]*user.User, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 {
-		limit = 20
-	}
-	offset := (page - 1) * limit
-	items, err := s.repo.List(ctx, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	total, err := s.repo.Count(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	return items, total, nil
-}
-
-// UpdateProfile validates and updates the user's profile fields.
 func (s *UserService) UpdateProfile(ctx context.Context, userID int64, fullName, username, phone string) error {
 	if err := validator.Validate(struct {
 		FullName string `validate:"required,min=2,max=100"`
@@ -69,7 +45,6 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, fullName,
 }
 
 func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
-	// validate content type
 	allowed := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 	ext, ok := allowed[contentType]
 	if !ok {
@@ -89,10 +64,8 @@ func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Re
 		return "", errs.ErrUserStorageNotProvisioned
 	}
 
-	// Avatars are stored in the global public bucket under a per-user prefix.
 	bucket := s.publicBucket
 	if bucket == "" {
-		// Fallback to user's bucket if public bucket not configured.
 		bucket = us.BucketName
 	}
 
@@ -106,12 +79,12 @@ func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Re
 		size = int64(buf.Len())
 	}
 
-	url, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(buf.Bytes()), size, contentType)
+	urlPath, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(buf.Bytes()), size, contentType)
 	if err != nil {
 		return "", err
 	}
 
-	if err := s.repo.UpdateAvatar(ctx, userID, url); err != nil {
+	if err := s.repo.UpdateAvatar(ctx, userID, urlPath); err != nil {
 		return "", err
 	}
 
@@ -119,7 +92,7 @@ func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Re
 		return "", err
 	}
 
-	return url, nil
+	return urlPath, nil
 }
 
 func (s *UserService) UploadCover(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
@@ -140,7 +113,6 @@ func (s *UserService) UploadCover(ctx context.Context, userID int64, file io.Rea
 		return "", errs.ErrUserStorageNotProvisioned
 	}
 
-	// Covers are stored in the global public bucket under a per-user prefix.
 	bucket := s.publicBucket
 	if bucket == "" {
 		bucket = us.BucketName

@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/unowned-22/api/internal/config"
-	"github.com/unowned-22/api/internal/domain/permission"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/middleware"
@@ -47,7 +46,6 @@ func NewRouter(
 	authHandler *handler.AuthHandler,
 	userHandler *handler.UserHandler,
 	passwordResetHandler *handler.PasswordResetHandler,
-	adminHandler *handler.AdminHandler,
 	uploadHandler *handler.UploadHandler,
 	healthHandler *handler.HealthHandler,
 	storyHandler *handler.StoryHandler,
@@ -61,7 +59,6 @@ func NewRouter(
 	messengerHandler *handler.MessengerHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
-	permissionService permission.PermissionService,
 	loginLimiter *middleware.AuthRateLimiter,
 	registerLimiter *middleware.AuthRateLimiter,
 	forgotPasswordLimiter *middleware.AuthRateLimiter,
@@ -178,8 +175,7 @@ func NewRouter(
 			r.Post("/messenger/conversations/{id}/typing", messengerHandler.Typing)
 			r.Post("/messenger/messages/{id}/reactions", messengerHandler.AddReaction)
 			r.Delete("/messenger/messages/{id}/reactions/{emoji}", messengerHandler.RemoveReaction)
-			// List users (requires users.read permission)
-			r.With(middleware.RequirePermission(permissionService, userService, "users.read")).Get("/users", userHandler.List)
+
 			r.Get("/auth/sessions", authHandler.ListSessions)
 			r.Delete("/auth/sessions/{id}", authHandler.RevokeSession)
 			r.Post("/auth/logout-all", authHandler.LogoutAll)
@@ -198,7 +194,6 @@ func NewRouter(
 			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/{id}/reply", storyHandler.Reply)
 			r.With(middleware.RateLimit(rate.Limit(cfg.RateLimitRPS), cfg.RateLimitBurst)).Post("/stories/media", uploadHandler.UploadStoryMedia)
 
-			// Photos & Albums
 			r.Post("/photos", photoHandler.UploadPhoto)
 			r.Get("/photos", photoHandler.ListMyPhotos)
 			r.Get("/photos/{photoID}", photoHandler.GetPhoto)
@@ -216,7 +211,6 @@ func NewRouter(
 			r.Patch("/albums/{albumID}/cover", albumHandler.SetAlbumCover)
 			r.Get("/albums/{albumID}/photos", albumHandler.ListAlbumPhotos)
 
-			// photo comments & likes
 			r.Post("/photos/{photoID}/comments", photoCommentHandler.AddComment)
 			r.Get("/photos/{photoID}/comments", photoCommentHandler.ListComments)
 			r.Get("/photos/comments/{commentID}/replies", photoCommentHandler.ListReplies)
@@ -225,13 +219,11 @@ func NewRouter(
 			r.Post("/photos/comments/{commentID}/like", photoCommentHandler.LikeComment)
 			r.Delete("/photos/comments/{commentID}/like", photoCommentHandler.UnlikeComment)
 
-			// Notifications
 			r.Get("/notifications", notificationHandler.List)
 			r.Get("/notifications/unread-count", notificationHandler.UnreadCount)
 			r.Post("/notifications/{id}/read", notificationHandler.MarkRead)
 			r.Post("/notifications/read-all", notificationHandler.MarkAllRead)
 
-			// Friends / subscriptions
 			r.Post("/friends/requests", friendshipHandler.SendRequest)
 			r.Post("/friends/requests/{id}/accept", friendshipHandler.Accept)
 			r.Post("/friends/requests/{id}/reject", friendshipHandler.Reject)
@@ -242,26 +234,9 @@ func NewRouter(
 			r.Get("/friends", friendshipHandler.ListFriends)
 			r.Delete("/friends/{id}", friendshipHandler.Remove)
 
-			// Public profile by username
 			r.Get("/users/{username}", profileHandler.GetByUsername)
 			r.Get("/users/{username}/photos", photoHandler.ListUserPhotosByUsername)
 			r.Get("/users/{username}/albums", albumHandler.ListUserAlbumsByUsername)
-
-			// Role-gated: admin only.
-			r.Group(func(r chi.Router) {
-				r.Use(middleware.RequireRole("admin"))
-				r.Get("/admin/ping", adminHandler.Ping)
-				r.Get("/admin/settings", adminHandler.GetSettings)
-				r.Patch("/admin/settings", adminHandler.UpdateSetting)
-				r.Get("/admin/users/{id}/settings", adminHandler.GetUserSettings)
-				r.Patch("/admin/users/{id}/settings", adminHandler.UpdateUserSettings)
-				r.Post("/admin/users/{id}/deactivate", adminHandler.DeactivateUser)
-				r.Post("/admin/users/{id}/reactivate", adminHandler.ReactivateUser)
-			})
-
-			// Permission-gated: requires admin.access.
-			r.With(middleware.RequirePermission(permissionService, userService, "admin.access")).
-				Get("/admin/permissions", adminHandler.Permissions)
 		})
 	})
 

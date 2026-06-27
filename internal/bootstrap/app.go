@@ -57,7 +57,6 @@ func NewApp() (*App, error) {
 		return nil, fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
-	// Initialize infra
 	pool, minioStorage, publisher, smtpMailer, tokenManager, tokenVersionCache, err := InitInfrastructure(cfg)
 	if err != nil {
 		return nil, err
@@ -73,22 +72,15 @@ func NewApp() (*App, error) {
 		}
 	}()
 
-	// Repositories
 	repos := InitRepositories(pool)
-
 	hub := ws.NewHubWithPresence(repos.Presence, repos.Friendship)
-
-	// Services
 	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache)
-
-	// Handlers + WS hub
 	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
 	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub, repos.Member)
 	if err != nil {
 		return nil, err
 	}
 
-	// Server and limiters
 	srv, loginLimiter, registerLimiter, forgotLimiter, resendLimiter := NewServer(cfg, handlers, tokenManager, svcs, tokenVersionCache)
 
 	app := &App{

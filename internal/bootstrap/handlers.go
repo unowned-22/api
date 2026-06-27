@@ -11,7 +11,6 @@ type Handlers struct {
 	Auth          *handler.AuthHandler
 	PasswordReset *handler.PasswordResetHandler
 	User          *handler.UserHandler
-	Admin         *handler.AdminHandler
 	Health        *handler.HealthHandler
 	Upload        *handler.UploadHandler
 	Story         *handler.StoryHandler
@@ -30,7 +29,6 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	authHandler := handler.NewAuthHandler(svcs.Auth)
 	passwordResetHandler := handler.NewPasswordResetHandler(svcs.PasswordReset)
 	userHandler := handler.NewUserHandler(svcs.User, svcs.UserSettings)
-	adminHandler := handler.NewAdminHandler(svcs.User, svcs.Permission, svcs.Auth, svcs.SystemSettings, svcs.UserSettings)
 	healthHandler := handler.NewHealthHandler(svcs.Health)
 	uploadHandler := handler.NewUploadHandler(storage, cfg.MinIOBucket, svcs.User)
 	storyHandler := handler.NewStoryHandler(svcs.Story, storage, cfg.MinIOBucket, svcs.User)
@@ -47,7 +45,6 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 		Auth:          authHandler,
 		PasswordReset: passwordResetHandler,
 		User:          userHandler,
-		Admin:         adminHandler,
 		Health:        healthHandler,
 		Upload:        uploadHandler,
 		Story:         storyHandler,

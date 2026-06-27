@@ -35,12 +35,10 @@ type accessTokenClaims struct {
 // Generate creates a JWT access token containing only the user ID.
 // Satisfies token.Manager; kept for backward compatibility.
 func (m *JWTManager) Generate(userID int64) (string, error) {
-	return m.GenerateWithRole(userID, "", 0)
+	return m.GenerateWithRole(userID, 0)
 }
 
-// GenerateWithRole creates a JWT access token that embeds user ID and role.
-// Satisfies token.ManagerExtended.
-func (m *JWTManager) GenerateWithRole(userID int64, role string, tokenVersion int) (string, error) {
+func (m *JWTManager) GenerateWithRole(userID int64, tokenVersion int) (string, error) {
 	now := time.Now().UTC()
 	claims := accessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -52,9 +50,6 @@ func (m *JWTManager) GenerateWithRole(userID int64, role string, tokenVersion in
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        uuid.NewString(),
 		},
-	}
-	if role != "" {
-		claims.Role = role
 	}
 	if tokenVersion != 0 {
 		claims.Ver = tokenVersion

@@ -26,7 +26,6 @@ type Services struct {
 	Auth            auth.AuthService
 	PasswordReset   service.PasswordResetService
 	User            *service.UserService
-	Permission      *service.PermissionService
 	Health          *service.HealthService
 	SystemSettings  systemsettings.Service
 	UserSettings    usersettings.Service
@@ -60,7 +59,6 @@ func InitServices(
 		repos.RefreshToken,
 		repos.UserSession,
 		repos.UserDevice,
-		repos.Role,
 		tokenManager,
 		smtp,
 		outboxPublisher,
@@ -73,7 +71,6 @@ func InitServices(
 
 	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)
 	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings, cfg.MinIOBucket)
-	permissionSvc := service.NewPermissionService(repos.Permission)
 	healthSvc := service.NewHealthService(pool)
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)
 	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)
@@ -83,7 +80,6 @@ func InitServices(
 	notifSvc := service.NewNotificationService(repos.Notification)
 	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
 	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage, outboxPublisher, cfg.MinIOBucket)
-	// initialize photo comment service
 	photoCommentSvc := service.NewPhotoCommentService(repos.PhotoComment, repos.Photo, outboxPublisher)
 	albumSvc := service.NewAlbumService(repos.Album, repos.Photo)
 	messengerSvc := service.NewMessengerService(repos.Conversation, repos.Message, repos.Member, repos.Presence, repos.MessengerPrivacy, repos.Draft, friendshipSvc, storage, cfg.MinIOBucket, outboxPublisher)
@@ -92,7 +88,6 @@ func InitServices(
 		Auth:            authSvc,
 		PasswordReset:   passwordResetSvc,
 		User:            userSvc,
-		Permission:      permissionSvc,
 		Health:          healthSvc,
 		SystemSettings:  systemSettingsSvc,
 		UserSettings:    userSettingsSvc,

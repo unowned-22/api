@@ -861,7 +861,7 @@ var (
 	_ event.Handler = (*PhotoCommentedHandler)(nil)
 	_ event.Handler = (*CommentRepliedHandler)(nil)
 	_ event.Handler = (*CommentLikedHandler)(nil)
-	// Messenger handlers
+
 	_ event.Handler = (*MessengerMessageSentHandler)(nil)
 	_ event.Handler = (*MessengerScheduledReadyHandler)(nil)
 	_ event.Handler = (*MessengerReactionHandler)(nil)
