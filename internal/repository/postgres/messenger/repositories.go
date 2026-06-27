@@ -67,6 +67,19 @@ func scanMessage(row pgx.Row) (*domainmessenger.Message, error) {
 	return &m, nil
 }
 
+func (r *MessageRepository) GetByIDWithAttachments(ctx context.Context, id int64) (*domainmessenger.Message, error) {
+	m, err := r.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	atts, err := r.GetAttachments(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	m.Attachments = atts
+	return m, nil
+}
+
 func scanAttachment(row pgx.Row) (*domainmessenger.Attachment, error) {
 	var a domainmessenger.Attachment
 	err := row.Scan(&a.ID, &a.MessageID, &a.Type, &a.StorageKey, &a.URL, &a.MimeType, &a.SizeBytes, &a.Filename, &a.DurationS, &a.Width, &a.Height, &a.ThumbnailKey, &a.CreatedAt)
@@ -174,8 +187,7 @@ func (r *ConversationRepository) ListForUser(ctx context.Context, userID int64, 
 	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM conversations c JOIN conversation_members m ON m.conversation_id = c.id AND m.user_id = $1 AND m.left_at IS NULL`, userID).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count conversations: %w", err)
 	}
-	// QA-3: unread_count subquery
-	// QA-4: LEFT JOIN with last message
+
 	q := `
 SELECT
     c.id, c.type, c.title, c.description, c.avatar_url, c.owner_id, c.created_by,
@@ -380,28 +392,74 @@ func (r *MessageRepository) GetByID(ctx context.Context, id int64) (*domainmesse
 	}
 	return m, nil
 }
-func (r *MessageRepository) List(ctx context.Context, convID int64, page pagination.Query) ([]*domainmessenger.Message, int64, error) {
-	return r.listMessagesByQuery(ctx, `WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, convID, page.Limit, page.Offset())
+func (r *MessageRepository) List(ctx context.Context, convID int64, userID int64, page pagination.Query) ([]*domainmessenger.Message, int64, error) {
+	return r.listMessagesByQuery(ctx, userID, `WHERE conversation_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, convID, page.Limit, page.Offset())
 }
-func (r *MessageRepository) listMessagesByQuery(ctx context.Context, where string, args ...any) ([]*domainmessenger.Message, int64, error) {
+
+func (r *MessageRepository) listMessagesByQuery(ctx context.Context, userID int64, where string, args ...any) ([]*domainmessenger.Message, int64, error) {
 	var total int64
 	_ = r.db.QueryRow(ctx, `SELECT COUNT(*) FROM messages WHERE conversation_id=$1`, args[0]).Scan(&total)
-	q := `SELECT id, conversation_id, sender_id, type, body, reply_to_id, forwarded_from_id, is_deleted, is_edited, edited_at, pinned, likes_count, disappears_at, scheduled_at, is_scheduled, delivery_status, mention_user_ids, created_at, updated_at FROM messages ` + where
+
+	q := `SELECT id, conversation_id, sender_id, type, body, reply_to_id, forwarded_from_id,
+                 is_deleted, is_edited, edited_at, pinned, likes_count, disappears_at,
+                 scheduled_at, is_scheduled, delivery_status, mention_user_ids, created_at, updated_at
+          FROM messages ` + where
 	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
+
 	out := make([]*domainmessenger.Message, 0)
+	ids := make([]int64, 0)
 	for rows.Next() {
 		m, err := scanMessage(rows)
 		if err != nil {
 			return nil, 0, err
 		}
 		out = append(out, m)
+		ids = append(ids, m.ID)
 	}
+
+	if len(ids) > 0 {
+		attachMap, err := r.GetAttachmentsBatch(ctx, ids)
+		if err != nil {
+			return nil, 0, err
+		}
+		reactionsMap, err := r.GetReactionsSummaryBatch(ctx, ids, userID)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, m := range out {
+			if aa, ok := attachMap[m.ID]; ok {
+				m.Attachments = aa
+			}
+			m.Reactions = reactionsMap[m.ID]
+		}
+	}
+
 	return out, total, nil
 }
+
+func (r *MessageRepository) EnrichMessage(ctx context.Context, m *domainmessenger.Message) {
+	_ = r.db.QueryRow(ctx,
+		`SELECT COALESCE(full_name, username, ''), COALESCE(avatar_url, '')
+         FROM users WHERE id = $1`,
+		m.SenderID,
+	).Scan(&m.SenderName, &m.SenderAvatar)
+
+	if m.ReplyToID != nil && m.ReplyTo == nil {
+		orig, err := r.GetByID(ctx, *m.ReplyToID)
+		if err == nil && orig != nil {
+			_ = r.db.QueryRow(ctx,
+				`SELECT COALESCE(full_name, username, '') FROM users WHERE id = $1`,
+				orig.SenderID,
+			).Scan(&orig.SenderName)
+			m.ReplyTo = orig
+		}
+	}
+}
+
 func (r *MessageRepository) Update(ctx context.Context, m *domainmessenger.Message) error {
 	_, err := r.db.Exec(ctx, `UPDATE messages SET body=$1,is_edited=$2,edited_at=$3,pinned=$4,likes_count=$5,disappears_at=$6,scheduled_at=$7,is_scheduled=$8,delivery_status=$9,mention_user_ids=$10,updated_at=NOW() WHERE id=$11`, m.Body, m.IsEdited, m.EditedAt, m.Pinned, m.LikesCount, m.DisappearsAt, m.ScheduledAt, m.IsScheduled, m.DeliveryStatus, m.MentionUserIDs, m.ID)
 	return err
@@ -432,8 +490,8 @@ func (r *MessageRepository) CreateAttachment(ctx context.Context, a *domainmesse
 	}
 	return a, nil
 }
-func (r *MessageRepository) ListPinned(ctx context.Context, convID int64) ([]*domainmessenger.Message, error) {
-	msgs, _, err := r.listMessagesByQuery(ctx, `WHERE conversation_id=$1 AND pinned=TRUE ORDER BY created_at DESC`, convID)
+func (r *MessageRepository) ListPinned(ctx context.Context, convID int64, userID int64) ([]*domainmessenger.Message, error) {
+	msgs, _, err := r.listMessagesByQuery(ctx, userID, `WHERE conversation_id=$1 AND pinned=TRUE ORDER BY created_at DESC`, convID)
 	return msgs, err
 }
 func (r *MessageRepository) Search(ctx context.Context, convID int64, query string, page pagination.Query) ([]*domainmessenger.Message, int64, error) {
@@ -454,14 +512,17 @@ func (r *MessageRepository) Search(ctx context.Context, convID int64, query stri
 	}
 	return out, total, nil
 }
-func (r *MessageRepository) AddReaction(ctx context.Context, messageID, userID int64) error {
+
+func (r *MessageRepository) AddReaction(ctx context.Context, messageID, userID int64, emoji string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	cmd, err := tx.Exec(ctx, `INSERT INTO message_reactions (message_id, user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, messageID, userID)
+	cmd, err := tx.Exec(ctx,
+		`INSERT INTO message_reactions (message_id, user_id, emoji) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+		messageID, userID, emoji)
 	if err != nil {
 		return fmt.Errorf("insert message reaction: %w", err)
 	}
@@ -470,19 +531,19 @@ func (r *MessageRepository) AddReaction(ctx context.Context, messageID, userID i
 			return fmt.Errorf("increment message likes: %w", err)
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
-	}
-	return nil
+	return tx.Commit(ctx)
 }
-func (r *MessageRepository) RemoveReaction(ctx context.Context, messageID, userID int64) error {
+
+func (r *MessageRepository) RemoveReaction(ctx context.Context, messageID, userID int64, emoji string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
-	cmd, err := tx.Exec(ctx, `DELETE FROM message_reactions WHERE message_id=$1 AND user_id=$2`, messageID, userID)
+	cmd, err := tx.Exec(ctx,
+		`DELETE FROM message_reactions WHERE message_id=$1 AND user_id=$2 AND emoji=$3`,
+		messageID, userID, emoji)
 	if err != nil {
 		return fmt.Errorf("delete message reaction: %w", err)
 	}
@@ -491,11 +552,47 @@ func (r *MessageRepository) RemoveReaction(ctx context.Context, messageID, userI
 			return fmt.Errorf("decrement message likes: %w", err)
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("commit tx: %w", err)
-	}
-	return nil
+	return tx.Commit(ctx)
 }
+
+func (r *MessageRepository) GetReactionsSummaryBatch(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64][]domainmessenger.ReactionSummary, error) {
+	out := make(map[int64][]domainmessenger.ReactionSummary)
+	if len(messageIDs) == 0 {
+		return out, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT message_id, emoji, COUNT(*),
+		       BOOL_OR(user_id = $2) AS reacted_by_me
+		FROM message_reactions
+		WHERE message_id = ANY($1)
+		GROUP BY message_id, emoji
+		ORDER BY message_id, emoji`,
+		messageIDs, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var msgID int64
+		var s domainmessenger.ReactionSummary
+		var count int
+		if err := rows.Scan(&msgID, &s.Emoji, &count, &s.ReactedByMe); err != nil {
+			return nil, err
+		}
+		s.Count = count
+		out[msgID] = append(out[msgID], s)
+	}
+	return out, nil
+}
+
+func (r *MessageRepository) GetReactionsSummary(ctx context.Context, messageID, viewerID int64) ([]domainmessenger.ReactionSummary, error) {
+	m, err := r.GetReactionsSummaryBatch(ctx, []int64{messageID}, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	return m[messageID], nil
+}
+
 func (r *MessageRepository) GetReaction(ctx context.Context, messageID, userID int64) (*domainmessenger.Reaction, error) {
 	var rr domainmessenger.Reaction
 	err := r.db.QueryRow(ctx, `SELECT message_id, user_id, created_at FROM message_reactions WHERE message_id=$1 AND user_id=$2`, messageID, userID).Scan(&rr.MessageID, &rr.UserID, &rr.CreatedAt)
@@ -776,6 +873,54 @@ func (r *DraftRepository) ListForUser(ctx context.Context, userID int64) ([]*dom
 			return nil, err
 		}
 		out = append(out, &d)
+	}
+	return out, nil
+}
+
+func (r *MessageRepository) GetLikedByMeBatch(ctx context.Context, userID int64, messageIDs []int64) (map[int64]bool, error) {
+	if len(messageIDs) == 0 {
+		return map[int64]bool{}, nil
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT message_id FROM message_reactions WHERE user_id = $1 AND message_id = ANY($2)`,
+		userID, messageIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, nil
+}
+
+func (r *MessageRepository) GetAttachmentsBatch(ctx context.Context, messageIDs []int64) (map[int64][]domainmessenger.Attachment, error) {
+	if len(messageIDs) == 0 {
+		return map[int64][]domainmessenger.Attachment{}, nil
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT id, message_id, type, storage_key, url, mime_type, size_bytes, filename, duration_s, width, height, thumbnail_key, created_at
+         FROM message_attachments WHERE message_id = ANY($1) ORDER BY id`,
+		messageIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[int64][]domainmessenger.Attachment{}
+	for rows.Next() {
+		var a domainmessenger.Attachment
+		if err := rows.Scan(&a.ID, &a.MessageID, &a.Type, &a.StorageKey, &a.URL, &a.MimeType, &a.SizeBytes, &a.Filename, &a.DurationS, &a.Width, &a.Height, &a.ThumbnailKey, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out[a.MessageID] = append(out[a.MessageID], a)
 	}
 	return out, nil
 }

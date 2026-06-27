@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     username                      VARCHAR(64)  NOT NULL,
     phone                         VARCHAR(16)  NULL,
     role_id                       BIGINT       NOT NULL,
+    is_bot                        BOOLEAN      NOT NULL DEFAULT FALSE,
     email_verified_at             TIMESTAMPTZ,
     verification_token            TEXT,
     verification_token_expires_at TIMESTAMPTZ,

@@ -2,6 +2,7 @@ package messenger
 
 import (
 	"context"
+	"io"
 	"time"
 
 	"github.com/unowned-22/api/internal/pagination"
@@ -9,8 +10,6 @@ import (
 
 type ConversationRepository interface {
 	Create(ctx context.Context, c *Conversation) (*Conversation, error)
-	// CreateWithMembers inserts a conversation and its initial members atomically
-	// in a single transaction. Either all writes succeed or nothing is persisted.
 	CreateWithMembers(ctx context.Context, c *Conversation, members []*ConversationMember) (*Conversation, error)
 	GetByID(ctx context.Context, id int64) (*Conversation, error)
 	GetDirect(ctx context.Context, userA, userB int64) (*Conversation, error)
@@ -24,23 +23,20 @@ type ConversationRepository interface {
 }
 
 type MessageRepository interface {
-	// CreateWithAttachments inserts a message and all its attachments in a
-	// single database transaction. Either both succeed or neither is persisted,
-	// preventing the partial-write scenario where a message exists without some
-	// of its attachments after a mid-loop failure.
 	CreateWithAttachments(ctx context.Context, m *Message, attachments []Attachment) (*Message, error)
 	Create(ctx context.Context, m *Message) (*Message, error)
 	GetByID(ctx context.Context, id int64) (*Message, error)
-	List(ctx context.Context, convID int64, page pagination.Query) ([]*Message, int64, error)
+	List(ctx context.Context, convID int64, userID int64, page pagination.Query) ([]*Message, int64, error)
 	Update(ctx context.Context, m *Message) error
 	SoftDelete(ctx context.Context, id, senderID int64) error
 	GetAttachments(ctx context.Context, messageID int64) ([]Attachment, error)
 	CreateAttachment(ctx context.Context, a *Attachment) (*Attachment, error)
-	ListPinned(ctx context.Context, convID int64) ([]*Message, error)
+	ListPinned(ctx context.Context, convID int64, userID int64) ([]*Message, error)
 	Search(ctx context.Context, convID int64, query string, page pagination.Query) ([]*Message, int64, error)
-	AddReaction(ctx context.Context, messageID, userID int64) error
-	RemoveReaction(ctx context.Context, messageID, userID int64) error
-	GetReaction(ctx context.Context, messageID, userID int64) (*Reaction, error)
+	AddReaction(ctx context.Context, messageID, userID int64, emoji string) error
+	RemoveReaction(ctx context.Context, messageID, userID int64, emoji string) error
+	GetReactionsSummary(ctx context.Context, messageID, viewerID int64) ([]ReactionSummary, error)
+	GetReactionsSummaryBatch(ctx context.Context, messageIDs []int64, viewerID int64) (map[int64][]ReactionSummary, error)
 	UpsertDeliveryStatus(ctx context.Context, s *MessageDeliveryStatus) error
 	GetDeliveryStatuses(ctx context.Context, messageID int64) ([]MessageDeliveryStatus, error)
 	ListExpiredDisappearing(ctx context.Context) ([]*Message, error)
@@ -49,6 +45,7 @@ type MessageRepository interface {
 	MarkScheduledSent(ctx context.Context, id int64) error
 	ListMentions(ctx context.Context, userID int64, page pagination.Query) ([]*Message, int64, error)
 	ListScheduled(ctx context.Context, convID, userID int64) ([]*Message, error)
+	EnrichMessage(ctx context.Context, m *Message)
 }
 
 type MemberRepository interface {
@@ -111,8 +108,6 @@ type Service interface {
 	ReplyToMessage(ctx context.Context, senderID, convID, replyToID int64, msg *Message, attachments []Attachment) (*Message, error)
 	MarkRead(ctx context.Context, userID, convID, lastMsgID int64) error
 	SearchMessages(ctx context.Context, userID, convID int64, query string, page pagination.Query) ([]*Message, int64, error)
-	LikeMessage(ctx context.Context, userID, msgID int64) error
-	UnlikeMessage(ctx context.Context, userID, msgID int64) error
 	SetDisappearingTimer(ctx context.Context, userID, convID int64, duration time.Duration) error
 	MarkDelivered(ctx context.Context, userID, msgID int64) error
 	SaveDraft(ctx context.Context, userID, convID int64, body string, replyToID *int64) error
@@ -127,4 +122,7 @@ type Service interface {
 	ListScheduledMessages(ctx context.Context, userID, convID int64) ([]*Message, error)
 	CancelScheduledMessage(ctx context.Context, userID, msgID int64) error
 	SendTyping(ctx context.Context, userID, convID int64, isTyping bool) error
+	AddReaction(ctx context.Context, userID, msgID int64, emoji string) error
+	RemoveReaction(ctx context.Context, userID, msgID int64, emoji string) error
+	UploadAttachment(ctx context.Context, userID int64, filename, contentType string, body io.Reader, size int64) (storageKey, url string, err error)
 }

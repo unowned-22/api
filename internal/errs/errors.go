@@ -34,6 +34,9 @@ var (
 	ErrDraftNotFound           = errors.New("message draft not found")
 	ErrCannotBlockSelf         = errors.New("cannot block yourself")
 	ErrMessagingNotAllowed     = errors.New("messaging is not allowed")
+	ErrAttachmentTooLarge      = errors.New("attachment exceeds maximum allowed size")
+	ErrAttachmentEmpty         = errors.New("attachment is empty")
+	ErrInvalidReactionEmoji    = errors.New("reaction emoji is invalid")
 
 	ErrUserBlocked              = errors.New("user is blocked")
 	ErrNotConversationMember    = errors.New("user is not a conversation member")
