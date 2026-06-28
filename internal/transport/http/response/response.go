@@ -289,6 +289,83 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "STORAGE_NOT_PROVISIONED"
 		message = "storage is not yet provisioned for this account, please try again shortly"
 
+	case errors.Is(err, errs.ErrVideoNotFound):
+		status = http.StatusNotFound
+		code = "VIDEO_NOT_FOUND"
+		message = "video not found"
+	case errors.Is(err, errs.ErrVideoNotOwned):
+		status = http.StatusForbidden
+		code = "VIDEO_NOT_OWNED"
+		message = "video does not belong to requester"
+	case errors.Is(err, errs.ErrVideoNotReady):
+		status = http.StatusUnprocessableEntity
+		code = "VIDEO_NOT_READY"
+		message = "video is not yet ready"
+	case errors.Is(err, errs.ErrChannelNotFound):
+		status = http.StatusNotFound
+		code = "CHANNEL_NOT_FOUND"
+		message = "channel not found"
+	case errors.Is(err, errs.ErrChannelAlreadyExists):
+		status = http.StatusConflict
+		code = "CHANNEL_ALREADY_EXISTS"
+		message = "channel already exists for this user"
+	case errors.Is(err, errs.ErrPlaylistNotFound):
+		status = http.StatusNotFound
+		code = "PLAYLIST_NOT_FOUND"
+		message = "playlist not found"
+	case errors.Is(err, errs.ErrPlaylistNotOwned):
+		status = http.StatusForbidden
+		code = "PLAYLIST_NOT_OWNED"
+		message = "playlist does not belong to requester"
+	case errors.Is(err, errs.ErrPlaylistItemNotFound):
+		status = http.StatusNotFound
+		code = "PLAYLIST_ITEM_NOT_FOUND"
+		message = "video is not in this playlist"
+	case errors.Is(err, errs.ErrPlaylistItemExists):
+		status = http.StatusConflict
+		code = "PLAYLIST_ITEM_EXISTS"
+		message = "video is already in this playlist"
+	case errors.Is(err, errs.ErrVideoCommentNotFound):
+		status = http.StatusNotFound
+		code = "VIDEO_COMMENT_NOT_FOUND"
+		message = "video comment not found"
+	case errors.Is(err, errs.ErrVideoCommentNotOwned):
+		status = http.StatusForbidden
+		code = "VIDEO_COMMENT_NOT_OWNED"
+		message = "video comment does not belong to requester"
+	case errors.Is(err, errs.ErrVideoCommentNesting):
+		status = http.StatusUnprocessableEntity
+		code = "VIDEO_COMMENT_NESTING_NOT_ALLOWED"
+		message = "replies to video comment replies are not allowed"
+	case errors.Is(err, errs.ErrVideoAlreadyLiked):
+		status = http.StatusConflict
+		code = "VIDEO_ALREADY_LIKED"
+		message = "video is already liked"
+	case errors.Is(err, errs.ErrVideoNotLiked):
+		status = http.StatusConflict
+		code = "VIDEO_NOT_LIKED"
+		message = "video is not liked"
+	case errors.Is(err, errs.ErrVideoCommentAlreadyLiked):
+		status = http.StatusConflict
+		code = "VIDEO_COMMENT_ALREADY_LIKED"
+		message = "video comment is already liked"
+	case errors.Is(err, errs.ErrVideoCommentNotLiked):
+		status = http.StatusConflict
+		code = "VIDEO_COMMENT_NOT_LIKED"
+		message = "video comment is not liked"
+	case errors.Is(err, errs.ErrAlreadySubscribed):
+		status = http.StatusConflict
+		code = "ALREADY_SUBSCRIBED"
+		message = "already subscribed to this channel"
+	case errors.Is(err, errs.ErrNotSubscribed):
+		status = http.StatusConflict
+		code = "NOT_SUBSCRIBED"
+		message = "not subscribed to this channel"
+	case errors.Is(err, errs.ErrCannotSubscribeSelf):
+		status = http.StatusUnprocessableEntity
+		code = "CANNOT_SUBSCRIBE_SELF"
+		message = "cannot subscribe to your own channel"
+
 	default:
 		logger.FromContext(r.Context()).WithError(err).Error("internal server error")
 		status = http.StatusInternalServerError

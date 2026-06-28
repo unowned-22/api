@@ -8,20 +8,25 @@ import (
 )
 
 type Handlers struct {
-	Auth          *handler.AuthHandler
-	PasswordReset *handler.PasswordResetHandler
-	User          *handler.UserHandler
-	Health        *handler.HealthHandler
-	Upload        *handler.UploadHandler
-	Story         *handler.StoryHandler
-	Friendship    *handler.FriendshipHandler
-	Profile       *handler.ProfileHandler
-	Notification  *handler.NotificationHandler
-	Photo         *handler.PhotoHandler
-	Album         *handler.AlbumHandler
-	PhotoComment  *handler.PhotoCommentHandler
-	CloseFriend   *handler.CloseFriendHandler
-	Messenger     *handler.MessengerHandler
+	Auth              *handler.AuthHandler
+	PasswordReset     *handler.PasswordResetHandler
+	User              *handler.UserHandler
+	Health            *handler.HealthHandler
+	Upload            *handler.UploadHandler
+	Story             *handler.StoryHandler
+	Friendship        *handler.FriendshipHandler
+	Profile           *handler.ProfileHandler
+	Notification      *handler.NotificationHandler
+	Photo             *handler.PhotoHandler
+	Album             *handler.AlbumHandler
+	PhotoComment      *handler.PhotoCommentHandler
+	VideoChannel      *handler.VideoChannelHandler
+	Video             *handler.VideoHandler
+	VideoComment      *handler.VideoCommentHandler
+	VideoPlaylist     *handler.VideoPlaylistHandler
+	VideoSubscription *handler.VideoSubscriptionHandler
+	CloseFriend       *handler.CloseFriendHandler
+	Messenger         *handler.MessengerHandler
 }
 
 // InitHandlers wires HTTP handlers from services and infra.
@@ -38,23 +43,33 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	photoHandler := handler.NewPhotoHandler(svcs.Photo, svcs.Album, svcs.Profile)
 	albumHandler := handler.NewAlbumHandler(svcs.Album, svcs.Photo, svcs.Profile)
 	photoCommentHandler := handler.NewPhotoCommentHandler(svcs.PhotoComment, svcs.Photo)
+	videoChannelHandler := handler.NewVideoChannelHandler(svcs.VideoChannel, svcs.VideoSubscription)
+	videoHandler := handler.NewVideoHandler(svcs.Video, svcs.VideoChannel, svcs.User, storage, cfg)
+	videoCommentHandler := handler.NewVideoCommentHandler(svcs.VideoComment)
+	videoPlaylistHandler := handler.NewVideoPlaylistHandler(svcs.VideoPlaylist)
+	videoSubscriptionHandler := handler.NewVideoSubscriptionHandler(svcs.VideoSubscription, svcs.VideoChannel)
 	closeFriendHandler := handler.NewCloseFriendHandler(svcs.CloseFriend)
 	messengerHandler := handler.NewMessengerHandler(svcs.Messenger, storage, *cfg)
 
 	return &Handlers{
-		Auth:          authHandler,
-		PasswordReset: passwordResetHandler,
-		User:          userHandler,
-		Health:        healthHandler,
-		Upload:        uploadHandler,
-		Story:         storyHandler,
-		Friendship:    friendshipHandler,
-		Profile:       profileHandler,
-		Notification:  notificationHandler,
-		Photo:         photoHandler,
-		PhotoComment:  photoCommentHandler,
-		Album:         albumHandler,
-		CloseFriend:   closeFriendHandler,
-		Messenger:     messengerHandler,
+		Auth:              authHandler,
+		PasswordReset:     passwordResetHandler,
+		User:              userHandler,
+		Health:            healthHandler,
+		Upload:            uploadHandler,
+		Story:             storyHandler,
+		Friendship:        friendshipHandler,
+		Profile:           profileHandler,
+		Notification:      notificationHandler,
+		Photo:             photoHandler,
+		PhotoComment:      photoCommentHandler,
+		VideoChannel:      videoChannelHandler,
+		Video:             videoHandler,
+		VideoComment:      videoCommentHandler,
+		VideoPlaylist:     videoPlaylistHandler,
+		VideoSubscription: videoSubscriptionHandler,
+		Album:             albumHandler,
+		CloseFriend:       closeFriendHandler,
+		Messenger:         messengerHandler,
 	}
 }

@@ -25,9 +25,11 @@ type Worker struct {
 	Commit    string
 	BuildDate string
 
-	cfg      *config.Config
-	pool     *pgxpool.Pool
-	consumer *queue.AMQPConsumer
+	cfg           *config.Config
+	pool          *pgxpool.Pool
+	publisher     *queue.AMQPPublisher
+	consumer      *queue.AMQPConsumer
+	videoConsumer *queue.AMQPConsumer
 }
 
 func NewWorker(version, commit, buildDate string) (*Worker, error) {
@@ -78,6 +80,11 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 		return nil, fmt.Errorf("failed to initialize MinIO storage: %w", err)
 	}
 
+	publisher, err := queue.New(queue.Config{URL: cfg.RabbitMQURL, Exchange: cfg.RabbitMQExchange})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize RabbitMQ publisher: %w", err)
+	}
+
 	handlers := map[domainevent.Name]domainevent.Handler{
 		domainevent.UserRegistered:         workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName),
 		domainevent.UserEmailVerified:      workerHandler.NewEmailVerifiedHandler(minioStorage, systemSettingsRepo, userSettingsRepo),
@@ -111,19 +118,35 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 		return nil, fmt.Errorf("failed to create AMQP consumer: %w", err)
 	}
 
+	videoHandler := workerHandler.NewVideoProcessHandler(postgresRepo.NewVideoRepository(pool), minioStorage, cfg.MinIOBucket, publisher)
+	videoConsumer, err := queue.NewConsumer(queue.ConsumerConfig{
+		URL:      cfg.RabbitMQURL,
+		Exchange: cfg.RabbitMQExchange,
+		Queue:    cfg.VideoProcessQueue,
+		Tag:      "worker-video",
+	}, map[domainevent.Name]domainevent.Handler{
+		domainevent.Name(cfg.VideoProcessQueue): videoHandler,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create video AMQP consumer: %w", err)
+	}
+
 	w := &Worker{
-		Version:   version,
-		Commit:    commit,
-		BuildDate: buildDate,
-		cfg:       cfg,
-		pool:      pool,
-		consumer:  consumer,
+		Version:       version,
+		Commit:        commit,
+		BuildDate:     buildDate,
+		cfg:           cfg,
+		pool:          pool,
+		publisher:     publisher,
+		consumer:      consumer,
+		videoConsumer: videoConsumer,
 	}
 	return w, nil
 }
 
 func (w *Worker) Run() error {
 	defer w.pool.Close()
+	defer func() { _ = w.publisher.Close() }()
 
 	if err := w.consumer.Consume(); err != nil {
 		err := w.consumer.Shutdown(context.Background())
@@ -131,6 +154,11 @@ func (w *Worker) Run() error {
 			return err
 		}
 		return fmt.Errorf("failed to start consuming: %w", err)
+	}
+	if err := w.videoConsumer.Consume(); err != nil {
+		_ = w.consumer.Shutdown(context.Background())
+		_ = w.videoConsumer.Shutdown(context.Background())
+		return fmt.Errorf("failed to start video consuming: %w", err)
 	}
 
 	logger.Log.WithFields(map[string]interface{}{
@@ -156,6 +184,11 @@ func (w *Worker) Run() error {
 		logger.Log.Errorf("Consumer graceful shutdown failed: %v", err)
 	} else {
 		logger.Log.Info("Consumer stopped gracefully")
+	}
+	if err := w.videoConsumer.Shutdown(ctxShut); err != nil {
+		logger.Log.Errorf("Video consumer graceful shutdown failed: %v", err)
+	} else {
+		logger.Log.Info("Video consumer stopped gracefully")
 	}
 
 	logger.Log.Info("Graceful shutdown completed. Exiting.")

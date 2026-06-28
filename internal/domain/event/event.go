@@ -40,6 +40,11 @@ const (
 	// StoryPublished is emitted when a user publishes a story
 	StoryPublished Name = "story.published"
 
+	VideoPublished      Name = "video.published"
+	VideoCommented      Name = "video.commented"
+	VideoCommentReplied Name = "video.comment_replied"
+	VideoLiked          Name = "video.liked"
+
 	MessengerMessageSent     Name = "messenger.message_sent"
 	MessengerReadReceipt     Name = "messenger.read_receipt"
 	MessengerMessagePinned   Name = "messenger.message_pinned"
