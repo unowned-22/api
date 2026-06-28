@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/unowned-22/api/internal/domain/media"
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/validator"
 
@@ -22,10 +23,23 @@ type UserService struct {
 	storage          domainstorage.Storage
 	userSettingsRepo domainusersettings.Repository
 	publicBucket     string
+	imageProcessor   *media.Processor
 }
 
-func NewUserService(repo user.UserRepository, storage domainstorage.Storage, userSettingsRepo domainusersettings.Repository, publicBucket string) *UserService {
-	return &UserService{repo: repo, storage: storage, userSettingsRepo: userSettingsRepo, publicBucket: publicBucket}
+func NewUserService(
+	repo user.UserRepository,
+	storage domainstorage.Storage,
+	userSettingsRepo domainusersettings.Repository,
+	publicBucket string,
+	imageProcessor *media.Processor,
+) *UserService {
+	return &UserService{
+		repo:             repo,
+		storage:          storage,
+		userSettingsRepo: userSettingsRepo,
+		publicBucket:     publicBucket,
+		imageProcessor:   imageProcessor,
+	}
 }
 
 func (s *UserService) GetProfile(ctx context.Context, userID int64) (*user.User, error) {
@@ -45,9 +59,26 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, fullName,
 }
 
 func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
-	allowed := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
-	ext, ok := allowed[contentType]
-	if !ok {
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, file); err != nil {
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+	origBytes := buf.Bytes()
+	if size != int64(len(origBytes)) {
+		size = int64(len(origBytes))
+	}
+
+	// Detect format from actual bytes — ignore client-supplied Content-Type.
+	f, err := media.DetectFormat(origBytes)
+	if err != nil {
+		return "", fmt.Errorf("unsupported content type: %w", err)
+	}
+	allowedAvatarFormats := map[media.Format]bool{
+		media.FormatJPEG: true,
+		media.FormatPNG:  true,
+		media.FormatWebP: true,
+	}
+	if !allowedAvatarFormats[f] {
 		return "", fmt.Errorf("unsupported content type: %s", contentType)
 	}
 	if size > 5*1024*1024 {
@@ -59,8 +90,6 @@ func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Re
 		return "", err
 	}
 	if us == nil || us.BucketName == "" {
-		// Bucket provisioning is async (email_verified worker). Return a typed
-		// sentinel so the transport layer can map this to 503 instead of 500.
 		return "", errs.ErrUserStorageNotProvisioned
 	}
 
@@ -69,17 +98,10 @@ func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Re
 		bucket = us.BucketName
 	}
 
+	ext := media.FormatExtension(f)
 	key := path.Join(fmt.Sprintf("user-%d", userID), "avatars", "avatar."+ext)
 
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, file); err != nil {
-		return "", fmt.Errorf("failed to read file: %w", err)
-	}
-	if int64(buf.Len()) != size {
-		size = int64(buf.Len())
-	}
-
-	urlPath, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(buf.Bytes()), size, contentType)
+	urlPath, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(origBytes), size, contentType)
 	if err != nil {
 		return "", err
 	}
@@ -95,22 +117,47 @@ func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Re
 	return urlPath, nil
 }
 
-func (s *UserService) UploadCover(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
-	allowed := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
-	ext, ok := allowed[contentType]
-	if !ok {
-		return "", fmt.Errorf("unsupported content type: %s", contentType)
+func (s *UserService) UploadCover(
+	ctx context.Context,
+	userID int64,
+	file io.Reader,
+	size int64,
+	contentType string,
+	crop user.CoverCrop,
+) (*user.UserCover, error) {
+	var origBuf bytes.Buffer
+	if _, err := io.Copy(&origBuf, file); err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
-	if size > 10*1024*1024 {
-		return "", fmt.Errorf("cover exceeds maximum allowed size")
+	origBytes := origBuf.Bytes()
+	origSize := int64(len(origBytes))
+
+	if origSize > 10*1024*1024 {
+		return nil, fmt.Errorf("cover exceeds maximum allowed size")
+	}
+
+	// Detect format from actual bytes — ignore client-supplied Content-Type.
+	f, err := media.DetectFormat(origBytes)
+	if err != nil {
+		return nil, fmt.Errorf("unsupported content type: %w", err)
+	}
+	allowedCoverFormats := map[media.Format]bool{
+		media.FormatJPEG: true,
+		media.FormatPNG:  true,
+		media.FormatWebP: true,
+		media.FormatAVIF: true,
+		media.FormatHEIC: true,
+	}
+	if !allowedCoverFormats[f] {
+		return nil, fmt.Errorf("unsupported content type: %s", contentType)
 	}
 
 	us, err := s.userSettingsRepo.GetByUserID(ctx, userID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if us == nil || us.BucketName == "" {
-		return "", errs.ErrUserStorageNotProvisioned
+		return nil, errs.ErrUserStorageNotProvisioned
 	}
 
 	bucket := s.publicBucket
@@ -118,30 +165,73 @@ func (s *UserService) UploadCover(ctx context.Context, userID int64, file io.Rea
 		bucket = us.BucketName
 	}
 
-	key := path.Join(fmt.Sprintf("user-%d", userID), "covers", "cover."+ext)
-
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, file); err != nil {
-		return "", fmt.Errorf("failed to read file: %w", err)
+	mobileCrop := media.CropRect{
+		X:      int(crop.Mobile.X),
+		Y:      int(crop.Mobile.Y),
+		Width:  int(crop.Mobile.Width),
+		Height: int(crop.Mobile.Height),
 	}
-	if int64(buf.Len()) != size {
-		size = int64(buf.Len())
+	desktopCrop := media.CropRect{
+		X:      int(crop.Desktop.X),
+		Y:      int(crop.Desktop.Y),
+		Width:  int(crop.Desktop.Width),
+		Height: int(crop.Desktop.Height),
 	}
 
-	url, err := s.storage.PutObject(ctx, bucket, key, bytes.NewReader(buf.Bytes()), size, contentType)
+	variants := []media.VariantSpec{
+		{Name: "mobile", Crop: &mobileCrop, Format: media.FormatJPEG, Quality: 90},
+		{Name: "desktop", Crop: &desktopCrop, Format: media.FormatJPEG, Quality: 90},
+	}
+
+	processed, err := s.imageProcessor.Process(ctx, origBytes, variants)
 	if err != nil {
-		return "", err
+		return nil, fmt.Errorf("failed to process cover image: %w", err)
 	}
 
-	if err := s.repo.UpdateCover(ctx, userID, url); err != nil {
-		return "", err
+	// Map results by name for safe lookup.
+	byName := make(map[string]media.ProcessedVariant, len(processed))
+	for _, pv := range processed {
+		byName[pv.Name] = pv
 	}
 
-	if err := s.userSettingsRepo.IncrementUsedBytes(ctx, userID, size); err != nil {
-		return "", err
+	base := path.Join(fmt.Sprintf("user-%d", userID), "covers")
+	ext := media.FormatExtension(f)
+
+	origKey := path.Join(base, "cover_original."+ext)
+	mobileKey := path.Join(base, "cover_mobile.jpg")
+	desktopKey := path.Join(base, "cover_desktop.jpg")
+
+	origURL, err := s.storage.PutObject(ctx, bucket, origKey, bytes.NewReader(origBytes), origSize, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to store original cover: %w", err)
 	}
 
-	return url, nil
+	mobileData := byName["mobile"].Data
+	mobileURL, err := s.storage.PutObject(ctx, bucket, mobileKey, bytes.NewReader(mobileData), int64(len(mobileData)), "image/jpeg")
+	if err != nil {
+		return nil, fmt.Errorf("failed to store mobile cover: %w", err)
+	}
+
+	desktopData := byName["desktop"].Data
+	desktopURL, err := s.storage.PutObject(ctx, bucket, desktopKey, bytes.NewReader(desktopData), int64(len(desktopData)), "image/jpeg")
+	if err != nil {
+		return nil, fmt.Errorf("failed to store desktop cover: %w", err)
+	}
+
+	if err := s.repo.UpdateCover(ctx, userID, mobileURL, desktopURL, origURL); err != nil {
+		return nil, err
+	}
+
+	totalBytes := origSize + int64(len(mobileData)) + int64(len(desktopData))
+	if err := s.userSettingsRepo.IncrementUsedBytes(ctx, userID, totalBytes); err != nil {
+		return nil, err
+	}
+
+	return &user.UserCover{
+		CoverURL:        origURL,
+		CoverMobileURL:  mobileURL,
+		CoverDesktopURL: desktopURL,
+	}, nil
 }
 
 // DeleteAvatar removes the user's avatar object from storage and clears
@@ -170,8 +260,8 @@ func (s *UserService) DeleteAvatar(ctx context.Context, userID int64) error {
 	return s.repo.UpdateAvatar(ctx, userID, "")
 }
 
-// DeleteCover removes the user's cover object from storage and clears
-// the cover URL on the user record.
+// DeleteCover removes the user's cover objects from storage and clears
+// the cover URLs on the user record.
 func (s *UserService) DeleteCover(ctx context.Context, userID int64) error {
 	u, err := s.repo.GetByID(ctx, userID)
 	if err != nil {
@@ -193,7 +283,7 @@ func (s *UserService) DeleteCover(ctx context.Context, userID int64) error {
 		}
 	}
 
-	return s.repo.UpdateCover(ctx, userID, "")
+	return s.repo.UpdateCover(ctx, userID, "", "", "")
 }
 
 // resolveMediaBucket returns the bucket avatars/covers are stored in,
@@ -212,11 +302,9 @@ func (s *UserService) resolveMediaBucket(ctx context.Context, userID int64) (str
 	return us.BucketName, nil
 }
 
-// extractObjectKey pulls the object key out of a stored avatar/cover URL
-// (either a permanent public URL or a presigned URL), given the bucket the
-// object was stored in. Returns ok=false if the bucket segment can't be
-// found, in which case callers should skip the storage delete rather than
-// fail the whole operation (the DB pointer is still cleared).
+// extractObjectKey pulls the object key out of a stored avatar/cover URL.
+// Returns ok=false if the bucket segment can't be found; callers should
+// skip the storage delete rather than fail (the DB pointer is still cleared).
 func extractObjectKey(rawURL, bucket string) (string, bool) {
 	u, err := url.Parse(rawURL)
 	if err != nil {

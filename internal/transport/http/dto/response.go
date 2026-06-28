@@ -90,3 +90,9 @@ type FeedSlideResponse struct {
 	Seen        bool       `json:"seen"`
 	LinkZones   []LinkZone `json:"link_zones,omitempty"`
 }
+
+type CoverUploadResponse struct {
+	OriginalURL string `json:"cover_url"`
+	MobileURL   string `json:"cover_mobile_url"`
+	DesktopURL  string `json:"cover_desktop_url"`
+}

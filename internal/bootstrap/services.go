@@ -7,6 +7,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/album"
 	"github.com/unowned-22/api/internal/domain/closefriend"
 	"github.com/unowned-22/api/internal/domain/event"
+	"github.com/unowned-22/api/internal/domain/media"
 	"github.com/unowned-22/api/internal/domain/messenger"
 	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/domain/photo"
@@ -51,6 +52,7 @@ func InitServices(
 	publisher *queue.AMQPPublisher,
 	storage domainstorage.Storage,
 	tokenVersionCache user.TokenVersionCache,
+	imageProcessor *media.Processor,
 ) *Services {
 	// create an outbox-backed publisher that persists events into the outbox table
 	outboxPublisher := outboxpub.New(repos.Outbox)
@@ -70,7 +72,7 @@ func InitServices(
 	)
 
 	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)
-	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings, cfg.MinIOBucket)
+	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings, cfg.MinIOBucket, imageProcessor)
 	healthSvc := service.NewHealthService(pool)
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)
 	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)

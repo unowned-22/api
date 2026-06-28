@@ -64,3 +64,15 @@ type CreateStoryRequest struct {
 	Duration   int               `json:"duration"   validate:"required,oneof=1 12 24 48"`
 	HiddenFrom []int64           `json:"hidden_from"`
 }
+
+type CropRect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+type CoverCropRequest struct {
+	Mobile  CropRect `json:"mobile"`
+	Desktop CropRect `json:"desktop"`
+}

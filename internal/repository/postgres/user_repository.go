@@ -73,7 +73,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 		SELECT u.id, u.email, u.password, u.token_version,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 	       u.created_at,
-	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
+	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_mobile_url, ''), COALESCE(u.cover_desktop_url, ''), COALESCE(u.cover_url, ''),
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		WHERE u.email = $1
@@ -82,7 +82,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*user.Us
 	err := r.db.QueryRow(ctx, query, email).
 		Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
-			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
+			&u.CreatedAt, &u.AvatarURL, &u.CoverMobileURL, &u.CoverDesktopURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -99,7 +99,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 		SELECT u.id, u.email, u.password, u.token_version,
 		       u.full_name, u.username, COALESCE(u.phone, ''),
 	       u.created_at,
-	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
+	       COALESCE(u.avatar_url, ''), COALESCE(u.cover_mobile_url, ''), COALESCE(u.cover_desktop_url, ''), COALESCE(u.cover_url, ''),
 		       u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		WHERE u.id = $1
@@ -108,7 +108,7 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*user.User, err
 	err := r.db.QueryRow(ctx, query, id).
 		Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
-			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
+			&u.CreatedAt, &u.AvatarURL, &u.CoverMobileURL, &u.CoverDesktopURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -246,7 +246,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*u
 		SELECT u.id, u.email, u.password, u.token_version,
 			   u.full_name, u.username, COALESCE(u.phone, ''),
 			   u.created_at,
-			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
+			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_mobile_url, ''), COALESCE(u.cover_desktop_url, ''), COALESCE(u.cover_url, ''),
 			   u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		WHERE u.username = $1
@@ -255,7 +255,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*u
 	err := r.db.QueryRow(ctx, query, username).
 		Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
-			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
+			&u.CreatedAt, &u.AvatarURL, &u.CoverMobileURL, &u.CoverDesktopURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -308,7 +308,7 @@ func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*us
 		SELECT u.id, u.email, u.password, u.token_version,
 			   u.full_name, u.username, COALESCE(u.phone, ''),
 			   u.created_at,
-			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_url, ''),
+			   COALESCE(u.avatar_url, ''), COALESCE(u.cover_mobile_url, ''), COALESCE(u.cover_desktop_url, ''), COALESCE(u.cover_url, ''),
 			   u.email_verified_at, u.verification_token, u.verification_token_expires_at, u.deactivated_at
 		FROM users u
 		ORDER BY u.created_at DESC
@@ -325,7 +325,7 @@ func (r *UserRepository) List(ctx context.Context, offset int, limit int) ([]*us
 		var u user.User
 		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.TokenVersion,
 			&u.FullName, &u.Username, &u.Phone,
-			&u.CreatedAt, &u.AvatarURL, &u.CoverURL,
+			&u.CreatedAt, &u.AvatarURL, &u.CoverMobileURL, &u.CoverDesktopURL, &u.CoverURL,
 			&u.EmailVerifiedAt, &u.VerificationToken, &u.VerificationTokenExpiresAt, &u.DeactivatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan user row: %w", err)
 		}
@@ -364,9 +364,16 @@ func (r *UserRepository) UpdateAvatar(ctx context.Context, userID int64, avatarU
 }
 
 // UpdateCover sets the cover URL for a user.
-func (r *UserRepository) UpdateCover(ctx context.Context, userID int64, coverURL string) error {
-	query := `UPDATE users SET cover_url = $1, updated_at = NOW() WHERE id = $2`
-	cmd, err := r.db.Exec(ctx, query, coverURL, userID)
+func (r *UserRepository) UpdateCover(ctx context.Context, userID int64, mobileURL, desktopURL, originalURL string) error {
+	query := `
+        UPDATE users
+        SET cover_url          = $1,
+            cover_mobile_url   = $2,
+            cover_desktop_url  = $3,
+            updated_at         = NOW()
+        WHERE id = $4
+    `
+	cmd, err := r.db.Exec(ctx, query, mobileURL, desktopURL, originalURL, userID)
 	if err != nil {
 		return fmt.Errorf("failed to update cover_url: %w", err)
 	}
