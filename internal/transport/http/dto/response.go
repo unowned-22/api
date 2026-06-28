@@ -15,7 +15,6 @@ type UserResponse struct {
 	Phone     string `json:"phone"`
 	AvatarURL string `json:"avatar_url"`
 	CoverURL  string `json:"cover_url"`
-	Role      string `json:"role"`
 	CreatedAt string `json:"created_at"`
 }
 
