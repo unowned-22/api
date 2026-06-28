@@ -26,13 +26,10 @@ type StoryHandler struct {
 	userService  user.UserService
 }
 
-// Note: handler uses domain/story service directly.
-
 func NewStoryHandler(storyService story.StoryService, storage domainstorage.Storage, publicBucket string, userService user.UserService) *StoryHandler {
 	return &StoryHandler{storyService: storyService, storage: storage, publicBucket: publicBucket, userService: userService}
 }
 
-// Publish handles POST /stories
 func (h *StoryHandler) Publish(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -88,7 +85,6 @@ func (h *StoryHandler) toFieldErrors(fields []validator.FieldError) []response.V
 	return out
 }
 
-// ListMine handles GET /stories/me
 func (h *StoryHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -104,7 +100,6 @@ func (h *StoryHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 	out := make([]dto.StoryResponse, 0, len(sts))
 	for _, s := range sts {
 		slides, _ := h.presignSlides(r.Context(), s.Slides)
-		// author metadata
 		var authorName, authorUsername, authorAvatar string
 		if u, err := h.userService.GetProfile(r.Context(), s.UserID); err == nil && u != nil {
 			authorName = u.FullName
@@ -128,7 +123,6 @@ func (h *StoryHandler) ListMine(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusOK, out)
 }
 
-// Feed handles GET /stories/feed
 func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -141,18 +135,16 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 		response.SendError(w, r, err)
 		return
 	}
-	// fetch viewer's existing views so we can mark per-slide seen flags
+
 	views, _ := h.storyService.ListViewsByViewer(r.Context(), userID)
 
 	out := make([]dto.StoryResponse, 0, len(sts))
 	for _, s := range sts {
-		// Build stripped feed slides: only id, rendered_url (presigned) and seen flag.
 		var rawSlides []map[string]any
 		if err := json.Unmarshal(s.Slides, &rawSlides); err != nil {
 			rawSlides = nil
 		}
 
-		// helper to determine seen status for a slide index
 		isSeen := func(m map[int]bool, idx int) bool {
 			if m == nil {
 				return false
@@ -169,8 +161,12 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 		feedSlides := make([]json.RawMessage, 0, len(rawSlides))
 		storyViews := views[s.ID]
 		for i, rs := range rawSlides {
-			stripped := dto.FeedSlideResponse{ID: fmt.Sprintf("%v", rs["id"]), Seen: isSeen(storyViews, i)}
-			// presign rendered_url if present
+			stripped := dto.FeedSlideResponse{
+				ID:        fmt.Sprintf("%v", rs["id"]),
+				Seen:      isSeen(storyViews, i),
+				LinkZones: extractLinkZones(rs),
+			}
+
 			if rv, ok := rs["rendered_url"].(string); ok && rv != "" {
 				if strings.Contains(rv, "/") {
 					if stg, ok := h.storage.(domainstorage.Storage); ok {
@@ -188,7 +184,6 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 			feedSlides = append(feedSlides, b)
 		}
 
-		// author metadata (best-effort)
 		var authorName, authorUsername, authorAvatar string
 		if u, err := h.userService.GetProfile(r.Context(), s.UserID); err == nil && u != nil {
 			authorName = u.FullName
@@ -213,7 +208,6 @@ func (h *StoryHandler) Feed(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusOK, out)
 }
 
-// View handles POST /stories/{id}/view
 func (h *StoryHandler) View(w http.ResponseWriter, r *http.Request) {
 	viewerID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -226,7 +220,7 @@ func (h *StoryHandler) View(w http.ResponseWriter, r *http.Request) {
 		response.SendBadRequest(w, "invalid id")
 		return
 	}
-	// optional JSON body { "slide_index": number }
+
 	var payload struct {
 		SlideIndex *int `json:"slide_index"`
 	}
@@ -239,7 +233,6 @@ func (h *StoryHandler) View(w http.ResponseWriter, r *http.Request) {
 	response.SendSuccess(w, http.StatusNoContent, nil)
 }
 
-// Like handles POST /stories/{id}/like
 func (h *StoryHandler) Like(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -255,7 +248,6 @@ func (h *StoryHandler) Like(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Unlike handles POST /stories/{id}/unlike
 func (h *StoryHandler) Unlike(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -271,7 +263,6 @@ func (h *StoryHandler) Unlike(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Reply handles POST /stories/{id}/reply
 func (h *StoryHandler) Reply(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -298,16 +289,12 @@ func (h *StoryHandler) Reply(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// presignSlides walks the slides JSON array and replaces any media background
-// `url` fields that contain storage keys with short-lived presigned GET URLs.
-// It also presigns an optional top-level `rendered_url` key per slide.
 func (h *StoryHandler) presignSlides(ctx context.Context, slidesJSON []byte) ([]json.RawMessage, error) {
 	var slidesArr []map[string]any
 	if err := json.Unmarshal(slidesJSON, &slidesArr); err != nil {
 		return nil, err
 	}
 	for i := range slidesArr {
-		// look for background.media.url
 		bg, ok := slidesArr[i]["background"].(map[string]any)
 		if ok && bg != nil {
 			if kind, _ := bg["kind"].(string); kind == "media" {
@@ -329,7 +316,6 @@ func (h *StoryHandler) presignSlides(ctx context.Context, slidesJSON []byte) ([]
 			}
 		}
 
-		// also presign top-level rendered_url if present (frontend may upload a composite image)
 		if rv, ok := slidesArr[i]["rendered_url"].(string); ok && rv != "" {
 			if strings.Contains(rv, "/") {
 				if s, ok := h.storage.(domainstorage.Storage); ok {
@@ -361,7 +347,52 @@ func (h *StoryHandler) storageBucket() string {
 	return ""
 }
 
-// Delete handles DELETE /stories/{id}
+func extractLinkZones(slide map[string]any) []dto.LinkZone {
+	elements, ok := slide["elements"].([]any)
+	if !ok || len(elements) == 0 {
+		return nil
+	}
+
+	var zones []dto.LinkZone
+	for _, raw := range elements {
+		el, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if t, _ := el["type"].(string); t != "link" {
+			continue
+		}
+		url, _ := el["url"].(string)
+		if url == "" {
+			continue
+		}
+
+		x, _ := el["x"].(float64)
+		y, _ := el["y"].(float64)
+		width, _ := el["width"].(float64)
+		rotation, _ := el["rotation"].(float64)
+		displayStyle, _ := el["displayStyle"].(string)
+		title, _ := el["title"].(string)
+
+		height := 8.0
+		if displayStyle == "card" {
+			height = 12.0
+		}
+
+		zones = append(zones, dto.LinkZone{
+			URL:          url,
+			DisplayStyle: displayStyle,
+			Title:        title,
+			X:            x,
+			Y:            y,
+			Width:        width,
+			Height:       height,
+			Rotation:     rotation,
+		})
+	}
+	return zones
+}
+
 func (h *StoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
