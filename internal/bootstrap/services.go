@@ -17,6 +17,11 @@ import (
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/domain/usersettings"
+	"github.com/unowned-22/api/internal/domain/video"
+	"github.com/unowned-22/api/internal/domain/videochannel"
+	"github.com/unowned-22/api/internal/domain/videocomment"
+	"github.com/unowned-22/api/internal/domain/videoplaylist"
+	"github.com/unowned-22/api/internal/domain/videosubscription"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	outboxpub "github.com/unowned-22/api/internal/infrastructure/outbox"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
@@ -24,22 +29,27 @@ import (
 )
 
 type Services struct {
-	Auth            auth.AuthService
-	PasswordReset   service.PasswordResetService
-	User            *service.UserService
-	Health          *service.HealthService
-	SystemSettings  systemsettings.Service
-	UserSettings    usersettings.Service
-	Story           *service.StoryService
-	Friendship      *service.FriendshipService
-	CloseFriend     closefriend.Service
-	Profile         *service.ProfileService
-	Notification    notification.Service
-	Photo           photo.Service
-	Album           album.Service
-	PhotoComment    photocomment.Service
-	Messenger       messenger.Service
-	OutboxPublisher event.Publisher
+	Auth              auth.AuthService
+	PasswordReset     service.PasswordResetService
+	User              *service.UserService
+	Health            *service.HealthService
+	SystemSettings    systemsettings.Service
+	UserSettings      usersettings.Service
+	Story             *service.StoryService
+	Friendship        *service.FriendshipService
+	CloseFriend       closefriend.Service
+	Profile           *service.ProfileService
+	Notification      notification.Service
+	Photo             photo.Service
+	Album             album.Service
+	PhotoComment      photocomment.Service
+	VideoChannel      videochannel.Service
+	Video             video.Service
+	VideoComment      videocomment.Service
+	VideoPlaylist     videoplaylist.Service
+	VideoSubscription videosubscription.Service
+	Messenger         messenger.Service
+	OutboxPublisher   event.Publisher
 }
 
 // InitServices constructs application services from repositories and infra.
@@ -83,25 +93,35 @@ func InitServices(
 	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
 	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage, outboxPublisher, cfg.MinIOBucket)
 	photoCommentSvc := service.NewPhotoCommentService(repos.PhotoComment, repos.Photo, outboxPublisher)
+	videoChannelSvc := service.NewVideoChannelService(repos.VideoChannel)
+	videoSubSvc := service.NewVideoSubscriptionService(repos.VideoSubscription, repos.VideoChannel)
+	videoSvc := service.NewVideoService(repos.Video, repos.VideoChannel, storage, queue.NewVideoJobQueue(publisher, cfg.VideoProcessQueue), cfg.MinIOBucket, outboxPublisher, cfg.VideoMaxFileSizeBytes)
+	videoCommentSvc := service.NewVideoCommentService(repos.VideoComment, repos.Video, outboxPublisher)
+	videoPlaylistSvc := service.NewVideoPlaylistService(repos.VideoPlaylist, repos.Video)
 	albumSvc := service.NewAlbumService(repos.Album, repos.Photo)
 	messengerSvc := service.NewMessengerService(repos.Conversation, repos.Message, repos.Member, repos.Presence, repos.MessengerPrivacy, repos.Draft, friendshipSvc, storage, cfg.MinIOBucket, outboxPublisher)
 
 	return &Services{
-		Auth:            authSvc,
-		PasswordReset:   passwordResetSvc,
-		User:            userSvc,
-		Health:          healthSvc,
-		SystemSettings:  systemSettingsSvc,
-		UserSettings:    userSettingsSvc,
-		Story:           storySvc,
-		Friendship:      friendshipSvc,
-		CloseFriend:     closeFriendSvc,
-		Profile:         profileSvc,
-		Notification:    notifSvc,
-		Photo:           photoSvc,
-		PhotoComment:    photoCommentSvc,
-		Album:           albumSvc,
-		Messenger:       messengerSvc,
-		OutboxPublisher: outboxPublisher,
+		Auth:              authSvc,
+		PasswordReset:     passwordResetSvc,
+		User:              userSvc,
+		Health:            healthSvc,
+		SystemSettings:    systemSettingsSvc,
+		UserSettings:      userSettingsSvc,
+		Story:             storySvc,
+		Friendship:        friendshipSvc,
+		CloseFriend:       closeFriendSvc,
+		Profile:           profileSvc,
+		Notification:      notifSvc,
+		Photo:             photoSvc,
+		PhotoComment:      photoCommentSvc,
+		VideoChannel:      videoChannelSvc,
+		Video:             videoSvc,
+		VideoComment:      videoCommentSvc,
+		VideoPlaylist:     videoPlaylistSvc,
+		VideoSubscription: videoSubSvc,
+		Album:             albumSvc,
+		Messenger:         messengerSvc,
+		OutboxPublisher:   outboxPublisher,
 	}
 }

@@ -78,7 +78,7 @@ func NewApp() (*App, error) {
 	hub := ws.NewHubWithPresence(repos.Presence, repos.Friendship)
 	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache, imageProcessor)
 	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
-	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub, repos.Member)
+	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub, repos.Member, repos.VideoSubscription)
 	if err != nil {
 		return nil, err
 	}

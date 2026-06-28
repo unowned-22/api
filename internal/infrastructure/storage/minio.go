@@ -186,6 +186,17 @@ func (s *MinIOStorage) StatObject(ctx context.Context, bucket, key string) (*dom
 	}, nil
 }
 
+func (s *MinIOStorage) GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
+	if err := s.ensureBucketExists(ctx, bucket); err != nil {
+		return nil, err
+	}
+	obj, err := s.client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
 // DeleteObject removes an object from a bucket.
 func (s *MinIOStorage) DeleteObject(ctx context.Context, bucketName, objectName string) error {
 	return s.Delete(ctx, bucketName, objectName)

@@ -75,6 +75,9 @@ type Config struct {
 	MessengerTypingTimeoutS    int    `envconfig:"MESSENGER_TYPING_TIMEOUT_S"       default:"5"`
 	MessengerInviteLinkBaseURL string `envconfig:"MESSENGER_INVITE_LINK_BASE_URL"`
 	MessengerDefaultDisappearS int    `envconfig:"MESSENGER_DEFAULT_DISAPPEAR_S"    default:"0"`
+
+	VideoProcessQueue     string `envconfig:"VIDEO_PROCESS_QUEUE"       default:"video.process"`
+	VideoMaxFileSizeBytes int64  `envconfig:"VIDEO_MAX_FILE_SIZE_BYTES" default:"2147483648"`
 }
 
 func Load() (*Config, error) {

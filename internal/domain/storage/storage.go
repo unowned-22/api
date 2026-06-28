@@ -38,4 +38,5 @@ type Storage interface {
 	DeleteObject(ctx context.Context, bucketName, objectName string) error
 	PresignURL(ctx context.Context, bucketName, objectName string, expiry time.Duration) (string, error)
 	StatObject(ctx context.Context, bucket, key string) (*ObjectInfo, error)
+	GetObject(ctx context.Context, bucket, key string) (io.ReadCloser, error)
 }

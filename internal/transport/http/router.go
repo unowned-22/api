@@ -55,6 +55,11 @@ func NewRouter(
 	photoHandler *handler.PhotoHandler,
 	albumHandler *handler.AlbumHandler,
 	photoCommentHandler *handler.PhotoCommentHandler,
+	videoChannelHandler *handler.VideoChannelHandler,
+	videoHandler *handler.VideoHandler,
+	videoCommentHandler *handler.VideoCommentHandler,
+	videoPlaylistHandler *handler.VideoPlaylistHandler,
+	videoSubscriptionHandler *handler.VideoSubscriptionHandler,
 	closeFriendHandler *handler.CloseFriendHandler,
 	messengerHandler *handler.MessengerHandler,
 	tokenManager token.Manager,
@@ -201,6 +206,38 @@ func NewRouter(
 			r.Delete("/photos/{photoID}", photoHandler.DeletePhoto)
 			r.Post("/photos/{photoID}/like", photoCommentHandler.LikePhoto)
 			r.Delete("/photos/{photoID}/like", photoCommentHandler.UnlikePhoto)
+
+			r.Get("/channels/me", videoChannelHandler.GetMyChannel)
+			r.Patch("/channels/me", videoChannelHandler.UpdateMyChannel)
+			r.Get("/channels/{id}", videoChannelHandler.GetChannel)
+			r.Get("/channels/{id}/videos", videoChannelHandler.ListChannelVideos)
+			r.Post("/channels/{id}/subscribe", videoSubscriptionHandler.Subscribe)
+			r.Delete("/channels/{id}/subscribe", videoSubscriptionHandler.Unsubscribe)
+			r.Get("/channels/{id}/subscribers", videoSubscriptionHandler.GetSubscriberCount)
+			r.Get("/users/me/subscriptions", videoSubscriptionHandler.ListMySubscriptions)
+			r.Post("/videos", videoHandler.UploadVideo)
+			r.Get("/videos/feed", videoHandler.VideoFeed)
+			r.Get("/videos/search", videoHandler.SearchVideos)
+			r.Get("/videos/{id}", videoHandler.GetVideo)
+			r.Patch("/videos/{id}", videoHandler.UpdateVideo)
+			r.Delete("/videos/{id}", videoHandler.DeleteVideo)
+			r.Post("/videos/{id}/view", videoHandler.RecordView)
+			r.Post("/videos/{id}/like", videoHandler.LikeVideo)
+			r.Delete("/videos/{id}/like", videoHandler.UnlikeVideo)
+			r.Get("/videos/{videoID}/comments", videoCommentHandler.ListComments)
+			r.Post("/videos/{videoID}/comments", videoCommentHandler.AddComment)
+			r.Delete("/videos/{videoID}/comments/{commentID}", videoCommentHandler.DeleteComment)
+			r.Get("/videos/{videoID}/comments/{commentID}/replies", videoCommentHandler.ListReplies)
+			r.Post("/videos/{videoID}/comments/{commentID}/like", videoCommentHandler.LikeComment)
+			r.Delete("/videos/{videoID}/comments/{commentID}/like", videoCommentHandler.UnlikeComment)
+			r.Get("/playlists", videoPlaylistHandler.ListMyPlaylists)
+			r.Post("/playlists", videoPlaylistHandler.CreatePlaylist)
+			r.Get("/playlists/{id}", videoPlaylistHandler.GetPlaylist)
+			r.Patch("/playlists/{id}", videoPlaylistHandler.UpdatePlaylist)
+			r.Delete("/playlists/{id}", videoPlaylistHandler.DeletePlaylist)
+			r.Post("/playlists/{id}/items", videoPlaylistHandler.AddVideoToPlaylist)
+			r.Delete("/playlists/{id}/items/{videoID}", videoPlaylistHandler.RemoveVideoFromPlaylist)
+			r.Get("/playlists/{id}/items", videoPlaylistHandler.ListPlaylistItems)
 
 			r.Post("/albums", albumHandler.CreateAlbum)
 			r.Get("/albums", albumHandler.ListMyAlbums)

@@ -11,7 +11,9 @@ import (
 // is consumed by an async worker (see README.md for the full flow).
 type ProcessJob struct {
 	// UserID is the owner of the media.
-	UserID int64
+	UserID    int64
+	VideoID   int64
+	ChannelID int64
 
 	// RawKey is the object-storage key of the already-uploaded raw video.
 	// The worker fetches this key, probes it, transcodes it to Variants,

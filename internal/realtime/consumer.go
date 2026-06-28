@@ -13,6 +13,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/domain/story"
 	"github.com/unowned-22/api/internal/domain/usersettings"
+	"github.com/unowned-22/api/internal/domain/videosubscription"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
 	"github.com/unowned-22/api/internal/logger"
 	ws "github.com/unowned-22/api/internal/transport/ws"
@@ -22,7 +23,7 @@ type Consumer struct {
 	consumer *queue.AMQPConsumer
 }
 
-func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, storyRepo story.StoryRepository, userSettingsRepo usersettings.Repository, notificationRepo notification.Repository, hub *ws.Hub, messengerMemberRepo messenger.MemberRepository) (*Consumer, error) {
+func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, storyRepo story.StoryRepository, userSettingsRepo usersettings.Repository, notificationRepo notification.Repository, hub *ws.Hub, messengerMemberRepo messenger.MemberRepository, videoSubRepo videosubscription.Repository) (*Consumer, error) {
 	handlers := map[event.Name]event.Handler{
 		event.FriendRequestReceived: NewFriendRequestReceivedHandler(userSettingsRepo, notificationRepo, hub),
 		event.FriendRequestAccepted: NewFriendRequestAcceptedHandler(userSettingsRepo, notificationRepo, hub),
@@ -31,6 +32,7 @@ func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, story
 		event.PhotoCommented:        NewPhotoCommentedHandler(userSettingsRepo, notificationRepo, hub),
 		event.CommentReplied:        NewCommentRepliedHandler(userSettingsRepo, notificationRepo, hub),
 		event.CommentLiked:          NewCommentLikedHandler(userSettingsRepo, notificationRepo, hub),
+		event.VideoPublished:        NewVideoPublishedHandler(videoSubRepo, hub),
 		// Messenger realtime events
 		event.MessengerMessageSent:     NewMessengerMessageSentHandler(hub, userSettingsRepo, notificationRepo),
 		event.MessengerScheduledReady:  NewMessengerScheduledReadyHandler(hub),
