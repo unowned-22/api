@@ -74,8 +74,20 @@ type StoryMediaResponse struct {
 	MediaType string `json:"media_type"`
 }
 
+type LinkZone struct {
+	URL          string  `json:"url"`
+	DisplayStyle string  `json:"display_style"` // "pill" | "card"
+	Title        string  `json:"title,omitempty"`
+	X            float64 `json:"x"`      // centre-x, % of canvas width
+	Y            float64 `json:"y"`      // centre-y, % of canvas height
+	Width        float64 `json:"width"`  // element width, % of canvas width
+	Height       float64 `json:"height"` // estimated height, % of canvas height
+	Rotation     float64 `json:"rotation"`
+}
+
 type FeedSlideResponse struct {
-	ID          string `json:"id"`
-	RenderedURL string `json:"rendered_url,omitempty"`
-	Seen        bool   `json:"seen"`
+	ID          string     `json:"id"`
+	RenderedURL string     `json:"rendered_url,omitempty"`
+	Seen        bool       `json:"seen"`
+	LinkZones   []LinkZone `json:"link_zones,omitempty"`
 }
