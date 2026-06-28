@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/config"
+	"github.com/unowned-22/api/internal/domain/media"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
 	stor "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
@@ -72,9 +73,10 @@ func NewApp() (*App, error) {
 		}
 	}()
 
+	imageProcessor := media.NewProcessor()
 	repos := InitRepositories(pool)
 	hub := ws.NewHubWithPresence(repos.Presence, repos.Friendship)
-	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache)
+	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache, imageProcessor)
 	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
 	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub, repos.Member)
 	if err != nil {

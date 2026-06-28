@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
     deactivated_at                TIMESTAMPTZ,
     avatar_url                    VARCHAR(512),
     cover_url                     VARCHAR(512),
+    cover_mobile_url              VARCHAR(512),
+    cover_desktop_url             VARCHAR(512),
     created_at                    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at                    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
