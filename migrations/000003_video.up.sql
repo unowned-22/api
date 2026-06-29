@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS video_views (
 
 CREATE INDEX IF NOT EXISTS idx_video_views_video_id ON video_views(video_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uidx_video_views_user_day
-    ON video_views(video_id, user_id, DATE(viewed_at))
+    ON video_views(video_id, user_id, ((viewed_at AT TIME ZONE 'UTC')::date))
     WHERE user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS video_likes (

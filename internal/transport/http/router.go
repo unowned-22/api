@@ -207,8 +207,11 @@ func NewRouter(
 			r.Post("/photos/{photoID}/like", photoCommentHandler.LikePhoto)
 			r.Delete("/photos/{photoID}/like", photoCommentHandler.UnlikePhoto)
 
+			r.Post("/channels", videoChannelHandler.CreateMyChannel)
 			r.Get("/channels/me", videoChannelHandler.GetMyChannel)
 			r.Patch("/channels/me", videoChannelHandler.UpdateMyChannel)
+			r.Post("/channels/me/avatar", videoChannelHandler.UploadAvatar)
+			r.Post("/channels/me/banner", videoChannelHandler.UploadBanner)
 			r.Get("/channels/{id}", videoChannelHandler.GetChannel)
 			r.Get("/channels/{id}/videos", videoChannelHandler.ListChannelVideos)
 			r.Post("/channels/{id}/subscribe", videoSubscriptionHandler.Subscribe)

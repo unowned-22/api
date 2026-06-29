@@ -13,11 +13,19 @@ type Repository interface {
 	DecrSubscribers(ctx context.Context, id int64) error
 }
 
+type CreateRequest struct {
+	Name        string
+	Description string
+}
+
 type Service interface {
 	GetOrCreate(ctx context.Context, userID int64, fullName string) (*Channel, error)
+	CreateChannel(ctx context.Context, userID int64, req CreateRequest) (*Channel, error)
 	GetChannel(ctx context.Context, id int64) (*Channel, error)
 	GetChannelByUser(ctx context.Context, userID int64) (*Channel, error)
 	UpdateChannel(ctx context.Context, channelID int64, requesterID int64, req UpdateRequest) (*Channel, error)
+	UploadAvatar(ctx context.Context, userID int64, data []byte, size int64, contentType string) (*Channel, error)
+	UploadBanner(ctx context.Context, userID int64, data []byte, size int64, contentType string) (*Channel, error)
 }
 
 type UpdateRequest struct {

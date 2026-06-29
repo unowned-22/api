@@ -93,7 +93,7 @@ func InitServices(
 	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
 	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage, outboxPublisher, cfg.MinIOBucket)
 	photoCommentSvc := service.NewPhotoCommentService(repos.PhotoComment, repos.Photo, outboxPublisher)
-	videoChannelSvc := service.NewVideoChannelService(repos.VideoChannel)
+	videoChannelSvc := service.NewVideoChannelService(repos.VideoChannel, storage, cfg.MinIOBucket)
 	videoSubSvc := service.NewVideoSubscriptionService(repos.VideoSubscription, repos.VideoChannel)
 	videoSvc := service.NewVideoService(repos.Video, repos.VideoChannel, storage, queue.NewVideoJobQueue(publisher, cfg.VideoProcessQueue), cfg.MinIOBucket, outboxPublisher, cfg.VideoMaxFileSizeBytes)
 	videoCommentSvc := service.NewVideoCommentService(repos.VideoComment, repos.Video, outboxPublisher)

@@ -37,6 +37,8 @@ tags:
     description: Manage the close friends list used for story visibility
   - name: stories
     description: Ephemeral photo/video stories, feed, views, likes and replies
+  - name: channels
+    description: Video channel creation, metadata, avatars and banners
   - name: photos
     description: Photo upload, listing, metadata and visibility management
   - name: albums
@@ -56,6 +58,128 @@ components:
         message:
           type: string
           example: operation completed successfully
+
+    CreateChannelRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          example: My Channel
+        description:
+          type: string
+          maxLength: 500
+          example: My channel description
+
+    ChannelResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+        avatar_url:
+          type: string
+        banner_url:
+          type: string
+        subscribers_count:
+          type: integer
+          format: int64
+        videos_count:
+          type: integer
+          format: int64
+        is_subscribed:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    ChannelAvatarResponse:
+      type: object
+      properties:
+        avatar_url:
+          type: string
+
+    ChannelBannerResponse:
+      type: object
+      properties:
+        banner_url:
+          type: string
+
+    VideoResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        channel_id:
+          type: integer
+          format: int64
+        user_id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        visibility:
+          type: string
+        status:
+          type: string
+        cover_url:
+          type: string
+        thumbnail_url:
+          type: string
+        hls_url:
+          type: string
+        mp4_360_url:
+          type: string
+        mp4_720_url:
+          type: string
+        duration_sec:
+          type: number
+        width:
+          type: integer
+        height:
+          type: integer
+        views_count:
+          type: integer
+          format: int64
+        likes_count:
+          type: integer
+          format: int64
+        comments_count:
+          type: integer
+          format: int64
+        is_liked:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    VideoListResponse:
+      type: object
+      properties:
+        videos:
+          type: array
+          items:
+            $ref: '#/components/schemas/VideoResponse'
+        total:
+          type: integer
 
     ErrorDetail:
       type: object
@@ -1173,6 +1297,181 @@ components:
 # PATHS
 # ────────────────────────────────────────────────────────────────────────────────
 paths:
+  /api/v1/channels:
+    post:
+      tags: [channels]
+      summary: Create the current user's channel
+      operationId: createChannel
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChannelRequest'
+      responses:
+        "201":
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ChannelResponse'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "409": { $ref: '#/components/responses/409Conflict' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+  /api/v1/channels/me/avatar:
+    post:
+      tags: [channels]
+      summary: Upload the current user's channel avatar
+      operationId: uploadChannelAvatar
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Avatar uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ChannelAvatarResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+  /api/v1/channels/me/banner:
+    post:
+      tags: [channels]
+      summary: Upload the current user's channel banner
+      operationId: uploadChannelBanner
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Banner uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ChannelBannerResponse'
+        "400": { $ref: '#/components/responses/400BadRequest' }
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "404": { $ref: '#/components/responses/404NotFound' }
+        "422": { $ref: '#/components/responses/422Validation' }
+        "500": { $ref: '#/components/responses/500Internal' }
+  /api/v1/videos/feed:
+    get:
+      tags: [channels]
+      summary: List videos from subscribed channels
+      description: Returns the authenticated user's subscription feed, containing only public videos from channels they follow.
+      operationId: videosFeed
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+      responses:
+        "200":
+          description: Subscription feed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VideoListResponse'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
+  /api/v1/videos/search:
+    get:
+      tags: [channels]
+      summary: Search public videos
+      description: Searches public videos by title or description and optionally filters by category.
+      operationId: videosSearch
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+      responses:
+        "200":
+          description: Matching public videos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VideoListResponse'
+        "401": { $ref: '#/components/responses/401Unauthorized' }
+        "500": { $ref: '#/components/responses/500Internal' }
   /health/live:
     get:
       tags: [health]

@@ -410,6 +410,24 @@ The project includes a Stories feature implemented under `internal/domain/story`
 
 Agents making changes to Story code should: (1) fix the build-breaking gap above first, (2) decide and document how `friends`/`close` visibility is enforced in the feed query before shipping it as a real feature, (3) preserve the per-story-row model and the private-media presign pattern unless a migration plan and data-backfill are provided.
 
+## Video channels, HLS processing, and video discovery
+
+The project now includes a richer video feature set under `internal/domain/video`, `internal/service/video_service.go`, `internal/repository/postgres/video_repository.go`, `internal/transport/http/handler/video_handler.go`, and `internal/worker/handler/video_process_handler.go`.
+
+Required behavior for agents touching this area:
+
+- Channel onboarding is explicit: users must create a channel before uploading videos. Channel creation, avatar upload, and banner upload live under `/api/v1/channels` and `/api/v1/channels/me/*`.
+- Video upload now requires an existing channel and should not silently create one in the service layer.
+- The processing pipeline must generate adaptive HLS output rather than only MP4 variants. The worker should create a master playlist (`master.m3u8`) plus per-variant playlists/segments, upload them to storage, and mark the video ready with the HLS master key.
+- Video responses should expose the HLS master URL via the `hls_url` field when a presigned URL is available.
+- Repository and service behavior for video discovery must remain consistent:
+  - `ListChannelVideos` must query the repository and return actual channel videos.
+  - `Feed` must use `video_subscriptions` to return only videos from subscribed channels.
+  - `Search` must apply `q` and `category` filters using case-insensitive text matching and optional category filtering.
+  - `GetVideo` must enforce private-video visibility and populate `IsLiked` for authenticated viewers.
+  - `RecordView` must receive a hashed IP value in the handler layer before persistence.
+- Any changes to these endpoints must keep `internal/docs/openapi.yaml` in sync, including the feed/search query parameters and the new HLS response field.
+
 ## Transactional Outbox Pattern
 
 The application uses a Transactional Outbox to reliably publish domain events to external brokers (RabbitMQ) while keeping domain state changes and event persistence atomic.

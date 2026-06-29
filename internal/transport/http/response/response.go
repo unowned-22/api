@@ -305,6 +305,10 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		status = http.StatusNotFound
 		code = "CHANNEL_NOT_FOUND"
 		message = "channel not found"
+	case errors.Is(err, errs.ErrUnsupportedVideoType):
+		status = http.StatusUnprocessableEntity
+		code = "UNSUPPORTED_MEDIA_TYPE"
+		message = "unsupported image format"
 	case errors.Is(err, errs.ErrChannelAlreadyExists):
 		status = http.StatusConflict
 		code = "CHANNEL_ALREADY_EXISTS"

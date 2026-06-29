@@ -100,6 +100,43 @@ Remember: whenever you change or add endpoints, update `internal/docs/openapi.ya
 
 ---
 
+## Video channels and HLS videos
+
+The API now supports a dedicated video channel flow and adaptive HLS video delivery:
+
+- Create a channel with `POST /api/v1/channels` and upload avatar/banner assets with `POST /api/v1/channels/me/avatar` and `POST /api/v1/channels/me/banner`.
+- Uploading a video now requires an existing channel via `POST /api/v1/videos`.
+- Video processing produces adaptive HLS output: a master playlist (`master.m3u8`) plus variant playlists/segments for multiple resolutions, and the video response exposes an `hls_url` when available.
+- Video discovery endpoints are now functional:
+  - `GET /api/v1/channels/{id}/videos` lists videos for a channel.
+  - `GET /api/v1/videos/feed` returns public videos from the authenticated user's subscribed channels.
+  - `GET /api/v1/videos/search?q=...&category=...` searches public videos by title/description and optional category.
+  - `GET /api/v1/videos/{id}` enforces private video visibility and populates `is_liked` for authenticated viewers.
+  - `POST /api/v1/videos/{id}/view` records views with a hashed IP value for privacy.
+
+Example channel creation:
+
+```bash
+curl -X POST http://localhost:8080/api/v1/channels \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"My Channel","description":"My video channel"}'
+```
+
+Example video upload (requires a previously created channel):
+
+```bash
+curl -X POST http://localhost:8080/api/v1/videos \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@/path/to/video.mp4" \
+  -F "title=My video" \
+  -F "description=Sample upload" \
+  -F "category=gaming" \
+  -F "visibility=public"
+```
+
+---
+
 ## CLI Usage
 
 The application supports the following CLI commands:

@@ -2,8 +2,11 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"path"
 	"strconv"
@@ -112,7 +115,7 @@ func (h *VideoHandler) UploadVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	channel, err := h.channels.GetOrCreate(r.Context(), userID, "")
+	channel, err := h.channels.GetChannelByUser(r.Context(), userID)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
@@ -240,7 +243,7 @@ func (h *VideoHandler) RecordView(w http.ResponseWriter, r *http.Request) {
 		response.SendBadRequest(w, "invalid id")
 		return
 	}
-	if err := h.videos.RecordView(r.Context(), id, userID, r.RemoteAddr); err != nil {
+	if err := h.videos.RecordView(r.Context(), id, userID, hashIP(r.RemoteAddr)); err != nil {
 		response.SendError(w, r, err)
 		return
 	}
@@ -296,6 +299,7 @@ func (h *VideoHandler) toVideoResponse(ctx context.Context, v *domainvideo.Video
 		Status:        string(v.Status),
 		CoverURL:      v.CoverKey,
 		ThumbnailURL:  v.ThumbnailKey,
+		HLSURL:        v.HLSKey,
 		DurationSec:   v.DurationSec,
 		Width:         v.Width,
 		Height:        v.Height,
@@ -315,6 +319,11 @@ func (h *VideoHandler) toVideoResponse(ctx context.Context, v *domainvideo.Video
 			resp.ThumbnailURL = url
 		}
 	}
+	if v.HLSKey != "" {
+		if url, err := h.storage.PresignURL(ctx, h.cfg.MinIOBucket, v.HLSKey, time.Hour); err == nil {
+			resp.HLSURL = url
+		}
+	}
 	return resp
 }
 
@@ -325,6 +334,15 @@ func (h *VideoHandler) toVideoResponses(ctx context.Context, items []*domainvide
 		out = append(out, &resp)
 	}
 	return out
+}
+
+func hashIP(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	sum := sha256.Sum256([]byte(host))
+	return fmt.Sprintf("%x", sum)
 }
 
 type byteReader struct {

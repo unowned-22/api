@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/jackc/pgconn"
@@ -74,10 +75,100 @@ func (r *VideoRepository) ListByChannel(ctx context.Context, channelID int64, vi
 	return r.list(ctx, `WHERE channel_id=$1`, channelID, limit, offset)
 }
 func (r *VideoRepository) Feed(ctx context.Context, subscriberID int64, limit, offset int) ([]*video.Video, int, error) {
-	return r.list(ctx, `WHERE status='ready' AND visibility='public'`, nil, limit, offset)
+	const q = `
+		SELECT v.id, v.channel_id, v.user_id, v.title, v.description, v.category,
+		       v.visibility, v.status, v.raw_key, v.hls_key, v.mp4_360_key, v.mp4_720_key,
+		       v.thumbnail_key, v.duration_sec, v.width, v.height, v.size_bytes,
+		       v.video_codec, v.audio_codec, v.views_count, v.likes_count,
+		       v.comments_count, v.created_at, v.updated_at
+		FROM videos v
+		INNER JOIN video_subscriptions s ON s.channel_id = v.channel_id
+		WHERE s.subscriber_id = $1
+		  AND v.status = 'ready'
+		  AND v.visibility = 'public'
+		ORDER BY v.created_at DESC
+		LIMIT $2 OFFSET $3`
+
+	rows, err := r.pool.Query(ctx, q, subscriberID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var out []*video.Video
+	for rows.Next() {
+		v := &video.Video{}
+		if err := rows.Scan(
+			&v.ID, &v.ChannelID, &v.UserID, &v.Title, &v.Description, &v.Category,
+			&v.Visibility, &v.Status, &v.RawKey, &v.HLSKey, &v.MP4360Key, &v.MP4720Key,
+			&v.ThumbnailKey, &v.DurationSec, &v.Width, &v.Height, &v.SizeBytes,
+			&v.VideoCodec, &v.AudioCodec, &v.ViewsCount, &v.LikesCount,
+			&v.CommentsCount, &v.CreatedAt, &v.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		v.CoverKey = v.ThumbnailKey
+		out = append(out, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return out, len(out), nil
 }
 func (r *VideoRepository) Search(ctx context.Context, query, category string, limit, offset int) ([]*video.Video, int, error) {
-	return r.list(ctx, `WHERE status='ready' AND visibility='public'`, nil, limit, offset)
+	const base = `
+		SELECT id, channel_id, user_id, title, description, category,
+		       visibility, status, raw_key, hls_key, mp4_360_key, mp4_720_key,
+		       thumbnail_key, duration_sec, width, height, size_bytes,
+		       video_codec, audio_codec, views_count, likes_count,
+		       comments_count, created_at, updated_at
+		FROM videos
+		WHERE status = 'ready' AND visibility = 'public'`
+
+	args := []any{}
+	cond := ""
+	idx := 1
+
+	if query != "" {
+		cond += fmt.Sprintf(" AND (title ILIKE $%d OR description ILIKE $%d)", idx, idx+1)
+		like := "%" + query + "%"
+		args = append(args, like, like)
+		idx += 2
+	}
+	if category != "" {
+		cond += fmt.Sprintf(" AND category = $%d", idx)
+		args = append(args, category)
+		idx++
+	}
+
+	args = append(args, limit, offset)
+	orderAndPage := fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", idx, idx+1)
+
+	rows, err := r.pool.Query(ctx, base+cond+orderAndPage, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var out []*video.Video
+	for rows.Next() {
+		v := &video.Video{}
+		if err := rows.Scan(
+			&v.ID, &v.ChannelID, &v.UserID, &v.Title, &v.Description, &v.Category,
+			&v.Visibility, &v.Status, &v.RawKey, &v.HLSKey, &v.MP4360Key, &v.MP4720Key,
+			&v.ThumbnailKey, &v.DurationSec, &v.Width, &v.Height, &v.SizeBytes,
+			&v.VideoCodec, &v.AudioCodec, &v.ViewsCount, &v.LikesCount,
+			&v.CommentsCount, &v.CreatedAt, &v.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		v.CoverKey = v.ThumbnailKey
+		out = append(out, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return out, len(out), nil
 }
 func (r *VideoRepository) list(ctx context.Context, where string, arg any, limit, offset int) ([]*video.Video, int, error) {
 	rows, err := r.pool.Query(ctx, `SELECT id,channel_id,user_id,title,description,category,visibility,status,raw_key,hls_key,mp4_360_key,mp4_720_key,thumbnail_key,duration_sec,width,height,size_bytes,video_codec,audio_codec,views_count,likes_count,comments_count,created_at,updated_at FROM videos `+where+` ORDER BY created_at DESC LIMIT $2 OFFSET $3`, arg, limit, offset)

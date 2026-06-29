@@ -43,7 +43,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	photoHandler := handler.NewPhotoHandler(svcs.Photo, svcs.Album, svcs.Profile)
 	albumHandler := handler.NewAlbumHandler(svcs.Album, svcs.Photo, svcs.Profile)
 	photoCommentHandler := handler.NewPhotoCommentHandler(svcs.PhotoComment, svcs.Photo)
-	videoChannelHandler := handler.NewVideoChannelHandler(svcs.VideoChannel, svcs.VideoSubscription)
+	videoChannelHandler := handler.NewVideoChannelHandler(svcs.VideoChannel, svcs.VideoSubscription, svcs.Video)
 	videoHandler := handler.NewVideoHandler(svcs.Video, svcs.VideoChannel, svcs.User, storage, cfg)
 	videoCommentHandler := handler.NewVideoCommentHandler(svcs.VideoComment)
 	videoPlaylistHandler := handler.NewVideoPlaylistHandler(svcs.VideoPlaylist)

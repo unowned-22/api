@@ -15,6 +15,19 @@ type ChannelResponse struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
+type CreateChannelRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type ChannelAvatarResponse struct {
+	AvatarURL string `json:"avatar_url"`
+}
+
+type ChannelBannerResponse struct {
+	BannerURL string `json:"banner_url"`
+}
+
 type UpdateChannelRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -33,6 +46,7 @@ type VideoResponse struct {
 	Status        string    `json:"status"`
 	CoverURL      string    `json:"cover_url"`
 	ThumbnailURL  string    `json:"thumbnail_url,omitempty"`
+	HLSURL        string    `json:"hls_url,omitempty"`
 	MP4360URL     string    `json:"mp4_360_url"`
 	MP4720URL     string    `json:"mp4_720_url,omitempty"`
 	DurationSec   float64   `json:"duration_sec"`

@@ -54,7 +54,23 @@ func (s *VideoService) Upload(ctx context.Context, req domainvideo.UploadRequest
 	return v, nil
 }
 func (s *VideoService) GetVideo(ctx context.Context, id int64, viewerID int64) (*domainvideo.Video, error) {
-	return s.videoRepo.GetByID(ctx, id)
+	v, err := s.videoRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if v.Visibility == domainvideo.VisibilityPrivate && v.UserID != viewerID {
+		return nil, errs.ErrVideoNotFound
+	}
+
+	if viewerID != 0 {
+		liked, err := s.videoRepo.IsLiked(ctx, viewerID, id)
+		if err == nil {
+			v.IsLiked = liked
+		}
+	}
+
+	return v, nil
 }
 func (s *VideoService) UpdateMeta(ctx context.Context, id int64, requesterID int64, req domainvideo.UpdateMetaRequest) (*domainvideo.Video, error) {
 	v, err := s.videoRepo.GetByID(ctx, id)
