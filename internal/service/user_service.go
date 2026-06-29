@@ -9,8 +9,12 @@ import (
 	"path"
 	"strings"
 
+	"encoding/json"
+
+	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/media"
 	"github.com/unowned-22/api/internal/errs"
+	"github.com/unowned-22/api/internal/logger"
 	"github.com/unowned-22/api/internal/validator"
 
 	domainstorage "github.com/unowned-22/api/internal/domain/storage"
@@ -24,6 +28,7 @@ type UserService struct {
 	userSettingsRepo domainusersettings.Repository
 	publicBucket     string
 	imageProcessor   *media.Processor
+	publisher        event.Publisher
 }
 
 func NewUserService(
@@ -32,6 +37,7 @@ func NewUserService(
 	userSettingsRepo domainusersettings.Repository,
 	publicBucket string,
 	imageProcessor *media.Processor,
+	publisher event.Publisher,
 ) *UserService {
 	return &UserService{
 		repo:             repo,
@@ -39,6 +45,26 @@ func NewUserService(
 		userSettingsRepo: userSettingsRepo,
 		publicBucket:     publicBucket,
 		imageProcessor:   imageProcessor,
+		publisher:        publisher,
+	}
+}
+
+// publishProfileUpdated notifies subscribers (currently: the search index
+// sync handler) that a user's searchable fields may have changed. Only
+// verified users are ever in the index, so we skip publishing for users who
+// haven't confirmed their email yet — the event would be a no-op downstream
+// anyway, this just avoids unnecessary queue traffic.
+func (s *UserService) publishProfileUpdated(ctx context.Context, userID int64) {
+	if s.publisher == nil {
+		return
+	}
+	u, err := s.repo.GetByID(ctx, userID)
+	if err != nil || u == nil || u.EmailVerifiedAt == nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]interface{}{"user_id": userID})
+	if err := s.publisher.Publish(ctx, event.Event{Name: event.UserProfileUpdated, Payload: payload}); err != nil {
+		logger.Log.WithError(err).WithFields(map[string]interface{}{"user_id": userID}).Warn("failed to publish user.profile_updated")
 	}
 }
 
@@ -55,7 +81,11 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID int64, fullName,
 		return err
 	}
 
-	return s.repo.UpdateProfile(ctx, userID, fullName, username, phone)
+	if err := s.repo.UpdateProfile(ctx, userID, fullName, username, phone); err != nil {
+		return err
+	}
+	s.publishProfileUpdated(ctx, userID)
+	return nil
 }
 
 func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Reader, size int64, contentType string) (string, error) {
@@ -113,6 +143,7 @@ func (s *UserService) UploadAvatar(ctx context.Context, userID int64, file io.Re
 	if err := s.userSettingsRepo.IncrementUsedBytes(ctx, userID, size); err != nil {
 		return "", err
 	}
+	s.publishProfileUpdated(ctx, userID)
 
 	return urlPath, nil
 }
@@ -257,7 +288,11 @@ func (s *UserService) DeleteAvatar(ctx context.Context, userID int64) error {
 		}
 	}
 
-	return s.repo.UpdateAvatar(ctx, userID, "")
+	if err := s.repo.UpdateAvatar(ctx, userID, ""); err != nil {
+		return err
+	}
+	s.publishProfileUpdated(ctx, userID)
+	return nil
 }
 
 // DeleteCover removes the user's cover objects from storage and clears

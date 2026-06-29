@@ -27,6 +27,7 @@ type Handlers struct {
 	VideoSubscription *handler.VideoSubscriptionHandler
 	CloseFriend       *handler.CloseFriendHandler
 	Messenger         *handler.MessengerHandler
+	UserSearch        *handler.UserSearchHandler
 }
 
 // InitHandlers wires HTTP handlers from services and infra.
@@ -50,6 +51,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	videoSubscriptionHandler := handler.NewVideoSubscriptionHandler(svcs.VideoSubscription, svcs.VideoChannel)
 	closeFriendHandler := handler.NewCloseFriendHandler(svcs.CloseFriend)
 	messengerHandler := handler.NewMessengerHandler(svcs.Messenger, storage, *cfg)
+	userSearchHandler := handler.NewUserSearchHandler(svcs.UserSearch)
 
 	return &Handlers{
 		Auth:              authHandler,
@@ -71,5 +73,6 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 		Album:             albumHandler,
 		CloseFriend:       closeFriendHandler,
 		Messenger:         messengerHandler,
+		UserSearch:        userSearchHandler,
 	}
 }

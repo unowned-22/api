@@ -11,11 +11,13 @@ import (
 	"github.com/unowned-22/api/internal/auth"
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/database"
+	domainsearch "github.com/unowned-22/api/internal/domain/search"
 	"github.com/unowned-22/api/internal/domain/token"
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/infrastructure/cache"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
+	infrasearch "github.com/unowned-22/api/internal/infrastructure/search"
 	storageInfra "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
 )
@@ -28,12 +30,13 @@ func InitInfrastructure(cfg *config.Config) (
 	smtp *mailer.SMTPMailer,
 	tokenManager token.ManagerExtended,
 	tokenVersionCache user.TokenVersionCache,
+	userSearchIndex domainsearch.UserIndex,
 	err error,
 ) {
 	ctx := context.Background()
 	pool, err = database.NewPostgresPool(ctx, cfg)
 	if err != nil {
-		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	minio, err = storageInfra.NewMinIOStorage(storageInfra.Config{
@@ -47,7 +50,7 @@ func InitInfrastructure(cfg *config.Config) (
 	})
 	if err != nil {
 		pool.Close()
-		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to initialize MinIO storage: %w", err)
+		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to initialize MinIO storage: %w", err)
 	}
 
 	if minio != nil {
@@ -65,7 +68,7 @@ func InitInfrastructure(cfg *config.Config) (
 	publisher, err = queue.New(queue.Config{URL: cfg.RabbitMQURL, Exchange: cfg.RabbitMQExchange})
 	if err != nil {
 		pool.Close()
-		return nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to initialize RabbitMQ publisher: %w", err)
+		return nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("failed to initialize RabbitMQ publisher: %w", err)
 	}
 
 	smtp = mailer.New(mailer.Config{
@@ -116,5 +119,15 @@ func InitInfrastructure(cfg *config.Config) (
 		tokenVersionCache = cache.NewMemoryCache()
 	}
 
-	return pool, minio, publisher, smtp, tokenManager, tokenVersionCache, nil
+	var idx domainsearch.UserIndex
+	if strings.TrimSpace(cfg.MeilisearchHost) != "" && strings.TrimSpace(cfg.MeilisearchAPIKey) != "" {
+		meiliIndex, err := infrasearch.NewMeilisearchUserIndex(cfg.MeilisearchHost, cfg.MeilisearchAPIKey)
+		if err != nil {
+			logger.Log.WithError(err).Warn("meilisearch: failed to initialize, search will be unavailable")
+		} else {
+			idx = meiliIndex
+		}
+	}
+
+	return pool, minio, publisher, smtp, tokenManager, tokenVersionCache, idx, nil
 }

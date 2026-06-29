@@ -24,7 +24,7 @@ func NewServer(
 	forgotLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{Limit: cfg.ForgotPasswordRateLimit, Window: cfg.ForgotPasswordRateLimitWindow})
 	resendLimiter := middleware.NewAuthRateLimiter(middleware.AuthRateLimiterConfig{Limit: cfg.ResendVerificationRateLimit, Window: cfg.ResendVerificationRateLimitWindow})
 
-	router := transportHttp.NewRouter(cfg, h.Auth, h.User, h.PasswordReset, h.Upload, h.Health, h.Story, h.Friendship, h.Profile, h.Notification, h.Photo, h.Album, h.PhotoComment, h.VideoChannel, h.Video, h.VideoComment, h.VideoPlaylist, h.VideoSubscription, h.CloseFriend, h.Messenger, tokenManager, svcs.User, loginLimiter, registerLimiter, forgotLimiter, resendLimiter, tokenVersionCache)
+	router := transportHttp.NewRouter(cfg, h.Auth, h.User, h.PasswordReset, h.Upload, h.Health, h.Story, h.Friendship, h.Profile, h.Notification, h.Photo, h.Album, h.PhotoComment, h.VideoChannel, h.Video, h.VideoComment, h.VideoPlaylist, h.VideoSubscription, h.CloseFriend, h.Messenger, h.UserSearch, tokenManager, svcs.User, loginLimiter, registerLimiter, forgotLimiter, resendLimiter, tokenVersionCache)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.AppPort,
