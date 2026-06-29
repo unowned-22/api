@@ -25,14 +25,15 @@ type Consumer struct {
 
 func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, storyRepo story.StoryRepository, userSettingsRepo usersettings.Repository, notificationRepo notification.Repository, hub *ws.Hub, messengerMemberRepo messenger.MemberRepository, videoSubRepo videosubscription.Repository) (*Consumer, error) {
 	handlers := map[event.Name]event.Handler{
-		event.FriendRequestReceived: NewFriendRequestReceivedHandler(userSettingsRepo, notificationRepo, hub),
-		event.FriendRequestAccepted: NewFriendRequestAcceptedHandler(userSettingsRepo, notificationRepo, hub),
-		event.StoryPublished:        NewStoryPublishedHandler(friendshipRepo, storyRepo, userSettingsRepo, notificationRepo, hub),
-		event.PhotoLiked:            NewPhotoLikedHandler(userSettingsRepo, notificationRepo, hub),
-		event.PhotoCommented:        NewPhotoCommentedHandler(userSettingsRepo, notificationRepo, hub),
-		event.CommentReplied:        NewCommentRepliedHandler(userSettingsRepo, notificationRepo, hub),
-		event.CommentLiked:          NewCommentLikedHandler(userSettingsRepo, notificationRepo, hub),
-		event.VideoPublished:        NewVideoPublishedHandler(videoSubRepo, hub),
+		event.FriendRequestReceived:   NewFriendRequestReceivedHandler(userSettingsRepo, notificationRepo, hub),
+		event.FriendRequestAccepted:   NewFriendRequestAcceptedHandler(userSettingsRepo, notificationRepo, hub),
+		event.StoryPublished:          NewStoryPublishedHandler(friendshipRepo, storyRepo, userSettingsRepo, notificationRepo, hub),
+		event.PhotoLiked:              NewPhotoLikedHandler(userSettingsRepo, notificationRepo, hub),
+		event.PhotoCommented:          NewPhotoCommentedHandler(userSettingsRepo, notificationRepo, hub),
+		event.CommentReplied:          NewCommentRepliedHandler(userSettingsRepo, notificationRepo, hub),
+		event.CommentLiked:            NewCommentLikedHandler(userSettingsRepo, notificationRepo, hub),
+		event.VideoPublished:          NewVideoPublishedHandler(videoSubRepo, hub),
+		event.VideoProcessingProgress: NewVideoProcessingProgressHandler(hub),
 		// Messenger realtime events
 		event.MessengerMessageSent:     NewMessengerMessageSentHandler(hub, userSettingsRepo, notificationRepo),
 		event.MessengerScheduledReady:  NewMessengerScheduledReadyHandler(hub),

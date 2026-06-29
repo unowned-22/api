@@ -14,6 +14,8 @@ type Repository interface {
 	ReadyForPublish(ctx context.Context, id int64, hls, mp4360, mp4720, thumbnail string, dur float64, w, h int, size int64, vcodec, acodec string) error
 	MarkFailed(ctx context.Context, id int64) error
 	MarkProcessing(ctx context.Context, id int64) error
+
+	UpdateProgress(ctx context.Context, id int64, stage string, percent int) error
 	ListByChannel(ctx context.Context, channelID int64, viewerID int64, limit, offset int) ([]*Video, int, error)
 	Feed(ctx context.Context, subscriberID int64, limit, offset int) ([]*Video, int, error)
 	Search(ctx context.Context, query, category string, limit, offset int) ([]*Video, int, error)

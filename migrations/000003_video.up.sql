@@ -130,3 +130,9 @@ CREATE TABLE IF NOT EXISTS video_subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_video_subs_channel ON video_subscriptions(channel_id);
 CREATE INDEX IF NOT EXISTS idx_video_subs_user ON video_subscriptions(subscriber_id);
+
+ALTER TABLE videos
+    ADD COLUMN processing_stage VARCHAR(32),
+    ADD COLUMN processing_progress SMALLINT NOT NULL DEFAULT 0
+        CHECK (processing_progress BETWEEN 0 AND 100),
+    ADD COLUMN processing_started_at TIMESTAMPTZ;

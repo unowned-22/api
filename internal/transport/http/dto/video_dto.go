@@ -57,6 +57,9 @@ type VideoResponse struct {
 	CommentsCount int64     `json:"comments_count"`
 	IsLiked       bool      `json:"is_liked"`
 	CreatedAt     time.Time `json:"created_at"`
+	// Processing progress — only meaningful while status == "processing".
+	ProcessingStage    string `json:"processing_stage,omitempty"`
+	ProcessingProgress int    `json:"processing_progress"`
 }
 type VideoListResponse struct {
 	Videos []*VideoResponse `json:"videos"`
