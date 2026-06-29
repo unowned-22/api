@@ -506,13 +506,13 @@ The `emailExtractor` function reads the request body, parses JSON to extract the
 
 ```go
 emailExtractorFunc := func(r *http.Request) (string, error) {
-  var req struct {
-    Email string `json:"email"`
-  }
-  body, _ := io.ReadAll(r.Body)
-  r.Body = io.NopCloser(bytes.NewBuffer(body))
-  json.Unmarshal(body, &req)
-  return req.Email, nil
+var req struct {
+Email string `json:"email"`
+}
+body, _ := io.ReadAll(r.Body)
+r.Body = io.NopCloser(bytes.NewBuffer(body))
+json.Unmarshal(body, &req)
+return req.Email, nil
 }
 ```
 
@@ -731,6 +731,19 @@ When adding photo metadata, comments, and likes, follow these rules and patterns
 - OpenAPI: document every new endpoint, request/response schema, and response codes in `internal/docs/openapi.yaml` and keep `operationId` values consistent with handler names.
 
 Add this section to PR descriptions when introducing photos/comments changes so reviewers can verify migration, OpenAPI, and transactional correctness.
+
+---
+
+## User Search Feature Guidance
+
+The project includes a Meilisearch-backed user search index used for mention pickers and "find a person" UI. Components: `internal/domain/search` (`UserIndex` contract, `UserDocument`), `internal/infrastructure/search/meilisearch.go` (implementation), `internal/service/user_search_service.go` (read-only search wrapper used by transport), `internal/transport/http/handler/user_search_handler.go` (`GET /api/v1/users/search?q=&limit=`), and `internal/worker/handler/user_search_index_handler.go` (keeps the index in sync).
+
+- **No privacy filtering yet.** Every confirmed user is searchable by every authenticated caller. `UserSearchService` caps `limit` at 20 server-side regardless of what the client requests — do not remove this cap without designing privacy/visibility rules first (see Stories visibility note above for the kind of gap this would otherwise create).
+- **Only verified users are indexed.** Indexing happens off the `UserEmailVerified` event, never at registration. `UserSearchIndexHandler` additionally double-checks `EmailVerifiedAt != nil` before calling `Index` as a defensive guard — do not remove this check even if it looks redundant with the event wiring.
+- **Sync events:** `event.UserEmailVerified` (first index, payload `{user_id}`), `event.UserProfileUpdated` (re-index on profile/avatar change — published by `UserService.UpdateProfile`/`UploadAvatar`/`DeleteAvatar`, only when the user is already verified), `event.AccountDeactivated` (removes the user from the index via `UserIndex.Delete`). Any new mutation that changes `username`, `full_name`, or `avatar_url` (e.g. a future admin-edit endpoint) must also publish `UserProfileUpdated`, or the index will drift from Postgres.
+- **One handler per event name.** `infrastructure/queue.AMQPConsumer` dispatches via `map[event.Name]event.Handler` — exactly one handler per event name, no fan-out built in. `UserEmailVerified` and `AccountDeactivated` already had subscribers (`EmailVerifiedHandler` provisioning, `AuditHandler` audit log) before search indexing was added, so both are wired through `worker/handler/multi_handler.go` (`NewMultiHandler`), which runs all sub-handlers and returns the first error. **Reuse `MultiHandler` whenever a new concern needs to react to an event that already has a subscriber — never replace an existing handler outright, and never try to register two map entries for the same `event.Name`.**
+- `UserSearchService`/`UserSearchIndexHandler` are intentionally separate from `UserService` — search-index infrastructure has nothing to do with profile/storage management. Don't fold `UserIndex` back into `UserService` as a dependency.
+- OpenAPI: `GET /api/v1/users/search` is documented under the `users` tag (`operationId: usersSearch`) with `UserSearchItem`/`UserSearchResponse` schemas. Keep in sync per §6 if the response shape changes.
 
 ---
 

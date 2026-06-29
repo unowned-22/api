@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/domain/media"
+	domainsearch "github.com/unowned-22/api/internal/domain/search"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
 	stor "github.com/unowned-22/api/internal/infrastructure/storage"
 	"github.com/unowned-22/api/internal/logger"
@@ -32,10 +33,11 @@ type App struct {
 	Router http.Handler
 	Server *http.Server
 
-	Repositories *Repositories
-	Services     *Services
-	Handlers     *Handlers
-	Hub          *ws.Hub
+	Repositories    *Repositories
+	Services        *Services
+	Handlers        *Handlers
+	Hub             *ws.Hub
+	UserSearchIndex domainsearch.UserIndex
 
 	// internal pieces we need to shutdown
 	loginLimiter, registerLimiter, forgotLimiter, resendLimiter *middleware.AuthRateLimiter
@@ -58,7 +60,7 @@ func NewApp() (*App, error) {
 		return nil, fmt.Errorf("failed to initialize logger: %w", err)
 	}
 
-	pool, minioStorage, publisher, smtpMailer, tokenManager, tokenVersionCache, err := InitInfrastructure(cfg)
+	pool, minioStorage, publisher, smtpMailer, tokenManager, tokenVersionCache, userSearchIndex, err := InitInfrastructure(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +78,7 @@ func NewApp() (*App, error) {
 	imageProcessor := media.NewProcessor()
 	repos := InitRepositories(pool)
 	hub := ws.NewHubWithPresence(repos.Presence, repos.Friendship)
-	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache, imageProcessor)
+	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache, userSearchIndex, imageProcessor)
 	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
 	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub, repos.Member, repos.VideoSubscription)
 	if err != nil {
@@ -96,6 +98,7 @@ func NewApp() (*App, error) {
 		Services:         svcs,
 		Handlers:         handlers,
 		Hub:              hub,
+		UserSearchIndex:  userSearchIndex,
 		realtimeConsumer: realtimeConsumer,
 
 		loginLimiter:    loginLimiter,

@@ -28,6 +28,19 @@ type MessageResponse struct {
 	Message string `json:"message"`
 }
 
+// UserSearchItem is a single result row for GET /api/v1/users/search.
+// Field names mirror what mention/search UI components expect.
+type UserSearchItem struct {
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
+	FullName  string `json:"full_name"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+type UserSearchResponse struct {
+	Items []UserSearchItem `json:"items"`
+}
+
 type SessionResponse struct {
 	ID             int64  `json:"id"`
 	UserID         int64  `json:"user_id"`

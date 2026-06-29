@@ -51,6 +51,9 @@ type Config struct {
 	MinIOBucket           string `envconfig:"MINIO_BUCKET"`
 	StoragePublicEndpoint string `envconfig:"STORAGE_PUBLIC_ENDPOINT"`
 
+	MeilisearchHost   string `envconfig:"MEILISEARCH_HOST"`
+	MeilisearchAPIKey string `envconfig:"MEILISEARCH_API_KEY"`
+
 	JWTSecret       string        `envconfig:"JWT_SECRET"`
 	JWTIssuer       string        `envconfig:"JWT_ISSUER"`
 	JWTAudience     string        `envconfig:"JWT_AUDIENCE"`

@@ -62,6 +62,7 @@ func NewRouter(
 	videoSubscriptionHandler *handler.VideoSubscriptionHandler,
 	closeFriendHandler *handler.CloseFriendHandler,
 	messengerHandler *handler.MessengerHandler,
+	userSearchHandler *handler.UserSearchHandler,
 	tokenManager token.Manager,
 	userService user.UserService,
 	loginLimiter *middleware.AuthRateLimiter,
@@ -130,6 +131,7 @@ func NewRouter(
 			r.Use(middleware.JWTAuth(tokenManager, userService, tokenVersionCache))
 
 			r.Get("/users/me", userHandler.Me)
+			r.Get("/users/search", userSearchHandler.Search)
 			r.Patch("/users/me", userHandler.UpdateProfile)
 			r.Put("/users/me/password", authHandler.ChangePassword)
 			r.Get("/users/me/settings", userHandler.GetMySettings)

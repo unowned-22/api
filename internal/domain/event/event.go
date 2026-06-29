@@ -27,6 +27,10 @@ const (
 	// audit.email_verified event so that AuditHandler and provisioning can subscribe
 	// independently.
 	UserEmailVerified Name = "user.email_verified"
+	// UserProfileUpdated is published whenever a user's searchable profile
+	// fields change (full_name, username, avatar) so the search index can be
+	// re-synced. Not published for unverified users.
+	UserProfileUpdated Name = "user.profile_updated"
 	// EmailSend is used to request an email send via the outbox/worker pipeline.
 	EmailSend Name = "email.send"
 

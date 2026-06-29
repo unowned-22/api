@@ -12,6 +12,7 @@ import (
 	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/domain/photo"
 	"github.com/unowned-22/api/internal/domain/photocomment"
+	domainsearch "github.com/unowned-22/api/internal/domain/search"
 	domainstorage "github.com/unowned-22/api/internal/domain/storage"
 	"github.com/unowned-22/api/internal/domain/systemsettings"
 	"github.com/unowned-22/api/internal/domain/token"
@@ -50,6 +51,8 @@ type Services struct {
 	VideoSubscription videosubscription.Service
 	Messenger         messenger.Service
 	OutboxPublisher   event.Publisher
+	UserSearchIndex   domainsearch.UserIndex
+	UserSearch        *service.UserSearchService
 }
 
 // InitServices constructs application services from repositories and infra.
@@ -62,6 +65,7 @@ func InitServices(
 	publisher *queue.AMQPPublisher,
 	storage domainstorage.Storage,
 	tokenVersionCache user.TokenVersionCache,
+	userSearchIndex domainsearch.UserIndex,
 	imageProcessor *media.Processor,
 ) *Services {
 	// create an outbox-backed publisher that persists events into the outbox table
@@ -82,7 +86,8 @@ func InitServices(
 	)
 
 	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)
-	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings, cfg.MinIOBucket, imageProcessor)
+	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings, cfg.MinIOBucket, imageProcessor, outboxPublisher)
+	userSearchSvc := service.NewUserSearchService(userSearchIndex)
 	healthSvc := service.NewHealthService(pool)
 	systemSettingsSvc := service.NewSystemSettingsService(repos.SystemSettings)
 	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)
@@ -123,5 +128,7 @@ func InitServices(
 		Album:             albumSvc,
 		Messenger:         messengerSvc,
 		OutboxPublisher:   outboxPublisher,
+		UserSearchIndex:   userSearchIndex,
+		UserSearch:        userSearchSvc,
 	}
 }

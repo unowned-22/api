@@ -23,6 +23,10 @@ JWT_AUDIENCE=client-app
 ACCESS_TOKEN_TTL=15m
 REFRESH_TOKEN_TTL=720h
 
+# Meilisearch
+MEILISEARCH_HOST=http://meilisearch:7700
+MEILISEARCH_API_KEY=super-secret-key-change-me
+
 # Auth Endpoint Rate Limiting (per IP and email)
 LOGIN_RATE_LIMIT=5
 LOGIN_RATE_LIMIT_WINDOW=5m
