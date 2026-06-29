@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS videos (
     category VARCHAR(64) NOT NULL DEFAULT 'other',
     visibility VARCHAR(16) NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','unlisted','private')),
     status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','ready','failed')),
+    processing_stage VARCHAR(32),
+    processing_progress SMALLINT NOT NULL DEFAULT 0 CHECK (processing_progress BETWEEN 0 AND 100),
+    processing_started_at TIMESTAMPTZ,
     raw_key TEXT,
     hls_key TEXT,
     mp4_360_key TEXT,
@@ -130,9 +133,3 @@ CREATE TABLE IF NOT EXISTS video_subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_video_subs_channel ON video_subscriptions(channel_id);
 CREATE INDEX IF NOT EXISTS idx_video_subs_user ON video_subscriptions(subscriber_id);
-
-ALTER TABLE videos
-    ADD COLUMN processing_stage VARCHAR(32),
-    ADD COLUMN processing_progress SMALLINT NOT NULL DEFAULT 0
-        CHECK (processing_progress BETWEEN 0 AND 100),
-    ADD COLUMN processing_started_at TIMESTAMPTZ;
