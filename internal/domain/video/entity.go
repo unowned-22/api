@@ -44,4 +44,8 @@ type Video struct {
 	IsLiked       bool
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+
+	ProcessingStage     string
+	ProcessingProgress  int
+	ProcessingStartedAt *time.Time
 }

@@ -37,10 +37,26 @@ func (r *VideoRepository) Create(ctx context.Context, v *video.Video) error {
 	return tx.Commit(ctx)
 }
 
+// scanVideo scans the standard column set (with processing progress columns) into v.
+func scanVideo(v *video.Video, scan func(...any) error) error {
+	return scan(
+		&v.ID, &v.ChannelID, &v.UserID, &v.Title, &v.Description, &v.Category,
+		&v.Visibility, &v.Status, &v.RawKey, &v.HLSKey, &v.MP4360Key, &v.MP4720Key,
+		&v.ThumbnailKey, &v.DurationSec, &v.Width, &v.Height, &v.SizeBytes,
+		&v.VideoCodec, &v.AudioCodec, &v.ViewsCount, &v.LikesCount, &v.CommentsCount,
+		&v.CreatedAt, &v.UpdatedAt,
+		&v.ProcessingStage, &v.ProcessingProgress, &v.ProcessingStartedAt,
+	)
+}
+
+const videoSelectCols = `id,channel_id,user_id,title,description,category,visibility,status,` +
+	`raw_key,hls_key,mp4_360_key,mp4_720_key,thumbnail_key,duration_sec,width,height,size_bytes,` +
+	`video_codec,audio_codec,views_count,likes_count,comments_count,created_at,updated_at,` +
+	`processing_stage,processing_progress,processing_started_at`
+
 func (r *VideoRepository) get(ctx context.Context, q string, args ...any) (*video.Video, error) {
 	v := &video.Video{}
-	err := r.pool.QueryRow(ctx, q, args...).Scan(&v.ID, &v.ChannelID, &v.UserID, &v.Title, &v.Description, &v.Category, &v.Visibility, &v.Status, &v.RawKey, &v.HLSKey, &v.MP4360Key, &v.MP4720Key, &v.ThumbnailKey, &v.DurationSec, &v.Width, &v.Height, &v.SizeBytes, &v.VideoCodec, &v.AudioCodec, &v.ViewsCount, &v.LikesCount, &v.CommentsCount, &v.CreatedAt, &v.UpdatedAt)
-	if err != nil {
+	if err := scanVideo(v, r.pool.QueryRow(ctx, q, args...).Scan); err != nil {
 		return nil, err
 	}
 	v.CoverKey = v.ThumbnailKey
@@ -48,39 +64,61 @@ func (r *VideoRepository) get(ctx context.Context, q string, args ...any) (*vide
 	v.Tags = tags
 	return v, nil
 }
+
 func (r *VideoRepository) GetByID(ctx context.Context, id int64) (*video.Video, error) {
-	return r.get(ctx, `SELECT id,channel_id,user_id,title,description,category,visibility,status,raw_key,hls_key,mp4_360_key,mp4_720_key,thumbnail_key,duration_sec,width,height,size_bytes,video_codec,audio_codec,views_count,likes_count,comments_count,created_at,updated_at FROM videos WHERE id=$1`, id)
+	return r.get(ctx, `SELECT `+videoSelectCols+` FROM videos WHERE id=$1`, id)
 }
+
 func (r *VideoRepository) Update(ctx context.Context, v *video.Video) error {
 	_, err := r.pool.Exec(ctx, `UPDATE videos SET title=$1,description=$2,category=$3,visibility=$4,thumbnail_key=$5,updated_at=NOW() WHERE id=$6`, v.Title, v.Description, v.Category, v.Visibility, v.ThumbnailKey, v.ID)
 	return err
 }
+
 func (r *VideoRepository) Delete(ctx context.Context, id int64) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM videos WHERE id=$1`, id)
 	return err
 }
+
 func (r *VideoRepository) ReadyForPublish(ctx context.Context, id int64, hls, mp4360, mp4720, thumbnail string, dur float64, w, h int, size int64, vcodec, acodec string) error {
-	_, err := r.pool.Exec(ctx, `UPDATE videos SET status='ready', hls_key=$2, mp4_360_key=$3, mp4_720_key=$4, thumbnail_key=$5, duration_sec=$6, width=$7, height=$8, size_bytes=$9, video_codec=$10, audio_codec=$11, updated_at=NOW() WHERE id=$1`, id, hls, mp4360, mp4720, thumbnail, dur, w, h, size, vcodec, acodec)
+	_, err := r.pool.Exec(ctx,
+		`UPDATE videos SET status='ready', hls_key=$2, mp4_360_key=$3, mp4_720_key=$4,
+		 thumbnail_key=$5, duration_sec=$6, width=$7, height=$8, size_bytes=$9,
+		 video_codec=$10, audio_codec=$11,
+		 processing_stage=NULL, processing_progress=0,
+		 updated_at=NOW() WHERE id=$1`,
+		id, hls, mp4360, mp4720, thumbnail, dur, w, h, size, vcodec, acodec)
 	return err
 }
+
 func (r *VideoRepository) MarkFailed(ctx context.Context, id int64) error {
-	_, err := r.pool.Exec(ctx, `UPDATE videos SET status='failed', updated_at=NOW() WHERE id=$1`, id)
+	_, err := r.pool.Exec(ctx,
+		`UPDATE videos SET status='failed', processing_stage=NULL, processing_progress=0, updated_at=NOW() WHERE id=$1`,
+		id)
 	return err
 }
+
 func (r *VideoRepository) MarkProcessing(ctx context.Context, id int64) error {
-	_, err := r.pool.Exec(ctx, `UPDATE videos SET status='processing', updated_at=NOW() WHERE id=$1`, id)
+	_, err := r.pool.Exec(ctx,
+		`UPDATE videos SET status='processing', processing_started_at=NOW(), processing_stage='downloading', processing_progress=0, updated_at=NOW() WHERE id=$1`,
+		id)
 	return err
 }
+
+// UpdateProgress performs a lightweight update of stage and progress only.
+// Called at most once per second per video (throttled by the caller).
+func (r *VideoRepository) UpdateProgress(ctx context.Context, id int64, stage string, percent int) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE videos SET processing_stage=$2, processing_progress=$3, updated_at=NOW() WHERE id=$1`,
+		id, stage, percent)
+	return err
+}
+
 func (r *VideoRepository) ListByChannel(ctx context.Context, channelID int64, viewerID int64, limit, offset int) ([]*video.Video, int, error) {
 	return r.list(ctx, `WHERE channel_id=$1`, channelID, limit, offset)
 }
+
 func (r *VideoRepository) Feed(ctx context.Context, subscriberID int64, limit, offset int) ([]*video.Video, int, error) {
-	const q = `
-		SELECT v.id, v.channel_id, v.user_id, v.title, v.description, v.category,
-		       v.visibility, v.status, v.raw_key, v.hls_key, v.mp4_360_key, v.mp4_720_key,
-		       v.thumbnail_key, v.duration_sec, v.width, v.height, v.size_bytes,
-		       v.video_codec, v.audio_codec, v.views_count, v.likes_count,
-		       v.comments_count, v.created_at, v.updated_at
+	q := `SELECT ` + videoSelectCols + `
 		FROM videos v
 		INNER JOIN video_subscriptions s ON s.channel_id = v.channel_id
 		WHERE s.subscriber_id = $1
@@ -88,6 +126,19 @@ func (r *VideoRepository) Feed(ctx context.Context, subscriberID int64, limit, o
 		  AND v.visibility = 'public'
 		ORDER BY v.created_at DESC
 		LIMIT $2 OFFSET $3`
+	// Note: aliases not needed — SELECT cols are unambiguous in join since only videos has them.
+	// However, since videoSelectCols has no table prefix we must use a subquery or plain select.
+	// The join only filters, so all columns come from videos; pgx maps by position, not name.
+	q = `SELECT v.id,v.channel_id,v.user_id,v.title,v.description,v.category,` +
+		`v.visibility,v.status,v.raw_key,v.hls_key,v.mp4_360_key,v.mp4_720_key,` +
+		`v.thumbnail_key,v.duration_sec,v.width,v.height,v.size_bytes,` +
+		`v.video_codec,v.audio_codec,v.views_count,v.likes_count,` +
+		`v.comments_count,v.created_at,v.updated_at,` +
+		`v.processing_stage,v.processing_progress,v.processing_started_at ` +
+		`FROM videos v ` +
+		`INNER JOIN video_subscriptions s ON s.channel_id = v.channel_id ` +
+		`WHERE s.subscriber_id = $1 AND v.status = 'ready' AND v.visibility = 'public' ` +
+		`ORDER BY v.created_at DESC LIMIT $2 OFFSET $3`
 
 	rows, err := r.pool.Query(ctx, q, subscriberID, limit, offset)
 	if err != nil {
@@ -98,13 +149,7 @@ func (r *VideoRepository) Feed(ctx context.Context, subscriberID int64, limit, o
 	var out []*video.Video
 	for rows.Next() {
 		v := &video.Video{}
-		if err := rows.Scan(
-			&v.ID, &v.ChannelID, &v.UserID, &v.Title, &v.Description, &v.Category,
-			&v.Visibility, &v.Status, &v.RawKey, &v.HLSKey, &v.MP4360Key, &v.MP4720Key,
-			&v.ThumbnailKey, &v.DurationSec, &v.Width, &v.Height, &v.SizeBytes,
-			&v.VideoCodec, &v.AudioCodec, &v.ViewsCount, &v.LikesCount,
-			&v.CommentsCount, &v.CreatedAt, &v.UpdatedAt,
-		); err != nil {
+		if err := scanVideo(v, rows.Scan); err != nil {
 			return nil, 0, err
 		}
 		v.CoverKey = v.ThumbnailKey
@@ -115,15 +160,9 @@ func (r *VideoRepository) Feed(ctx context.Context, subscriberID int64, limit, o
 	}
 	return out, len(out), nil
 }
+
 func (r *VideoRepository) Search(ctx context.Context, query, category string, limit, offset int) ([]*video.Video, int, error) {
-	const base = `
-		SELECT id, channel_id, user_id, title, description, category,
-		       visibility, status, raw_key, hls_key, mp4_360_key, mp4_720_key,
-		       thumbnail_key, duration_sec, width, height, size_bytes,
-		       video_codec, audio_codec, views_count, likes_count,
-		       comments_count, created_at, updated_at
-		FROM videos
-		WHERE status = 'ready' AND visibility = 'public'`
+	base := `SELECT ` + videoSelectCols + ` FROM videos WHERE status = 'ready' AND visibility = 'public'`
 
 	args := []any{}
 	cond := ""
@@ -153,13 +192,7 @@ func (r *VideoRepository) Search(ctx context.Context, query, category string, li
 	var out []*video.Video
 	for rows.Next() {
 		v := &video.Video{}
-		if err := rows.Scan(
-			&v.ID, &v.ChannelID, &v.UserID, &v.Title, &v.Description, &v.Category,
-			&v.Visibility, &v.Status, &v.RawKey, &v.HLSKey, &v.MP4360Key, &v.MP4720Key,
-			&v.ThumbnailKey, &v.DurationSec, &v.Width, &v.Height, &v.SizeBytes,
-			&v.VideoCodec, &v.AudioCodec, &v.ViewsCount, &v.LikesCount,
-			&v.CommentsCount, &v.CreatedAt, &v.UpdatedAt,
-		); err != nil {
+		if err := scanVideo(v, rows.Scan); err != nil {
 			return nil, 0, err
 		}
 		v.CoverKey = v.ThumbnailKey
@@ -170,8 +203,10 @@ func (r *VideoRepository) Search(ctx context.Context, query, category string, li
 	}
 	return out, len(out), nil
 }
+
 func (r *VideoRepository) list(ctx context.Context, where string, arg any, limit, offset int) ([]*video.Video, int, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id,channel_id,user_id,title,description,category,visibility,status,raw_key,hls_key,mp4_360_key,mp4_720_key,thumbnail_key,duration_sec,width,height,size_bytes,video_codec,audio_codec,views_count,likes_count,comments_count,created_at,updated_at FROM videos `+where+` ORDER BY created_at DESC LIMIT $2 OFFSET $3`, arg, limit, offset)
+	q := `SELECT ` + videoSelectCols + ` FROM videos ` + where + ` ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := r.pool.Query(ctx, q, arg, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -179,12 +214,13 @@ func (r *VideoRepository) list(ctx context.Context, where string, arg any, limit
 	var out []*video.Video
 	for rows.Next() {
 		v := &video.Video{}
-		_ = rows.Scan(&v.ID, &v.ChannelID, &v.UserID, &v.Title, &v.Description, &v.Category, &v.Visibility, &v.Status, &v.RawKey, &v.HLSKey, &v.MP4360Key, &v.MP4720Key, &v.ThumbnailKey, &v.DurationSec, &v.Width, &v.Height, &v.SizeBytes, &v.VideoCodec, &v.AudioCodec, &v.ViewsCount, &v.LikesCount, &v.CommentsCount, &v.CreatedAt, &v.UpdatedAt)
+		_ = scanVideo(v, rows.Scan)
 		v.CoverKey = v.ThumbnailKey
 		out = append(out, v)
 	}
 	return out, len(out), rows.Err()
 }
+
 func (r *VideoRepository) SetTags(ctx context.Context, videoID int64, tags []string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -201,6 +237,7 @@ func (r *VideoRepository) SetTags(ctx context.Context, videoID int64, tags []str
 	}
 	return tx.Commit(ctx)
 }
+
 func (r *VideoRepository) GetTags(ctx context.Context, videoID int64) ([]string, error) {
 	rows, err := r.pool.Query(ctx, `SELECT tag FROM video_tags WHERE video_id=$1 ORDER BY tag`, videoID)
 	if err != nil {
@@ -217,10 +254,12 @@ func (r *VideoRepository) GetTags(ctx context.Context, videoID int64) ([]string,
 	}
 	return tags, rows.Err()
 }
+
 func (r *VideoRepository) RecordView(ctx context.Context, videoID int64, userID *int64, ipHash string) error {
 	_, err := r.pool.Exec(ctx, `INSERT INTO video_views (video_id,user_id,ip_hash) VALUES ($1,$2,$3)`, videoID, userID, ipHash)
 	return err
 }
+
 func (r *VideoRepository) AddLike(ctx context.Context, userID, videoID int64) error {
 	_, err := r.pool.Exec(ctx, `INSERT INTO video_likes(video_id,user_id) VALUES ($1,$2)`, videoID, userID)
 	if err != nil {
@@ -233,6 +272,7 @@ func (r *VideoRepository) AddLike(ctx context.Context, userID, videoID int64) er
 	_, err = r.pool.Exec(ctx, `UPDATE videos SET likes_count=likes_count+1 WHERE id=$1`, videoID)
 	return err
 }
+
 func (r *VideoRepository) RemoveLike(ctx context.Context, userID, videoID int64) error {
 	ct, err := r.pool.Exec(ctx, `DELETE FROM video_likes WHERE video_id=$1 AND user_id=$2`, videoID, userID)
 	if err != nil {
@@ -244,19 +284,23 @@ func (r *VideoRepository) RemoveLike(ctx context.Context, userID, videoID int64)
 	_, err = r.pool.Exec(ctx, `UPDATE videos SET likes_count=GREATEST(likes_count-1,0) WHERE id=$1`, videoID)
 	return err
 }
+
 func (r *VideoRepository) IsLiked(ctx context.Context, userID, videoID int64) (bool, error) {
 	var ok bool
 	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM video_likes WHERE video_id=$1 AND user_id=$2)`, videoID, userID).Scan(&ok)
 	return ok, err
 }
+
 func (r *VideoRepository) IncrViewsCount(ctx context.Context, id int64) error {
 	_, err := r.pool.Exec(ctx, `UPDATE videos SET views_count=views_count+1 WHERE id=$1`, id)
 	return err
 }
+
 func (r *VideoRepository) IncrCommentsCount(ctx context.Context, id int64) error {
 	_, err := r.pool.Exec(ctx, `UPDATE videos SET comments_count=comments_count+1 WHERE id=$1`, id)
 	return err
 }
+
 func (r *VideoRepository) DecrCommentsCount(ctx context.Context, id int64) error {
 	_, err := r.pool.Exec(ctx, `UPDATE videos SET comments_count=GREATEST(comments_count-1,0) WHERE id=$1`, id)
 	return err

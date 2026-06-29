@@ -170,6 +170,19 @@ components:
         created_at:
           type: string
           format: date-time
+        processing_stage:
+          type: string
+          description: >
+            Current processing stage. Only present while status is "processing".
+            One of: downloading, probing, thumbnail, transcode_360p, transcode_720p,
+            transcode_1080p, uploading.
+        processing_progress:
+          type: integer
+          description: >
+            Overall processing progress (0–100). Only meaningful while status is
+            "processing". Use together with processing_stage for a progress indicator.
+            On reconnect, fetch this field via GET /api/v1/videos/{id} to recover any
+            missed WebSocket progress events.
 
     VideoListResponse:
       type: object
