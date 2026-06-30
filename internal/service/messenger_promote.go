@@ -48,9 +48,6 @@ func (s *MessengerService) PromoteToCommunity(ctx context.Context, requesterID, 
 		return 0, err
 	}
 
-	// Migrate the remaining conversation members (the requester/owner was
-	// already added as community owner by Create above) into
-	// community_members, preserving role where it maps cleanly.
 	members, err := s.memberRepo.ListMembers(ctx, conversationID)
 	if err != nil {
 		// Community already exists at this point; a failure to migrate the
@@ -74,9 +71,7 @@ func (s *MessengerService) PromoteToCommunity(ctx context.Context, requesterID, 
 
 func messengerRoleToCommunityRole(r messenger.MemberRole) (community.MemberRole, bool) {
 	switch r {
-	case messenger.RoleAdmin:
-		return community.MemberRoleAdmin, true
-	case messenger.RoleMember:
+	case messenger.RoleAdmin, messenger.RoleMember:
 		return community.MemberRoleMember, true
 	case messenger.RoleSubscriber:
 		return community.MemberRoleSubscriber, true
@@ -85,9 +80,6 @@ func messengerRoleToCommunityRole(r messenger.MemberRole) (community.MemberRole,
 	}
 }
 
-// slugifyForCommunity is a minimal, dependency-free slug generator shared
-// conceptually with handler.slugify (video_channel_handler.go) but kept
-// local to the service layer to avoid a transport->service import.
 func slugifyForCommunity(s string) string {
 	out := make([]byte, 0, len(s))
 	for _, c := range []byte(strings.ToLower(s)) {

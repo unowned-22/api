@@ -385,6 +385,22 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, errs.ErrInvalidStoryForCommunity):
 		status, code, message = http.StatusUnprocessableEntity, "INVALID_STORY_FOR_COMMUNITY", err.Error()
 
+	// ── Communities ──────────────────────────────────────────────────────────
+	case errors.Is(err, errs.ErrCommunityNotFound):
+		status, code, message = http.StatusNotFound, "COMMUNITY_NOT_FOUND", "community not found"
+	case errors.Is(err, errs.ErrCommunityForbidden):
+		status, code, message = http.StatusForbidden, "COMMUNITY_FORBIDDEN", "insufficient community role"
+	case errors.Is(err, errs.ErrCommunitySlugTaken):
+		status, code, message = http.StatusConflict, "COMMUNITY_SLUG_TAKEN", "community slug is already taken"
+	case errors.Is(err, errs.ErrAlreadyCommunityMember):
+		status, code, message = http.StatusConflict, "ALREADY_COMMUNITY_MEMBER", "already a member of this community"
+	case errors.Is(err, errs.ErrNotCommunityMember):
+		status, code, message = http.StatusNotFound, "NOT_COMMUNITY_MEMBER", "not a member of this community"
+	case errors.Is(err, errs.ErrCannotRemoveCommunityOwner):
+		status, code, message = http.StatusUnprocessableEntity, "CANNOT_REMOVE_COMMUNITY_OWNER", "cannot remove or demote the community owner"
+	case errors.Is(err, errs.ErrInvalidCommunityPayload):
+		status, code, message = http.StatusUnprocessableEntity, "INVALID_COMMUNITY_PAYLOAD", err.Error()
+
 	default:
 		logger.FromContext(r.Context()).WithError(err).Error("internal server error")
 		status = http.StatusInternalServerError

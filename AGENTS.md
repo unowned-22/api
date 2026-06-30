@@ -811,3 +811,53 @@ membersCache[m.ConversationID] = members
 | `ErrUserBlocked` | `internal/errs` | 403 | `USER_BLOCKED` |
 
 New messenger errors must be declared in `internal/errs/errors.go` with an explanatory comment and mapped in `internal/transport/http/response/response.go`.
+
+---
+
+## Communities Feature Guidance
+
+Rules established during the `communities` task (replacing `video_channels`, unifying posts/feed, linking messenger and stories) that all agents must follow when touching this code.
+
+### `community.Type` is not a Postgres enum
+
+Stored as `VARCHAR(32)` (+ optional CHECK), not `ENUM`, so new types can be added by config/migration without a blocking table rewrite. Do not introduce a Postgres `ENUM` for this column.
+
+### No cross-domain `Post` abstraction
+
+`internal/domain/userpost` and `internal/domain/communitypost` are deliberately separate packages with no shared `Post` interface — same pattern as `videocomment`/`photocomment`. `PostService` is the only place that knows about both; it picks the target table from `author_type` and never merges them into a generic domain type. The feed union (`user_posts` ∪ `community_posts`) is done with the `feed_items` SQL view / `FeedRepository`, not with a Go interface.
+
+### "Post as" authorization
+
+Any service that lets a user act *as* a community (posting, publishing video, publishing a story, promoting a conversation) must go through `CommunityService.RequireAdminOrOwner`, which returns `errs.ErrCommunityForbidden` → HTTP 403 `COMMUNITY_FORBIDDEN`. Never re-implement this check ad hoc against `community_members` from another service.
+
+### Video publish bridge (`CreateForVideo` / `SoftDeleteByVideoID`)
+
+`VideoService.Publish` creates a `community_posts` row via `CommunityPostRepository.CreateForVideo` **only** when `"video_feed"` is among the publish targets — `"community_page"`-only publishes must not create a feed post. `VideoService.Unpublish` is the symmetric operation: it **must** call `CommunityPostRepository.SoftDeleteByVideoID` and decrement `posts_count` on the owning community, or the video keeps appearing in the home feed as if still published. Both sides are best-effort (a failure to create/remove the bridge post does not roll back the publish/unpublish itself), but the unpublish side must not be skipped — this was a real bug in an earlier revision; do not reintroduce it.
+
+`boost`/`boosted_until` is an explicit no-op stub (no ranking, no billing) — keep it that way until a dedicated boost task exists; do not add ranking/payment logic here.
+
+### Promote-to-community role mapping is fixed, do not "improve" it
+
+`MessengerService.PromoteToCommunity` migrates conversation members into `community_members` with **exactly** this mapping: conversation `owner` → community `owner`; conversation `admin` **and** `member` → community `member`. Conversation admins are *not* carried over as community admins — community admin is a stronger role (can post/publish/moderate as the community identity) that the new owner must grant explicitly afterwards via `SetMemberRole`. Do not change `messengerRoleToCommunityRole` to map `RoleAdmin → MemberRoleAdmin`; that was tried once and is wrong per spec.
+
+### Auto-created chat per non-general community
+
+Creating a community with `type != general` via `POST /api/v1/communities` auto-creates a linked `conversations` row (`type=channel` for `visibility=public`, `type=group` for `visibility=private`) and sets `conversations.community_id`. `PrivacyRepo.IsBlocked` is **not** applied to community-linked conversations, same rule as groups/channels in the Messenger section above.
+
+### Error catalogue additions
+
+| Sentinel | Package | HTTP | Code |
+|---|---|---|---|
+| `ErrCommunityNotFound` | `internal/errs` | 404 | `COMMUNITY_NOT_FOUND` |
+| `ErrCommunityForbidden` | `internal/errs` | 403 | `COMMUNITY_FORBIDDEN` |
+| `ErrCommunitySlugTaken` | `internal/errs` | 409 | `COMMUNITY_SLUG_TAKEN` |
+| `ErrAlreadyCommunityMember` | `internal/errs` | 409 | `ALREADY_COMMUNITY_MEMBER` |
+| `ErrNotCommunityMember` | `internal/errs` | 404 | `NOT_COMMUNITY_MEMBER` |
+| `ErrCannotRemoveCommunityOwner` | `internal/errs` | 422 | `CANNOT_REMOVE_COMMUNITY_OWNER` |
+| `ErrInvalidCommunityPayload` | `internal/errs` | 422 | `INVALID_COMMUNITY_PAYLOAD` |
+
+These sentinels were already declared in `internal/errs/errors.go`, but their `response.go` mapping had shipped as an unapplied `.patch` file sitting in `internal/transport/http/response/` instead of being merged — every community error was silently falling through to the generic `default: 500 INTERNAL_SERVER_ERROR` case. The mapping is now applied directly in `response.go`'s `SendError` switch; if you ever find a stray `*.patch` file like this again, treat it as a bug, not a TODO — apply it and delete it in the same commit, never leave generated patches unmerged in the source tree.
+
+### `/api/v1/channels/*` and `/api/v1/users/me/subscriptions` are deprecated compat shims
+
+Both are thin handlers (`VideoChannelHandler`, `VideoSubscriptionHandler`) that delegate to `CommunityService` (`type=video` is enforced where relevant). Keep them working for backward compatibility with older mobile clients, but do not add new functionality to them — new features go on `/api/v1/communities/*`. Do not leave commented-out alternate route registrations in `router.go` "for reference" — delete dead code instead; git history is the reference.

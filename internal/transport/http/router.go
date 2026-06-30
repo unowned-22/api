@@ -237,20 +237,11 @@ func NewRouter(
 
 			r.Get("/feed", feedHandler.ListHomeFeed)
 
-			//r.Post("/channels/{id}/subscribe", videoSubHandler.Subscribe)
-			//r.Delete("/channels/{id}/subscribe", videoSubHandler.Unsubscribe)
-			//r.Get("/channels/{id}/subscribers/count", videoSubHandler.GetSubscriberCount)
-			//r.Get("/channels/subscriptions", videoSubHandler.ListMySubscriptions)
-
 			r.Post("/channels", videoChannelHandler.CreateChannel)
 			r.Get("/channels/me", videoChannelHandler.GetMyChannel)
-			//r.Patch("/channels/me", videoChannelHandler.UpdateMyChannel)
-			//r.Post("/channels/me/avatar", videoChannelHandler.UploadAvatar)
-			//r.Post("/channels/me/banner", videoChannelHandler.UploadBanner)
 			r.Get("/channels/{id}", videoChannelHandler.GetChannel)
 			r.Patch("/channels/{id}", videoChannelHandler.UpdateChannel)
 			r.Delete("/channels/{id}", videoChannelHandler.DeleteChannel)
-			//r.Get("/channels/{id}/videos", videoChannelHandler.ListChannelVideos)
 			r.Post("/channels/{id}/subscribe", videoSubscriptionHandler.Subscribe)
 			r.Delete("/channels/{id}/subscribe", videoSubscriptionHandler.Unsubscribe)
 			r.Get("/channels/{id}/subscribers", videoSubscriptionHandler.GetSubscriberCount)

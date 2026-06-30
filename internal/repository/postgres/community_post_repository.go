@@ -135,4 +135,21 @@ func (r *CommunityPostRepository) DecrCommentsCount(ctx context.Context, id int6
 	return err
 }
 
+func (r *CommunityPostRepository) SoftDeleteByVideoID(ctx context.Context, videoID int64) (*int64, error) {
+	var communityID int64
+	err := r.pool.QueryRow(ctx, `
+		UPDATE community_posts
+		   SET deleted_at=NOW(), updated_at=NOW()
+		 WHERE video_id=$1 AND deleted_at IS NULL
+		RETURNING community_id`, videoID,
+	).Scan(&communityID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &communityID, nil
+}
+
 var _ communitypost.Repository = (*CommunityPostRepository)(nil)

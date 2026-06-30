@@ -20,8 +20,8 @@ import (
 
 type VideoService struct {
 	videoRepo         domainvideo.Repository
-	communitySvc      community.Service        // replaces channelRepo — see Stage 2 migration
-	communityPostRepo communitypost.Repository // Stage 4 bridge — see Publish()
+	communitySvc      community.Service
+	communityPostRepo communitypost.Repository
 	storage           storage.Storage
 	jobQueue          domainvideo.JobQueue
 	bucket            string
@@ -179,10 +179,6 @@ func (s *VideoService) Publish(ctx context.Context, videoID, requesterID int64, 
 		return err
 	}
 
-	// Stage 4 bridge: if the video is published to the community feed,
-	// create a backing community_posts row so it shows up in GET /feed
-	// alongside other posts. See AGENTS.md "Communities Feature Guidance"
-	// §"Posts & feed" and §"Video-channel migration".
 	for _, t := range targets {
 		if t == domainvideo.PublishTargetVideoFeed {
 			if post, postErr := s.communityPostRepo.CreateForVideo(ctx, v.CommunityID, requesterID, videoID); postErr == nil {
@@ -194,9 +190,7 @@ func (s *VideoService) Publish(ctx context.Context, videoID, requesterID int64, 
 				})
 				_ = s.publisher.Publish(ctx, event.Event{Name: event.CommunityPostPublished, Payload: bridgePayload})
 			}
-			// Best-effort: the video is already published; a missing feed
-			// post is recoverable (can be re-created manually) and must
-			// not roll back the publish itself.
+
 			break
 		}
 	}
@@ -225,7 +219,14 @@ func (s *VideoService) Unpublish(ctx context.Context, videoID, requesterID int64
 	if err := s.communitySvc.RequireAdminOrOwner(ctx, v.CommunityID, requesterID); err != nil {
 		return err
 	}
-	return s.videoRepo.Unpublish(ctx, videoID)
+	if err := s.videoRepo.Unpublish(ctx, videoID); err != nil {
+		return err
+	}
+
+	if communityID, postErr := s.communityPostRepo.SoftDeleteByVideoID(ctx, videoID); postErr == nil && communityID != nil {
+		_ = s.communitySvc.DecrPostsCount(ctx, *communityID)
+	}
+	return nil
 }
 
 // ── Boost stub ───────────────────────────────────────────────────────────────
