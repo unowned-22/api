@@ -17,6 +17,7 @@ type StoryRepository interface {
 	ListViewsByViewer(ctx context.Context, viewerID int64) (map[int64]map[int]bool, error)
 	GetByID(ctx context.Context, id int64) (*Story, error)
 	Delete(ctx context.Context, id int64) error
+	ListByCommunity(ctx context.Context, communityID int64, limit, offset int) ([]*Story, error)
 
 	// Likes and replies
 	AddLike(ctx context.Context, viewerID int64, storyID int64) error
@@ -26,16 +27,16 @@ type StoryRepository interface {
 }
 
 type StoryService interface {
-	Publish(ctx context.Context, userID int64, slidesJSON []byte, visibility string, durationHours int, hiddenFrom []int64) (*Story, error)
+	Publish(ctx context.Context, userID int64, slidesJSON []byte, visibility string, durationHours int, hiddenFrom []int64, authorType string, communityID *int64) (*Story, error)
 	ListMyStories(ctx context.Context, userID int64) ([]*Story, error)
 	Feed(ctx context.Context, userID int64) ([]*Story, error)
 	AddView(ctx context.Context, viewerID int64, storyID int64, slideIndex *int) error
 	ListViewsByViewer(ctx context.Context, viewerID int64) (map[int64]map[int]bool, error)
 	Delete(ctx context.Context, userID int64, storyID int64) error
 
-	// Likes and replies service-level
 	Like(ctx context.Context, viewerID int64, storyID int64) error
 	Unlike(ctx context.Context, viewerID int64, storyID int64) error
 	Reply(ctx context.Context, viewerID int64, storyID int64, message string) error
 	ListReplies(ctx context.Context, viewerID int64, storyID int64) ([]*Reply, error)
+	ListByCommunity(ctx context.Context, viewerID, communityID int64, limit, offset int) ([]*Story, error)
 }

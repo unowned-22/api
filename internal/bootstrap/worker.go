@@ -51,7 +51,7 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	// close pool if any subsequent initialisation step fails
+
 	defer func() {
 		if err != nil {
 			pool.Close()
@@ -70,7 +70,6 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 	systemSettingsRepo := postgresRepo.NewSystemSettingsRepository(pool)
 	userSettingsRepo := postgresRepo.NewUserSettingsRepository(pool)
 
-	// initialize MinIO storage
 	minioStorage, err := infrastorage.NewMinIOStorage(infrastorage.Config{
 		Endpoint:        cfg.MinIOEndpoint,
 		AccessKeyID:     cfg.MinIOAccessKey,
@@ -103,20 +102,13 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 
 	handlers := map[domainevent.Name]domainevent.Handler{
 		domainevent.UserRegistered: workerHandler.NewUserRegisteredHandler(smtpMailer, cfg.AppURL, cfg.AppName),
-		// EmailVerifiedHandler provisions storage/user_settings; the search
-		// index handler additionally puts the now-confirmed user into the
-		// "users" Meilisearch index. Both subscribe to the same event, so
-		// they're combined via MultiHandler (the consumer only allows one
-		// event.Handler per event.Name).
 		domainevent.UserEmailVerified: workerHandler.NewMultiHandler(
 			domainevent.UserEmailVerified,
 			workerHandler.NewEmailVerifiedHandler(minioStorage, systemSettingsRepo, userSettingsRepo),
 			workerHandler.NewUserSearchIndexHandler(userRepo, userSearchIndex, domainevent.UserEmailVerified),
 		),
-		domainevent.PasswordResetRequested: workerHandler.NewPasswordResetHandler(smtpMailer),
-		// Re-syncs the search index whenever profile fields (name/username/avatar) change.
-		domainevent.UserProfileUpdated: workerHandler.NewUserSearchIndexHandler(userRepo, userSearchIndex, domainevent.UserProfileUpdated),
-		// Audit handlers
+		domainevent.PasswordResetRequested:      workerHandler.NewPasswordResetHandler(smtpMailer),
+		domainevent.UserProfileUpdated:          workerHandler.NewUserSearchIndexHandler(userRepo, userSearchIndex, domainevent.UserProfileUpdated),
 		domainevent.LoginSuccess:                workerHandler.NewAuditHandler(auditRepo, domainevent.LoginSuccess),
 		domainevent.LoginFailed:                 workerHandler.NewAuditHandler(auditRepo, domainevent.LoginFailed),
 		domainevent.Logout:                      workerHandler.NewAuditHandler(auditRepo, domainevent.Logout),
@@ -129,17 +121,13 @@ func NewWorker(version, commit, buildDate string) (*Worker, error) {
 		domainevent.RefreshRotated:              workerHandler.NewAuditHandler(auditRepo, domainevent.RefreshRotated),
 		domainevent.RefreshTokenReuseDetected:   workerHandler.NewAuditHandler(auditRepo, domainevent.RefreshTokenReuseDetected),
 		domainevent.SessionRevoked:              workerHandler.NewAuditHandler(auditRepo, domainevent.SessionRevoked),
-		// AccountDeactivated previously only fed the audit log; now it also
-		// removes the user from search, since deactivated accounts should no
-		// longer be discoverable. Combined the same way as UserEmailVerified above.
 		domainevent.AccountDeactivated: workerHandler.NewMultiHandler(
 			domainevent.AccountDeactivated,
 			workerHandler.NewAuditHandler(auditRepo, domainevent.AccountDeactivated),
 			workerHandler.NewUserSearchDeindexHandler(userSearchIndex, domainevent.AccountDeactivated),
 		),
 		domainevent.AccountActivated: workerHandler.NewAuditHandler(auditRepo, domainevent.AccountActivated),
-		// email send handler: deliver email.send events by calling SMTP mailer
-		domainevent.EmailSend: workerHandler.NewEmailSendHandler(smtpMailer),
+		domainevent.EmailSend:        workerHandler.NewEmailSendHandler(smtpMailer),
 	}
 
 	consumer, err := queue.NewConsumer(queue.ConsumerConfig{

@@ -14,10 +14,16 @@ type Repository interface {
 	ReadyForPublish(ctx context.Context, id int64, hls, mp4360, mp4720, thumbnail string, dur float64, w, h int, size int64, vcodec, acodec string) error
 	MarkFailed(ctx context.Context, id int64) error
 	MarkProcessing(ctx context.Context, id int64) error
-
 	UpdateProgress(ctx context.Context, id int64, stage string, percent int) error
-	ListByChannel(ctx context.Context, channelID int64, viewerID int64, limit, offset int) ([]*Video, int, error)
+	Publish(ctx context.Context, id int64, targets []string) error
+	Unpublish(ctx context.Context, id int64) error
+	Archive(ctx context.Context, id int64) error
+	ArchiveByCommunity(ctx context.Context, communityID int64) error
+	SetBoostedUntil(ctx context.Context, id int64, until *string) error
+	ListByCommunity(ctx context.Context, communityID int64, viewerID int64, limit, offset int) ([]*Video, int, error)
+	ListDraftsByCommunity(ctx context.Context, communityID int64, limit, offset int) ([]*Video, int, error)
 	Feed(ctx context.Context, subscriberID int64, limit, offset int) ([]*Video, int, error)
+
 	Search(ctx context.Context, query, category string, limit, offset int) ([]*Video, int, error)
 	SetTags(ctx context.Context, videoID int64, tags []string) error
 	GetTags(ctx context.Context, videoID int64) ([]string, error)
@@ -36,11 +42,17 @@ type JobQueue interface {
 
 type Service interface {
 	Upload(ctx context.Context, req UploadRequest) (*Video, error)
+
 	GetVideo(ctx context.Context, id int64, viewerID int64) (*Video, error)
 	UpdateMeta(ctx context.Context, id int64, requesterID int64, req UpdateMetaRequest) (*Video, error)
 	Delete(ctx context.Context, id int64, requesterID int64) error
-	ListByChannel(ctx context.Context, channelID int64, viewerID int64, limit, offset int) ([]*Video, int, error)
+	Publish(ctx context.Context, videoID, requesterID int64, targets []string) error
+	Unpublish(ctx context.Context, videoID, requesterID int64) error
+	Boost(ctx context.Context, videoID, requesterID int64, hours int) error
+	ListByCommunity(ctx context.Context, communityID int64, viewerID int64, limit, offset int) ([]*Video, int, error)
+	ListDrafts(ctx context.Context, communityID, requesterID int64, limit, offset int) ([]*Video, int, error)
 	Feed(ctx context.Context, subscriberID int64, limit, offset int) ([]*Video, int, error)
+
 	Search(ctx context.Context, query, category string, limit, offset int) ([]*Video, int, error)
 	RecordView(ctx context.Context, videoID int64, userID *int64, ipHash string) error
 	LikeVideo(ctx context.Context, videoID, userID int64) error
@@ -49,7 +61,7 @@ type Service interface {
 
 type UploadRequest struct {
 	UserID      int64
-	ChannelID   int64
+	CommunityID int64 // was ChannelID
 	Title       string
 	Description string
 	Category    string

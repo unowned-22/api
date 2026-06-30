@@ -370,6 +370,21 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 		code = "CANNOT_SUBSCRIBE_SELF"
 		message = "cannot subscribe to your own channel"
 
+	case errors.Is(err, errs.ErrPostNotFound):
+		status, code, message = http.StatusNotFound, "POST_NOT_FOUND", "post not found"
+	case errors.Is(err, errs.ErrPostForbidden):
+		status, code, message = http.StatusForbidden, "POST_FORBIDDEN", "cannot modify this post"
+	case errors.Is(err, errs.ErrInvalidPostPayload):
+		status, code, message = http.StatusUnprocessableEntity, "INVALID_POST_PAYLOAD", err.Error()
+	case errors.Is(err, errs.ErrConversationAlreadyLinked):
+		status, code, message = http.StatusConflict, "CONVERSATION_ALREADY_LINKED", "conversation already linked to a community"
+	case errors.Is(err, errs.ErrPromoteRequiresGroupOrChannel):
+		status, code, message = http.StatusUnprocessableEntity, "PROMOTE_REQUIRES_GROUP_OR_CHANNEL", "only group or channel conversations can be promoted"
+	case errors.Is(err, errs.ErrNotConversationOwner):
+		status, code, message = http.StatusForbidden, "NOT_CONVERSATION_OWNER", "only the conversation owner may perform this action"
+	case errors.Is(err, errs.ErrInvalidStoryForCommunity):
+		status, code, message = http.StatusUnprocessableEntity, "INVALID_STORY_FOR_COMMUNITY", err.Error()
+
 	default:
 		logger.FromContext(r.Context()).WithError(err).Error("internal server error")
 		status = http.StatusInternalServerError

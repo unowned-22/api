@@ -58,7 +58,12 @@ func (h *StoryHandler) Publish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	st, err := h.storyService.Publish(r.Context(), userID, slidesJSON, req.Visibility, req.Duration, req.HiddenFrom)
+	authorType := req.AuthorType
+	if authorType == "" {
+		authorType = "user"
+	}
+
+	st, err := h.storyService.Publish(r.Context(), userID, slidesJSON, req.Visibility, req.Duration, req.HiddenFrom, authorType, req.CommunityID)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
@@ -66,13 +71,15 @@ func (h *StoryHandler) Publish(w http.ResponseWriter, r *http.Request) {
 
 	slides, _ := h.presignSlides(r.Context(), st.Slides)
 	resp := dto.StoryResponse{
-		ID:         st.ID,
-		Visibility: string(st.Visibility),
-		Duration:   st.DurationHours,
-		HiddenFrom: st.HiddenFromUserIDs,
-		Slides:     slides,
-		CreatedAt:  st.CreatedAt.Format(time.RFC3339),
-		ExpiresAt:  st.ExpiresAt.Format(time.RFC3339),
+		ID:          st.ID,
+		Visibility:  string(st.Visibility),
+		Duration:    st.DurationHours,
+		HiddenFrom:  st.HiddenFromUserIDs,
+		Slides:      slides,
+		CreatedAt:   st.CreatedAt.Format(time.RFC3339),
+		ExpiresAt:   st.ExpiresAt.Format(time.RFC3339),
+		AuthorType:  st.AuthorType,
+		CommunityID: st.CommunityID,
 	}
 	response.SendSuccess(w, http.StatusCreated, resp)
 }

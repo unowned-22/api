@@ -21,13 +21,14 @@ func NewStoryRepository(db *pgxpool.Pool) *StoryRepository {
 // Create inserts a new story row. Each publish creates an independent story.
 func (r *StoryRepository) Create(ctx context.Context, s *story.Story) error {
 	query := `
-		INSERT INTO stories (user_id, visibility, duration_hours, hidden_from_user_ids, slides, expires_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO stories (user_id, visibility, duration_hours, hidden_from_user_ids, slides, expires_at, created_at, author_type, community_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id, created_at
 	`
 	err := r.db.QueryRow(ctx, query,
 		s.UserID, s.Visibility, s.DurationHours,
 		s.HiddenFromUserIDs, s.Slides, s.ExpiresAt, s.CreatedAt,
+		s.AuthorType, s.CommunityID,
 	).Scan(&s.ID, &s.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create story: %w", err)
@@ -37,7 +38,7 @@ func (r *StoryRepository) Create(ctx context.Context, s *story.Story) error {
 
 func (r *StoryRepository) ListActiveByUser(ctx context.Context, userID int64) ([]*story.Story, error) {
 	query := `
-        SELECT id, user_id, visibility, duration_hours, hidden_from_user_ids, slides, created_at, expires_at
+        SELECT id, user_id, visibility, duration_hours, hidden_from_user_ids, slides, created_at, expires_at, author_type, community_id
         FROM stories
         WHERE user_id = $1 AND expires_at > now()
         ORDER BY created_at DESC
@@ -53,7 +54,7 @@ func (r *StoryRepository) ListActiveByUser(ctx context.Context, userID int64) ([
 		var s story.Story
 		var hidden []int64
 		var slides []byte
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Visibility, &s.DurationHours, &hidden, &slides, &s.CreatedAt, &s.ExpiresAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Visibility, &s.DurationHours, &hidden, &slides, &s.CreatedAt, &s.ExpiresAt, &s.AuthorType, &s.CommunityID); err != nil {
 			return nil, fmt.Errorf("failed to scan story row: %w", err)
 		}
 		s.HiddenFromUserIDs = hidden
@@ -63,38 +64,24 @@ func (r *StoryRepository) ListActiveByUser(ctx context.Context, userID int64) ([
 	return out, nil
 }
 
-// ListFeed returns active stories visible to viewerID. Current implementation
-// excludes stories where viewerID appears in hidden_from_user_ids and only
-// returns stories with expires_at > now().
 func (r *StoryRepository) ListFeed(ctx context.Context, viewerID int64) ([]*story.Story, error) {
 	query := `
-       SELECT s.id, s.user_id, s.visibility, s.duration_hours, s.hidden_from_user_ids, s.slides, s.created_at, s.expires_at
-       FROM stories s
-       WHERE s.expires_at > now()
-         AND (s.hidden_from_user_ids IS NULL OR NOT (s.hidden_from_user_ids @> ARRAY[$1::bigint]))
-         AND (
-            s.visibility = 'everyone'
-            OR (
-               s.visibility = 'friends'
-               AND EXISTS (
-                  SELECT 1 FROM friendships f
-                  WHERE f.status = 'accepted'
-                   AND (
-                      (f.requester_id = s.user_id AND f.addressee_id = $1)
-                      OR (f.addressee_id = s.user_id AND f.requester_id = $1)
-                   )
-               )
-            )
-            OR (
-               s.visibility = 'close'
-               AND EXISTS (
-                  SELECT 1 FROM close_friends cf
-                  WHERE cf.owner_id = s.user_id AND cf.friend_id = $1
-               )
-            )
-            OR s.user_id = $1
-         )
-       ORDER BY s.created_at DESC
+        SELECT id, user_id, visibility, duration_hours, hidden_from_user_ids,
+               slides, created_at, expires_at, author_type, community_id
+        FROM stories
+        WHERE author_type = 'user'
+          AND expires_at > now()
+          AND NOT ($1 = ANY(hidden_from_user_ids))
+        UNION ALL
+        SELECT s.id, s.user_id, s.visibility, s.duration_hours,
+               s.hidden_from_user_ids, s.slides, s.created_at, s.expires_at,
+               s.author_type, s.community_id
+        FROM stories s
+        INNER JOIN community_members cm
+                ON cm.community_id = s.community_id AND cm.user_id = $1
+        WHERE s.author_type = 'community'
+          AND s.expires_at > now()
+        ORDER BY created_at DESC
     `
 	rows, err := r.db.Query(ctx, query, viewerID)
 	if err != nil {
@@ -107,7 +94,7 @@ func (r *StoryRepository) ListFeed(ctx context.Context, viewerID int64) ([]*stor
 		var s story.Story
 		var hidden []int64
 		var slides []byte
-		if err := rows.Scan(&s.ID, &s.UserID, &s.Visibility, &s.DurationHours, &hidden, &slides, &s.CreatedAt, &s.ExpiresAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Visibility, &s.DurationHours, &hidden, &slides, &s.CreatedAt, &s.ExpiresAt, &s.AuthorType, &s.CommunityID); err != nil {
 			return nil, fmt.Errorf("failed to scan story row: %w", err)
 		}
 		s.HiddenFromUserIDs = hidden
@@ -117,7 +104,6 @@ func (r *StoryRepository) ListFeed(ctx context.Context, viewerID int64) ([]*stor
 	return out, nil
 }
 
-// IsCloseFriend returns true if friendID is in ownerID's close friends list.
 func (r *StoryRepository) IsCloseFriend(ctx context.Context, ownerID, friendID int64) (bool, error) {
 	var exists bool
 	err := r.db.QueryRow(ctx,
@@ -130,8 +116,6 @@ func (r *StoryRepository) IsCloseFriend(ctx context.Context, ownerID, friendID i
 	return exists, nil
 }
 
-// AddView records that viewerID has viewed a slide in a story. slideIndex may
-// be nil when the view is for the whole story.
 func (r *StoryRepository) AddView(ctx context.Context, viewerID int64, storyID int64, slideIndex *int) error {
 	query := `INSERT INTO story_views (viewer_id, story_id, slide_index) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`
 	var idx interface{}
@@ -147,7 +131,6 @@ func (r *StoryRepository) AddView(ctx context.Context, viewerID int64, storyID i
 	return nil
 }
 
-// ListViewsByViewer returns a map[story_id]map[slide_index]bool for quick lookup.
 func (r *StoryRepository) ListViewsByViewer(ctx context.Context, viewerID int64) (map[int64]map[int]bool, error) {
 	query := `SELECT story_id, slide_index FROM story_views WHERE viewer_id = $1`
 	rows, err := r.db.Query(ctx, query, viewerID)
@@ -177,13 +160,13 @@ func (r *StoryRepository) ListViewsByViewer(ctx context.Context, viewerID int64)
 
 func (r *StoryRepository) GetByID(ctx context.Context, id int64) (*story.Story, error) {
 	query := `
-        SELECT id, user_id, visibility, duration_hours, hidden_from_user_ids, slides, created_at, expires_at
+        SELECT id, user_id, visibility, duration_hours, hidden_from_user_ids, slides, created_at, expires_at, s.author_type, s.community_id
         FROM stories WHERE id = $1
     `
 	var s story.Story
 	var hidden []int64
 	var slides []byte
-	err := r.db.QueryRow(ctx, query, id).Scan(&s.ID, &s.UserID, &s.Visibility, &s.DurationHours, &hidden, &slides, &s.CreatedAt, &s.ExpiresAt)
+	err := r.db.QueryRow(ctx, query, id).Scan(&s.ID, &s.UserID, &s.Visibility, &s.DurationHours, &hidden, &slides, &s.CreatedAt, &s.ExpiresAt, &s.AuthorType, &s.CommunityID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, errs.ErrStoryNotFound
@@ -278,6 +261,41 @@ func (r *StoryRepository) ListExpired(ctx context.Context) ([]*story.Story, erro
 		var slides []byte
 		if err := rows.Scan(&s.ID, &s.UserID, &s.Visibility, &s.DurationHours, &hidden, &slides, &s.CreatedAt, &s.ExpiresAt); err != nil {
 			return nil, fmt.Errorf("failed to scan story row: %w", err)
+		}
+		s.HiddenFromUserIDs = hidden
+		s.Slides = slides
+		out = append(out, &s)
+	}
+	return out, nil
+}
+
+func (r *StoryRepository) ListByCommunity(ctx context.Context, communityID int64, limit, offset int) ([]*story.Story, error) {
+	query := `
+        SELECT s.id, s.user_id, s.visibility, s.duration_hours,
+               s.hidden_from_user_ids, s.slides, s.created_at, s.expires_at,
+               s.author_type, s.community_id
+        FROM stories s
+        WHERE s.community_id = $1
+          AND s.author_type = 'community'
+          AND s.expires_at > now()
+        ORDER BY s.created_at DESC
+        LIMIT $2 OFFSET $3
+    `
+	rows, err := r.db.Query(ctx, query, communityID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list community stories: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*story.Story, 0)
+	for rows.Next() {
+		var s story.Story
+		var hidden []int64
+		var slides []byte
+		if err := rows.Scan(&s.ID, &s.UserID, &s.Visibility, &s.DurationHours,
+			&hidden, &slides, &s.CreatedAt, &s.ExpiresAt,
+			&s.AuthorType, &s.CommunityID); err != nil {
+			return nil, fmt.Errorf("failed to scan community story row: %w", err)
 		}
 		s.HiddenFromUserIDs = hidden
 		s.Slides = slides

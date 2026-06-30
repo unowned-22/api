@@ -6,6 +6,7 @@ import (
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/domain/album"
 	"github.com/unowned-22/api/internal/domain/closefriend"
+	"github.com/unowned-22/api/internal/domain/community"
 	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/media"
 	"github.com/unowned-22/api/internal/domain/messenger"
@@ -19,10 +20,8 @@ import (
 	"github.com/unowned-22/api/internal/domain/user"
 	"github.com/unowned-22/api/internal/domain/usersettings"
 	"github.com/unowned-22/api/internal/domain/video"
-	"github.com/unowned-22/api/internal/domain/videochannel"
 	"github.com/unowned-22/api/internal/domain/videocomment"
 	"github.com/unowned-22/api/internal/domain/videoplaylist"
-	"github.com/unowned-22/api/internal/domain/videosubscription"
 	"github.com/unowned-22/api/internal/infrastructure/mailer"
 	outboxpub "github.com/unowned-22/api/internal/infrastructure/outbox"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
@@ -30,32 +29,32 @@ import (
 )
 
 type Services struct {
-	Auth              auth.AuthService
-	PasswordReset     service.PasswordResetService
-	User              *service.UserService
-	Health            *service.HealthService
-	SystemSettings    systemsettings.Service
-	UserSettings      usersettings.Service
-	Story             *service.StoryService
-	Friendship        *service.FriendshipService
-	CloseFriend       closefriend.Service
-	Profile           *service.ProfileService
-	Notification      notification.Service
-	Photo             photo.Service
-	Album             album.Service
-	PhotoComment      photocomment.Service
-	VideoChannel      videochannel.Service
-	Video             video.Service
-	VideoComment      videocomment.Service
-	VideoPlaylist     videoplaylist.Service
-	VideoSubscription videosubscription.Service
-	Messenger         messenger.Service
-	OutboxPublisher   event.Publisher
-	UserSearchIndex   domainsearch.UserIndex
-	UserSearch        *service.UserSearchService
+	Auth            auth.AuthService
+	PasswordReset   service.PasswordResetService
+	User            *service.UserService
+	Health          *service.HealthService
+	SystemSettings  systemsettings.Service
+	UserSettings    usersettings.Service
+	Story           *service.StoryService
+	Friendship      *service.FriendshipService
+	CloseFriend     closefriend.Service
+	Profile         *service.ProfileService
+	Notification    notification.Service
+	Photo           photo.Service
+	Album           album.Service
+	PhotoComment    photocomment.Service
+	Community       community.Service
+	Video           video.Service
+	VideoComment    videocomment.Service
+	VideoPlaylist   videoplaylist.Service
+	Messenger       messenger.Service
+	OutboxPublisher event.Publisher
+	UserSearchIndex domainsearch.UserIndex
+	UserSearch      *service.UserSearchService
+	Post            *service.PostService
+	Feed            *service.FeedService
 }
 
-// InitServices constructs application services from repositories and infra.
 func InitServices(
 	cfg *config.Config,
 	pool *pgxpool.Pool,
@@ -68,7 +67,6 @@ func InitServices(
 	userSearchIndex domainsearch.UserIndex,
 	imageProcessor *media.Processor,
 ) *Services {
-	// create an outbox-backed publisher that persists events into the outbox table
 	outboxPublisher := outboxpub.New(repos.Outbox)
 	authSvc := auth.NewAuthService(
 		repos.User,
@@ -85,6 +83,8 @@ func InitServices(
 		pool,
 	)
 
+	jobQueue := queue.NewVideoJobQueue(publisher, "video.processing_progress")
+
 	passwordResetSvc := service.NewPasswordResetService(repos.User, repos.PasswordReset, repos.RefreshToken, repos.UserSession, smtp, outboxPublisher, cfg.AppURL, cfg.AppName)
 	userSvc := service.NewUserService(repos.User, storage, repos.UserSettings, cfg.MinIOBucket, imageProcessor, outboxPublisher)
 	userSearchSvc := service.NewUserSearchService(userSearchIndex)
@@ -93,42 +93,50 @@ func InitServices(
 	userSettingsSvc := service.NewUserSettingsService(repos.UserSettings)
 	friendshipSvc := service.NewFriendshipService(repos.Friendship, outboxPublisher)
 	closeFriendSvc := service.NewCloseFriendService(repos.CloseFriend, repos.Friendship)
-	storySvc := service.NewStoryService(repos.Story, friendshipSvc, outboxPublisher)
 	notifSvc := service.NewNotificationService(repos.Notification)
 	profileSvc := service.NewProfileService(repos.User, repos.Friendship, repos.UserPrivacy, friendshipSvc)
 	photoSvc := service.NewPhotoService(repos.Photo, repos.Album, repos.UserSettings, storage, outboxPublisher, cfg.MinIOBucket)
 	photoCommentSvc := service.NewPhotoCommentService(repos.PhotoComment, repos.Photo, outboxPublisher)
-	videoChannelSvc := service.NewVideoChannelService(repos.VideoChannel, storage, cfg.MinIOBucket)
-	videoSubSvc := service.NewVideoSubscriptionService(repos.VideoSubscription, repos.VideoChannel)
-	videoSvc := service.NewVideoService(repos.Video, repos.VideoChannel, storage, queue.NewVideoJobQueue(publisher, cfg.VideoProcessQueue), cfg.MinIOBucket, outboxPublisher, cfg.VideoMaxFileSizeBytes)
+	communitySvc := service.NewCommunityService(repos.Community, repos.Conversation)
+	videoSvc := service.NewVideoService(repos.Video, communitySvc, repos.CommunityPost, storage, jobQueue, cfg.MinIOBucket, outboxPublisher, 10737418240)
 	videoCommentSvc := service.NewVideoCommentService(repos.VideoComment, repos.Video, outboxPublisher)
 	videoPlaylistSvc := service.NewVideoPlaylistService(repos.VideoPlaylist, repos.Video)
 	albumSvc := service.NewAlbumService(repos.Album, repos.Photo)
-	messengerSvc := service.NewMessengerService(repos.Conversation, repos.Message, repos.Member, repos.Presence, repos.MessengerPrivacy, repos.Draft, friendshipSvc, storage, cfg.MinIOBucket, outboxPublisher)
+	messengerSvc := service.NewMessengerService(
+		repos.Conversation, repos.Message, repos.Member, repos.Presence,
+		repos.MessengerPrivacy, repos.Draft, friendshipSvc, storage, cfg.MinIOBucket,
+		outboxPublisher,
+		communitySvc,
+	)
+
+	postSvc := service.NewPostService(repos.UserPost, repos.CommunityPost, communitySvc, outboxPublisher)
+	feedSvc := service.NewFeedService(repos.Feed)
+	storySvc := service.NewStoryService(repos.Story, friendshipSvc, outboxPublisher, communitySvc)
 
 	return &Services{
-		Auth:              authSvc,
-		PasswordReset:     passwordResetSvc,
-		User:              userSvc,
-		Health:            healthSvc,
-		SystemSettings:    systemSettingsSvc,
-		UserSettings:      userSettingsSvc,
-		Story:             storySvc,
-		Friendship:        friendshipSvc,
-		CloseFriend:       closeFriendSvc,
-		Profile:           profileSvc,
-		Notification:      notifSvc,
-		Photo:             photoSvc,
-		PhotoComment:      photoCommentSvc,
-		VideoChannel:      videoChannelSvc,
-		Video:             videoSvc,
-		VideoComment:      videoCommentSvc,
-		VideoPlaylist:     videoPlaylistSvc,
-		VideoSubscription: videoSubSvc,
-		Album:             albumSvc,
-		Messenger:         messengerSvc,
-		OutboxPublisher:   outboxPublisher,
-		UserSearchIndex:   userSearchIndex,
-		UserSearch:        userSearchSvc,
+		Auth:            authSvc,
+		PasswordReset:   passwordResetSvc,
+		User:            userSvc,
+		Health:          healthSvc,
+		SystemSettings:  systemSettingsSvc,
+		UserSettings:    userSettingsSvc,
+		Story:           storySvc,
+		Friendship:      friendshipSvc,
+		CloseFriend:     closeFriendSvc,
+		Profile:         profileSvc,
+		Notification:    notifSvc,
+		Photo:           photoSvc,
+		PhotoComment:    photoCommentSvc,
+		Community:       communitySvc,
+		Video:           videoSvc,
+		VideoComment:    videoCommentSvc,
+		VideoPlaylist:   videoPlaylistSvc,
+		Album:           albumSvc,
+		Messenger:       messengerSvc,
+		OutboxPublisher: outboxPublisher,
+		UserSearchIndex: userSearchIndex,
+		UserSearch:      userSearchSvc,
+		Post:            postSvc,
+		Feed:            feedSvc,
 	}
 }

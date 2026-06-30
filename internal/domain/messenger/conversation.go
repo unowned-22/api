@@ -17,6 +17,7 @@ type Conversation struct {
 	Description     string               `json:"description"`
 	AvatarURL       string               `json:"avatar_url"`
 	OwnerID         *int64               `json:"owner_id"`
+	CommunityID     *int64               `json:"community_id,omitempty"`
 	CreatedBy       int64                `json:"created_by"`
 	LastMessageID   *int64               `json:"last_message_id"`
 	LastMessageAt   *time.Time           `json:"last_message_at"`

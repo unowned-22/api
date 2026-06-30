@@ -39,7 +39,6 @@ type App struct {
 	Hub             *ws.Hub
 	UserSearchIndex domainsearch.UserIndex
 
-	// internal pieces we need to shutdown
 	loginLimiter, registerLimiter, forgotLimiter, resendLimiter *middleware.AuthRateLimiter
 	publisher                                                   *queue.AMQPPublisher
 	pool                                                        *pgxpool.Pool
@@ -49,7 +48,6 @@ type App struct {
 	outboxCancel                                                context.CancelFunc
 }
 
-// NewApp initializes application dependencies and returns an App ready to Run.
 func NewApp() (*App, error) {
 	cfg, err := config.Load()
 	if err != nil {
@@ -80,7 +78,7 @@ func NewApp() (*App, error) {
 	hub := ws.NewHubWithPresence(repos.Presence, repos.Friendship)
 	svcs := InitServices(cfg, pool, repos, tokenManager, smtpMailer, publisher, minioStorage, tokenVersionCache, userSearchIndex, imageProcessor)
 	handlers := InitHandlers(cfg, svcs, minioStorage, hub)
-	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub, repos.Member, repos.VideoSubscription)
+	realtimeConsumer, err := realtime.NewConsumer(cfg, repos.Friendship, repos.Story, repos.UserSettings, repos.Notification, hub, repos.Member, repos.Community)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +107,6 @@ func NewApp() (*App, error) {
 		pool:            pool,
 	}
 
-	// Start outbox worker to republish persisted events to the broker.
 	if app.Repositories != nil && app.publisher != nil {
 		ctxWorker, cancelWorker := context.WithCancel(context.Background())
 		worker := outboxworker.NewWorker(app.Repositories.Outbox, app.publisher, outboxworker.RetryPolicy{MaxRetries: 5, Interval: 1 * time.Second}, 50)
@@ -129,7 +126,6 @@ func NewApp() (*App, error) {
 		}()
 	}
 
-	// Start messenger workers (scheduled messages + disappearing messages).
 	if app.Repositories != nil && app.Services != nil {
 		ctxScheduled, cancelScheduled := context.WithCancel(context.Background())
 		scheduledWorker := messengerworker.NewScheduledMessageWorker(app.Repositories.Message, app.Repositories.Member, app.Services.OutboxPublisher)
@@ -149,16 +145,13 @@ func NewApp() (*App, error) {
 		}
 	}
 
-	// Start cleanup goroutine for expired stories (best-effort background job)
 	if app.Repositories != nil && app.Storage != nil {
 		if minIOStorage, ok := app.Storage.(*stor.MinIOStorage); ok {
 			ctxCleanup, cancelCleanup := context.WithCancel(context.Background())
 			StartCleanupExpired(ctxCleanup, app.Repositories.Story, minIOStorage, cfg.MinIOBucket, time.Duration(cfg.StoriesCleanupIntervalMinutes)*time.Minute)
-			// attach cancel to shutdown via outboxCancel slot
 			if app.outboxCancel == nil {
 				app.outboxCancel = cancelCleanup
 			} else {
-				// wrap both cancels
 				prev := app.outboxCancel
 				app.outboxCancel = func() {
 					prev()
@@ -171,7 +164,6 @@ func NewApp() (*App, error) {
 	return app, nil
 }
 
-// Run starts the HTTP server and handles graceful shutdown.
 func (a *App) Run() error {
 	cfg, ok := a.Config.(*config.Config)
 	if !ok {
@@ -207,7 +199,6 @@ func (a *App) Run() error {
 		logger.Log.Info("HTTP server stopped accepting new requests")
 	}
 
-	// Stop limiters
 	if a.loginLimiter != nil {
 		a.loginLimiter.Stop()
 	}

@@ -78,6 +78,8 @@ type StoryResponse struct {
 	Slides         []json.RawMessage `json:"slides"`
 	CreatedAt      string            `json:"created_at"`
 	ExpiresAt      string            `json:"expires_at"`
+	AuthorType     string            `json:"author_type"`
+	CommunityID    *int64            `json:"community_id,omitempty"`
 }
 
 type StoryMediaResponse struct {

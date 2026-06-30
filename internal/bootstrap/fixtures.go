@@ -21,11 +21,23 @@ type yamlUser struct {
 	PlainPassword string `yaml:"plain_password"`
 }
 
-type yamlUserRoot struct {
-	Users []yamlUser `yaml:"users"`
+type yamlFriendship struct {
+	RequesterUsername string `yaml:"requester_username"`
+	AddresseeUsername string `yaml:"addressee_username"`
+	Status            string `yaml:"status"`
 }
 
-func LoadUserFixtures() ([]*user.User, error) {
+type yamlUserRoot struct {
+	Users       []yamlUser       `yaml:"users"`
+	Friendships []yamlFriendship `yaml:"friendships"`
+}
+
+type Fixtures struct {
+	Users       []*user.User
+	Friendships []yamlFriendship
+}
+
+func LoadFixtures() (*Fixtures, error) {
 	data, err := fixturesFS.ReadFile("fixtures/data.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read users fixture file: %w", err)
@@ -36,7 +48,7 @@ func LoadUserFixtures() ([]*user.User, error) {
 		return nil, fmt.Errorf("failed to unmarshal users yaml: %w", err)
 	}
 
-	var out []*user.User
+	var outUsers []*user.User
 	for _, yu := range root.Users {
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(yu.PlainPassword), bcrypt.DefaultCost)
 		if err != nil {
@@ -51,9 +63,11 @@ func LoadUserFixtures() ([]*user.User, error) {
 			Password:  string(hashedPassword),
 			CreatedAt: time.Now(),
 		}
-
-		out = append(out, u)
+		outUsers = append(outUsers, u)
 	}
 
-	return out, nil
+	return &Fixtures{
+		Users:       outUsers,
+		Friendships: root.Friendships,
+	}, nil
 }

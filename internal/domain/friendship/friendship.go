@@ -15,7 +15,6 @@ const (
 	StatusRejected Status = "rejected"
 )
 
-// Friendship — directed request/relation from RequesterID to AddresseeID.
 type Friendship struct {
 	ID          int64     `json:"id"`
 	RequesterID int64     `json:"requester_id"`
@@ -35,15 +34,11 @@ type Repository interface {
 	ListFriends(ctx context.Context, userID int64, page pagination.Query) ([]*Friendship, int64, error)
 	ListIncomingRequests(ctx context.Context, userID int64, page pagination.Query) ([]*Friendship, int64, error)
 	ListOutgoingRequests(ctx context.Context, userID int64, page pagination.Query) ([]*Friendship, int64, error)
-
-	// ListSuggestions returns users who are not yet friends/pending with userID,
-	// ordered by number of mutual friends descending, with random users as fallback.
 	ListSuggestions(ctx context.Context, userID int64, page pagination.Query) ([]*Suggestion, int64, error)
 
 	IsFriend(ctx context.Context, userA, userB int64) (bool, error)
 	IsSubscriber(ctx context.Context, requesterID, addresseeID int64) (bool, error)
 	GetFriendIDs(ctx context.Context, userID int64) ([]int64, error)
-	// CountFriends returns the total number of accepted friends for a user.
 	CountFriends(ctx context.Context, userID int64) (int64, error)
 }
 
@@ -58,16 +53,14 @@ type Service interface {
 	ListIncomingRequests(ctx context.Context, userID int64, page pagination.Query) ([]*Friendship, int64, error)
 	ListOutgoingRequests(ctx context.Context, userID int64, page pagination.Query) ([]*Friendship, int64, error)
 
-	// ListSuggestions returns suggested users to befriend.
 	ListSuggestions(ctx context.Context, userID int64, page pagination.Query) ([]*Suggestion, int64, error)
 	IsFriend(ctx context.Context, userA, userB int64) (bool, error)
 }
 
-// Suggestion represents a user suggested as a potential friend.
 type Suggestion struct {
 	ID          int64
 	Username    string
 	FullName    string
 	AvatarURL   string
-	MutualCount int64 // number of mutual friends with the requesting user
+	MutualCount int64
 }

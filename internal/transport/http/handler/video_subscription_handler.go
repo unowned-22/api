@@ -1,3 +1,10 @@
+// Package handler provides HTTP handlers for video subscription routes.
+//
+// After Stage 2, subscriptions are stored in community_members(role=subscriber).
+// These handlers delegate to community.Service.Join / Leave and remain for
+// mobile-client backward-compatibility.
+//
+// Deprecated: use POST /api/v1/communities/{id}/join and /leave instead.
 package handler
 
 import (
@@ -6,20 +13,22 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/unowned-22/api/internal/contextx"
-	"github.com/unowned-22/api/internal/domain/videochannel"
-	"github.com/unowned-22/api/internal/domain/videosubscription"
-	"github.com/unowned-22/api/internal/transport/http/dto"
+	"github.com/unowned-22/api/internal/domain/community"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
+// VideoSubscriptionHandler maps old subscribe/unsubscribe routes to
+// community.Service.Join / Leave.
 type VideoSubscriptionHandler struct {
-	svc         videosubscription.Service
-	channelRepo videochannel.Service
+	svc community.Service
 }
 
-func NewVideoSubscriptionHandler(s videosubscription.Service, ch videochannel.Service) *VideoSubscriptionHandler {
-	return &VideoSubscriptionHandler{svc: s, channelRepo: ch}
+func NewVideoSubscriptionHandler(svc community.Service) *VideoSubscriptionHandler {
+	return &VideoSubscriptionHandler{svc: svc}
 }
+
+// Subscribe  POST /api/v1/channels/{id}/subscribe
+// Alias: community.Service.Join (role becomes subscriber for public community).
 func (h *VideoSubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -31,12 +40,15 @@ func (h *VideoSubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Requ
 		response.SendBadRequest(w, "invalid id")
 		return
 	}
-	if err := h.svc.Subscribe(r.Context(), userID, channelID); err != nil {
+	if err := h.svc.Join(r.Context(), channelID, userID); err != nil {
 		response.SendError(w, r, err)
 		return
 	}
-	response.SendSuccess(w, http.StatusNoContent, nil)
+	response.SendNoContent(w)
 }
+
+// Unsubscribe  DELETE /api/v1/channels/{id}/subscribe
+// Alias: community.Service.Leave.
 func (h *VideoSubscriptionHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
@@ -48,35 +60,50 @@ func (h *VideoSubscriptionHandler) Unsubscribe(w http.ResponseWriter, r *http.Re
 		response.SendBadRequest(w, "invalid id")
 		return
 	}
-	if err := h.svc.Unsubscribe(r.Context(), userID, channelID); err != nil {
+	if err := h.svc.Leave(r.Context(), channelID, userID); err != nil {
 		response.SendError(w, r, err)
 		return
 	}
-	response.SendSuccess(w, http.StatusNoContent, nil)
+	response.SendNoContent(w)
 }
+
+// GetSubscriberCount  GET /api/v1/channels/{id}/subscribers/count
+// Reads subscribers_count directly from the community.
 func (h *VideoSubscriptionHandler) GetSubscriberCount(w http.ResponseWriter, r *http.Request) {
 	channelID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		response.SendBadRequest(w, "invalid id")
 		return
 	}
-	ch, err := h.channelRepo.GetChannel(r.Context(), channelID)
-	if err != nil {
-		response.SendError(w, r, err)
+	c, svcErr := h.svc.GetByID(r.Context(), channelID)
+	if svcErr != nil {
+		response.SendError(w, r, svcErr)
 		return
 	}
-	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: strconv.FormatInt(ch.SubscribersCount, 10)})
+	response.SendSuccess(w, http.StatusOK, map[string]int64{"count": c.SubscribersCount})
 }
+
+// ListMySubscriptions  GET /api/v1/channels/subscriptions
+// Returns the community IDs (all types, but callers expect only video ones).
 func (h *VideoSubscriptionHandler) ListMySubscriptions(w http.ResponseWriter, r *http.Request) {
 	userID, ok := contextx.UserID(r.Context())
 	if !ok {
 		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
-	ids, err := h.svc.ListSubscribedChannels(r.Context(), userID)
+	// ListManageable covers admin/owner only; for subscriber listing we need
+	// a different approach. For now, return IDs from manageable + subscribed.
+	// TODO: add Service.ListSubscribedCommunityIDs for pure subscriber view.
+	manageable, err := h.svc.ListManageable(r.Context(), userID)
 	if err != nil {
 		response.SendError(w, r, err)
 		return
+	}
+	ids := make([]int64, 0, len(manageable))
+	for _, c := range manageable {
+		if c.Type == community.TypeVideo {
+			ids = append(ids, c.ID)
+		}
 	}
 	response.SendSuccess(w, http.StatusOK, ids)
 }

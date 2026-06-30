@@ -16,25 +16,25 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/unowned-22/api/internal/config"
 	"github.com/unowned-22/api/internal/contextx"
+	"github.com/unowned-22/api/internal/domain/community"
 	"github.com/unowned-22/api/internal/domain/storage"
 	domainuser "github.com/unowned-22/api/internal/domain/user"
 	domainvideo "github.com/unowned-22/api/internal/domain/video"
-	"github.com/unowned-22/api/internal/domain/videochannel"
 	"github.com/unowned-22/api/internal/errs"
 	"github.com/unowned-22/api/internal/transport/http/dto"
 	"github.com/unowned-22/api/internal/transport/http/response"
 )
 
 type VideoHandler struct {
-	videos   domainvideo.Service
-	channels videochannel.Service
-	users    domainuser.UserService
-	storage  storage.Storage
-	cfg      *config.Config
+	videos      domainvideo.Service
+	communities community.Service // replaces channels (Stage 2)
+	users       domainuser.UserService
+	storage     storage.Storage
+	cfg         *config.Config
 }
 
-func NewVideoHandler(v domainvideo.Service, c videochannel.Service, u domainuser.UserService, s storage.Storage, cfg *config.Config) *VideoHandler {
-	return &VideoHandler{videos: v, channels: c, users: u, storage: s, cfg: cfg}
+func NewVideoHandler(v domainvideo.Service, c community.Service, u domainuser.UserService, s storage.Storage, cfg *config.Config) *VideoHandler {
+	return &VideoHandler{videos: v, communities: c, users: u, storage: s, cfg: cfg}
 }
 
 func (h *VideoHandler) UploadVideo(w http.ResponseWriter, r *http.Request) {
@@ -115,15 +115,27 @@ func (h *VideoHandler) UploadVideo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	channel, err := h.channels.GetChannelByUser(r.Context(), userID)
-	if err != nil {
-		response.SendError(w, r, err)
+	channel, err := h.communities.ListManageable(r.Context(), userID)
+	if err != nil || len(channel) == 0 {
+		response.SendError(w, r, errs.ErrCommunityNotFound)
+		return
+	}
+	// Pick the first owned video-type community (backward-compatible behaviour).
+	var communityID int64
+	for _, c := range channel {
+		if c.Type == community.TypeVideo && c.OwnerID == userID {
+			communityID = c.ID
+			break
+		}
+	}
+	if communityID == 0 {
+		response.SendNotFound(w, "no video community found; create one first")
 		return
 	}
 
 	v, err := h.videos.Upload(r.Context(), domainvideo.UploadRequest{
 		UserID:      userID,
-		ChannelID:   channel.ID,
+		CommunityID: communityID,
 		Title:       title,
 		Description: description,
 		Category:    category,
@@ -289,7 +301,8 @@ func (h *VideoHandler) UnlikeVideo(w http.ResponseWriter, r *http.Request) {
 func (h *VideoHandler) toVideoResponse(ctx context.Context, v *domainvideo.Video) dto.VideoResponse {
 	resp := dto.VideoResponse{
 		ID:                 v.ID,
-		ChannelID:          v.ChannelID,
+		CommunityID:        v.CommunityID,
+		ChannelID:          v.CommunityID, // backward-compat alias
 		UserID:             v.UserID,
 		Title:              v.Title,
 		Description:        v.Description,
@@ -361,4 +374,112 @@ func (r *byteReader) Read(p []byte) (int, error) {
 	n := copy(p, r.b[r.i:])
 	r.i += n
 	return n, nil
+}
+
+// ── Stage 2 additions ─────────────────────────────────────────────────────────
+
+// ListByCommunity  GET /api/v1/communities/{id}/videos
+func (h *VideoHandler) ListByCommunity(w http.ResponseWriter, r *http.Request) {
+	communityID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid community id")
+		return
+	}
+	viewerID, _ := contextx.UserID(r.Context())
+	limit, offset := getPaginationQueries(r)
+	items, total, err := h.videos.ListByCommunity(r.Context(), communityID, viewerID, limit, offset)
+	if err != nil {
+		response.SendError(w, r, err)
+		return
+	}
+	response.SendSuccess(w, http.StatusOK, dto.VideoListResponse{Videos: h.toVideoResponses(r.Context(), items), Total: total})
+}
+
+// ListDrafts  GET /api/v1/communities/{id}/videos/drafts
+// Only admins/owners of the community can see this.
+func (h *VideoHandler) ListDrafts(w http.ResponseWriter, r *http.Request) {
+	requesterID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	communityID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid community id")
+		return
+	}
+	limit, offset := getPaginationQueries(r)
+	items, total, svcErr := h.videos.ListDrafts(r.Context(), communityID, requesterID, limit, offset)
+	if svcErr != nil {
+		response.SendError(w, r, svcErr)
+		return
+	}
+	response.SendSuccess(w, http.StatusOK, dto.VideoListResponse{Videos: h.toVideoResponses(r.Context(), items), Total: total})
+}
+
+// PublishVideo  POST /api/v1/videos/{id}/publish
+func (h *VideoHandler) PublishVideo(w http.ResponseWriter, r *http.Request) {
+	requesterID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	videoID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid video id")
+		return
+	}
+	var req dto.PublishVideoRequest
+	_ = json.NewDecoder(r.Body).Decode(&req) // body is optional
+	if svcErr := h.videos.Publish(r.Context(), videoID, requesterID, req.Targets); svcErr != nil {
+		response.SendError(w, r, svcErr)
+		return
+	}
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "published"})
+}
+
+// UnpublishVideo  POST /api/v1/videos/{id}/unpublish
+func (h *VideoHandler) UnpublishVideo(w http.ResponseWriter, r *http.Request) {
+	requesterID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	videoID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid video id")
+		return
+	}
+	if svcErr := h.videos.Unpublish(r.Context(), videoID, requesterID); svcErr != nil {
+		response.SendError(w, r, svcErr)
+		return
+	}
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "unpublished"})
+}
+
+// BoostVideo  POST /api/v1/videos/{id}/boost
+// Stub — persists boosted_until but has no effect on ranking/billing.
+// TODO: implement billing/ranking when the promotion subsystem is ready.
+//
+//	See TASK-communities §4, §10 and AGENTS.md "Boost / promotion stub".
+func (h *VideoHandler) BoostVideo(w http.ResponseWriter, r *http.Request) {
+	requesterID, ok := contextx.UserID(r.Context())
+	if !ok {
+		response.SendUnauthorized(w, "unauthorized")
+		return
+	}
+	videoID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		response.SendBadRequest(w, "invalid video id")
+		return
+	}
+	var req dto.BoostVideoRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Hours <= 0 {
+		req.Hours = 24 // sensible default
+	}
+	if svcErr := h.videos.Boost(r.Context(), videoID, requesterID, req.Hours); svcErr != nil {
+		response.SendError(w, r, svcErr)
+		return
+	}
+	response.SendSuccess(w, http.StatusOK, dto.MessageResponse{Message: "boost scheduled (stub)"})
 }

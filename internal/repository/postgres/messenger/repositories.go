@@ -962,6 +962,25 @@ func (r *MessageRepository) GetAttachmentsBatch(ctx context.Context, messageIDs 
 	return out, nil
 }
 
+func (r *ConversationRepository) SetCommunityID(ctx context.Context, conversationID int64, communityID *int64) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE conversations SET community_id=$2, updated_at=NOW() WHERE id=$1`,
+		conversationID, communityID)
+	return err
+}
+
+func (r *ConversationRepository) GetByCommunityID(ctx context.Context, communityID int64) (*domainmessenger.Conversation, error) {
+	q := `SELECT id, type, title, description, avatar_url, owner_id, created_by, last_message_id, last_message_at, members_count, is_archived, invite_link, disappear_after_s, created_at, updated_at FROM conversations WHERE community_id=$1`
+	c, err := scanConversation(r.db.QueryRow(ctx, q, communityID))
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errs.ErrConversationNotFound
+		}
+		return nil, fmt.Errorf("get conversation: %w", err)
+	}
+	return c, nil
+}
+
 var (
 	_ domainmessenger.ConversationRepository = (*ConversationRepository)(nil)
 	_ domainmessenger.MessageRepository      = (*MessageRepository)(nil)

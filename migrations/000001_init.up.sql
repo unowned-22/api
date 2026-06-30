@@ -107,41 +107,6 @@ CREATE TABLE user_devices (
   UNIQUE (user_id, fingerprint, browser)
 );
 
-CREATE TABLE stories (
- id                   BIGSERIAL PRIMARY KEY,
- user_id              BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
- visibility           VARCHAR(16) NOT NULL DEFAULT 'everyone',
- duration_hours       SMALLINT NOT NULL,
- hidden_from_user_ids BIGINT[] NOT NULL DEFAULT '{}',
- slides               JSONB NOT NULL,
- created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
- expires_at           TIMESTAMPTZ NOT NULL
-);
-
-CREATE TABLE story_views (
-     id BIGSERIAL PRIMARY KEY,
-     viewer_id BIGINT NOT NULL,
-     story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
-     slide_index INT,
-     viewed_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS story_likes (
-    id BIGSERIAL PRIMARY KEY,
-    story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
-    viewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (story_id, viewer_id)
-);
-
-CREATE TABLE IF NOT EXISTS story_replies (
-    id BIGSERIAL PRIMARY KEY,
-    story_id BIGINT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
-    viewer_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    message TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 CREATE TABLE friendships (
      id            BIGSERIAL PRIMARY KEY,
      requester_id  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -264,9 +229,7 @@ CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id          ON user_sessions(u
 CREATE INDEX IF NOT EXISTS idx_user_sessions_refresh_token_id ON user_sessions(refresh_token_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id             ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type          ON audit_logs(event_type);
-CREATE INDEX idx_stories_user_id_expires_at                   ON stories (user_id, expires_at);
-CREATE INDEX IF NOT EXISTS idx_stories_user_id_expires_at     ON stories (user_id, expires_at);
-CREATE UNIQUE INDEX story_views_unique_idx                    ON story_views(viewer_id, story_id, slide_index);
+
 CREATE UNIQUE INDEX uq_friendships_pair                       ON friendships (requester_id, addressee_id);
 CREATE INDEX idx_friendships_addressee_pending                ON friendships (addressee_id, status);
 CREATE INDEX idx_friendships_requester_pending                ON friendships (requester_id, status);

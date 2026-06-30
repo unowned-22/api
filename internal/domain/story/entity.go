@@ -10,13 +10,17 @@ const (
 	VisibilityClose    Visibility = "close"
 )
 
-// Story is a persisted, time-limited story published by a user.
-// Slides is stored as opaque JSON (see Slides field comment) rather than
-// being decomposed into relational tables.
+const (
+	AuthorTypeUser      = "user"
+	AuthorTypeCommunity = "community"
+)
+
 type Story struct {
 	ID                int64
 	UserID            int64
 	Visibility        Visibility
+	AuthorType        string
+	CommunityID       *int64
 	DurationHours     int
 	HiddenFromUserIDs []int64
 	Slides            []byte // raw JSON array

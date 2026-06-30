@@ -59,10 +59,12 @@ type UpdateThemeRequest struct {
 }
 
 type CreateStoryRequest struct {
-	Slides     []json.RawMessage `json:"slides"     validate:"required,min=1,max=20"`
-	Visibility string            `json:"visibility" validate:"required,oneof=everyone friends close"`
-	Duration   int               `json:"duration"   validate:"required,oneof=1 12 24 48"`
-	HiddenFrom []int64           `json:"hidden_from"`
+	Slides      []json.RawMessage `json:"slides"     validate:"required,min=1,max=20"`
+	Visibility  string            `json:"visibility" validate:"required,oneof=everyone friends close"`
+	Duration    int               `json:"duration"   validate:"required,oneof=1 12 24 48"`
+	HiddenFrom  []int64           `json:"hidden_from"`
+	AuthorType  string            `json:"author_type,omitempty"`
+	CommunityID *int64            `json:"community_id,omitempty"`
 }
 
 type CropRect struct {

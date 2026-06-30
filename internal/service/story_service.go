@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/unowned-22/api/internal/domain/community"
 	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/friendship"
 	"github.com/unowned-22/api/internal/domain/story"
@@ -16,10 +17,11 @@ type StoryService struct {
 	repo          story.StoryRepository
 	friendshipSvc friendship.Service
 	publisher     event.Publisher
+	communitySvc  community.Service
 }
 
-func NewStoryService(repo story.StoryRepository, friendshipSvc friendship.Service, publisher event.Publisher) *StoryService {
-	return &StoryService{repo: repo, friendshipSvc: friendshipSvc, publisher: publisher}
+func NewStoryService(repo story.StoryRepository, friendshipSvc friendship.Service, publisher event.Publisher, communitySvc community.Service) *StoryService {
+	return &StoryService{repo: repo, friendshipSvc: friendshipSvc, publisher: publisher, communitySvc: communitySvc}
 }
 
 func (s *StoryService) Feed(ctx context.Context, userID int64) ([]*story.Story, error) {
@@ -37,8 +39,25 @@ func (s *StoryService) ListViewsByViewer(ctx context.Context, viewerID int64) (m
 	return s.repo.ListViewsByViewer(ctx, viewerID)
 }
 
-func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []byte, visibility string, durationHours int, hiddenFrom []int64) (*story.Story, error) {
-	// validate visibility
+func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []byte, visibility string, durationHours int, hiddenFrom []int64, authorType string, communityID *int64) (*story.Story, error) {
+	if authorType == "" {
+		authorType = story.AuthorTypeUser
+	}
+
+	if authorType == story.AuthorTypeCommunity {
+		if communityID == nil {
+			return nil, fmt.Errorf("%w: community_id is required for author_type=community", errs.ErrInvalidStoryPayload)
+		}
+		if err := s.communitySvc.RequireAdminOrOwner(ctx, *communityID, userID); err != nil {
+			return nil, err
+		}
+		// Community stories are always public — friends/close visibility
+		// doesn't make sense for a community-wide broadcast.
+		if visibility != string(story.VisibilityEveryone) {
+			return nil, errs.ErrInvalidStoryForCommunity
+		}
+	}
+
 	switch visibility {
 	case string(story.VisibilityEveryone), string(story.VisibilityFriends), string(story.VisibilityClose):
 	default:
@@ -80,21 +99,18 @@ func (s *StoryService) Publish(ctx context.Context, userID int64, slidesJSON []b
 		}
 	}
 
-	now := time.Now().UTC()
-	expiresAt := now.Add(time.Duration(durationHours) * time.Hour)
-
 	st := &story.Story{
 		UserID:            userID,
 		Visibility:        story.Visibility(visibility),
 		DurationHours:     durationHours,
 		HiddenFromUserIDs: hiddenFrom,
 		Slides:            slidesJSON,
-		CreatedAt:         now,
-		ExpiresAt:         expiresAt,
+		ExpiresAt:         time.Now().UTC().Add(time.Duration(durationHours) * time.Hour),
+		AuthorType:        authorType,
+		CommunityID:       communityID,
 	}
-
 	if err := s.repo.Create(ctx, st); err != nil {
-		return nil, fmt.Errorf("failed to persist story: %w", err)
+		return nil, err
 	}
 
 	// best-effort publish story.published event
@@ -178,8 +194,17 @@ func (s *StoryService) ListReplies(ctx context.Context, viewerID int64, storyID 
 	return s.repo.ListReplies(ctx, viewerID, storyID)
 }
 
-// assertCanAccess checks whether viewerID can access storyID according to
-// visibility rules and hidden-from list. Returns the story when allowed.
+func (s *StoryService) ListByCommunity(ctx context.Context, viewerID, communityID int64, limit, offset int) ([]*story.Story, error) {
+	isMember, err := s.communitySvc.IsMember(ctx, communityID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	if !isMember {
+		return nil, errs.ErrCommunityForbidden
+	}
+	return s.repo.ListByCommunity(ctx, communityID, limit, offset)
+}
+
 func (s *StoryService) assertCanAccess(ctx context.Context, viewerID int64, storyID int64) (*story.Story, error) {
 	st, err := s.repo.GetByID(ctx, storyID)
 	if err != nil {
