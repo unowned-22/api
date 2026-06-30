@@ -175,7 +175,7 @@ func (h *VideoProcessHandler) Handle(ctx context.Context, payload []byte) error 
 
 	// — Stage: transcode variants (10→90%) —
 	variants := variantsForHeight(meta.Height)
-	baseKey := fmt.Sprintf("videos/%d/hls/%d", videoRow.ChannelID, job.VideoID)
+	baseKey := fmt.Sprintf("videos/%d/hls/%d", videoRow.CommunityID, job.VideoID)
 
 	// Distribute the 80% transcode budget across variants proportionally.
 	transcodeStart := 10
@@ -266,7 +266,7 @@ func (h *VideoProcessHandler) Handle(ctx context.Context, payload []byte) error 
 		return nil
 	}
 
-	thumbKey := fmt.Sprintf("videos/%d/thumb/%d.jpg", videoRow.ChannelID, job.VideoID)
+	thumbKey := fmt.Sprintf("videos/%d/thumb/%d.jpg", videoRow.CommunityID, job.VideoID)
 	if err := h.uploadFile(ctx, thumbKey, thumbPath, "image/jpeg"); err != nil {
 		logger.Log.WithError(err).WithField("video_id", job.VideoID).Error("video process: upload thumbnail failed")
 		_ = h.videoRepo.MarkFailed(ctx, job.VideoID)
@@ -283,7 +283,7 @@ func (h *VideoProcessHandler) Handle(ctx context.Context, payload []byte) error 
 
 	payloadOut, _ := json.Marshal(map[string]any{
 		"video_id":      job.VideoID,
-		"channel_id":    videoRow.ChannelID,
+		"community_id":  videoRow.CommunityID,
 		"channel_name":  "",
 		"title":         videoRow.Title,
 		"thumbnail_key": thumbKey,

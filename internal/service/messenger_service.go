@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/unowned-22/api/internal/domain/community"
 	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/friendship"
 	"github.com/unowned-22/api/internal/domain/messenger"
@@ -33,6 +34,7 @@ type MessengerService struct {
 	storage      storage.Storage
 	publicBucket string
 	eventBus     event.Publisher
+	communitySvc community.Service
 }
 
 func NewMessengerService(
@@ -46,6 +48,7 @@ func NewMessengerService(
 	storage storage.Storage,
 	publicBucket string,
 	eventBus event.Publisher,
+	communitySvc community.Service,
 ) *MessengerService {
 	return &MessengerService{
 		convRepo:     convRepo,
@@ -58,6 +61,7 @@ func NewMessengerService(
 		storage:      storage,
 		publicBucket: publicBucket,
 		eventBus:     eventBus,
+		communitySvc: communitySvc,
 	}
 }
 

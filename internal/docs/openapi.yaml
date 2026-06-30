@@ -43,6 +43,18 @@ tags:
     description: Photo upload, listing, metadata and visibility management
   - name: albums
     description: Album CRUD, cover photo and album-level visibility
+  - name: communities
+    description: Community creation, membership, moderation and discovery
+  - name: posts
+    description: User and community posts combined feed
+  - name: feed
+    description: Personalised home feed combining user and community posts
+  - name: messenger
+    description: >
+      Direct messages, groups, and channels. NOTE: only the
+      promote-to-community endpoint is documented here (Stage 5) — the rest
+      of the messenger API predates the OpenAPI-sync requirement and is not
+      yet covered; documenting it fully is tracked separately.
 
 components:
   securitySchemes:
@@ -998,6 +1010,16 @@ components:
             type: integer
             format: int64
           description: User IDs excluded from seeing this story even if `visibility` would otherwise allow it.
+        author_type:
+          type: string
+          enum: [user, community]
+          default: user
+          description: "Stage 6. If 'community', community_id is required and visibility is forced to 'everyone'."
+        community_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: "Stage 6. Required when author_type=community."
     AddCloseFriendRequest:
       type: object
       required: [friend_id]
@@ -1052,6 +1074,15 @@ components:
         expires_at:
           type: string
           format: date-time
+        author_type:
+          type: string
+          enum: [user, community]
+          description: Stage 6
+        community_id:
+          type: integer
+          format: int64
+          nullable: true
+          description: Stage 6. Set when author_type=community.
 
     FeedSlide:
       type: object
@@ -3850,3 +3881,908 @@ paths:
                 properties:
                   data:
                     $ref: '#/components/schemas/StoryMediaResponse'
+  # ──────────────────────────────────────────────────────────
+  # Community schemas
+  # ──────────────────────────────────────────────────────────
+    CommunityResponse:
+      type: object
+      properties:
+        id:          { type: integer, format: int64 }
+        owner_id:    { type: integer, format: int64 }
+        type:        { type: string, example: video }
+        visibility:  { type: string, enum: [public, private] }
+        name:        { type: string }
+        slug:        { type: string }
+        description: { type: string }
+        avatar_url:  { type: string }
+        banner_url:  { type: string }
+        members_count:     { type: integer, format: int64 }
+        posts_count:       { type: integer, format: int64 }
+        subscribers_count: { type: integer, format: int64 }
+        videos_count:      { type: integer, format: int64 }
+        created_at:  { type: string, format: date-time }
+        updated_at:  { type: string, format: date-time }
+
+    CommunityMemberResponse:
+      type: object
+      properties:
+        community_id: { type: integer, format: int64 }
+        user_id:      { type: integer, format: int64 }
+        role:         { type: string, enum: [owner, admin, member, subscriber] }
+        joined_at:    { type: string, format: date-time }
+
+    CreateCommunityRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        type:        { type: string, example: general }
+        visibility:  { type: string, enum: [public, private], default: public }
+        name:        { type: string, minLength: 2, maxLength: 128 }
+        slug:        { type: string, minLength: 2, maxLength: 64,
+                       pattern: '^[a-z0-9-]+$' }
+        description: { type: string }
+
+    UpdateCommunityRequest:
+      type: object
+      properties:
+        name:        { type: string }
+        description: { type: string }
+        avatar_key:  { type: string }
+        banner_key:  { type: string }
+
+    ChangeCommunityTypeRequest:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, example: general }
+
+    SetMemberRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [admin, member, subscriber] }
+
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Community paths
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /api/v1/communities:
+    post:
+      tags: [communities]
+      summary: Create a community
+      operationId: communitiesCreate
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommunityRequest'
+      responses:
+        '201':
+          description: Community created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CommunityResponse' }
+        '400': { description: Invalid request body }
+        '401': { description: Unauthorized }
+        '409': { description: Slug already taken }
+        '422': { description: Validation error }
+        '429': { description: Rate limited }
+
+  /api/v1/communities/me/manageable:
+    get:
+      tags: [communities]
+      summary: List communities where the caller is owner or admin (for "post as" selector)
+      operationId: communitiesListManageable
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of manageable communities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      communities:
+                        type: array
+                        items: { $ref: '#/components/schemas/CommunityResponse' }
+        '401': { description: Unauthorized }
+
+  /api/v1/communities/search:
+    get:
+      tags: [communities]
+      summary: Search communities by name or slug
+      operationId: communitiesSearch
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+          description: Search query
+        - in: query
+          name: type
+          schema: { type: string }
+          description: Filter by community type (video, music, news, …)
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      communities:
+                        type: array
+                        items: { $ref: '#/components/schemas/CommunityResponse' }
+        '401': { description: Unauthorized }
+
+  /api/v1/communities/{id}:
+    get:
+      tags: [communities]
+      summary: Get community public profile
+      operationId: communitiesGetByID
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200':
+          description: Community profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CommunityResponse' }
+        '401': { description: Unauthorized }
+        '404': { description: Community not found }
+
+    patch:
+      tags: [communities]
+      summary: Update community (owner or admin)
+      operationId: communitiesUpdate
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommunityRequest'
+      responses:
+        '200':
+          description: Updated community
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CommunityResponse' }
+        '400': { description: Invalid body }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden (not owner/admin) }
+        '404': { description: Community not found }
+        '429': { description: Rate limited }
+
+    delete:
+      tags: [communities]
+      summary: Soft-delete a community (owner only)
+      operationId: communitiesDelete
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '204': { description: Deleted }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden (not owner) }
+        '404': { description: Community not found }
+
+  /api/v1/communities/{id}/type:
+    patch:
+      tags: [communities]
+      summary: Change community type (owner only); e.g. video → general
+      operationId: communitiesChangeType
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeCommunityTypeRequest'
+      responses:
+        '200':
+          description: Updated community
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CommunityResponse' }
+        '400': { description: Invalid body }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden (not owner) }
+        '404': { description: Community not found }
+
+  /api/v1/communities/{id}/join:
+    post:
+      tags: [communities]
+      summary: Join (member) or subscribe (subscriber) to a community
+      operationId: communitiesJoin
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200': { description: Joined }
+        '401': { description: Unauthorized }
+        '404': { description: Community not found }
+        '409': { description: Already a member }
+        '429': { description: Rate limited }
+
+  /api/v1/communities/{id}/leave:
+    post:
+      tags: [communities]
+      summary: Leave or unsubscribe from a community
+      operationId: communitiesLeave
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200': { description: Left }
+        '401': { description: Unauthorized }
+        '404': { description: Community not found or not a member }
+        '422': { description: Owner cannot leave (transfer ownership first) }
+
+  /api/v1/communities/{id}/members:
+    get:
+      tags: [communities]
+      summary: List community members (paginated)
+      operationId: communitiesListMembers
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: role
+          schema: { type: string, enum: [owner, admin, member, subscriber] }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 30 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Member list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      members:
+                        type: array
+                        items: { $ref: '#/components/schemas/CommunityMemberResponse' }
+        '401': { description: Unauthorized }
+        '404': { description: Community not found }
+
+  /api/v1/communities/{id}/members/{userID}/role:
+    post:
+      tags: [communities]
+      summary: Set a member's role (owner only; cannot promote to owner)
+      operationId: communitiesSetMemberRole
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: path
+          name: userID
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetMemberRoleRequest'
+      responses:
+        '200': { description: Role updated }
+        '400': { description: Invalid body }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden (not owner) }
+        '404': { description: Community or member not found }
+        '422': { description: Cannot demote/remove owner }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Stage 2: community-scoped video endpoints + new video lifecycle
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /api/v1/communities/{id}/videos:
+    get:
+      tags: [communities, videos]
+      summary: List published videos for a community
+      operationId: communitiesListVideos
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Video list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/VideoListResponse' }
+        '401': { description: Unauthorized }
+        '404': { description: Community not found }
+
+  /api/v1/communities/{id}/videos/drafts:
+    get:
+      tags: [communities, videos]
+      summary: List draft (unpublished) videos — owner/admin only
+      operationId: communitiesListDraftVideos
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Draft video list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/VideoListResponse' }
+        '401': { description: Unauthorized }
+        '403': { description: Not owner/admin }
+        '404': { description: Community not found }
+
+  /api/v1/videos/{id}/publish:
+    post:
+      tags: [videos]
+      summary: Publish a ready video (owner/admin of the community)
+      operationId: videosPublish
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targets:
+                  type: array
+                  items:
+                    type: string
+                    enum: [video_feed, community_page]
+                  description: >
+                    Where the video appears. Defaults to ["video_feed"] if omitted.
+      responses:
+        '200': { description: Published }
+        '401': { description: Unauthorized }
+        '403': { description: Not owner/admin of the community }
+        '404': { description: Video not found }
+        '422': { description: Video not in ready status }
+
+  /api/v1/videos/{id}/unpublish:
+    post:
+      tags: [videos]
+      summary: Revert a published video back to draft (owner/admin only)
+      operationId: videosUnpublish
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        '200': { description: Unpublished }
+        '401': { description: Unauthorized }
+        '403': { description: Not owner/admin }
+        '404': { description: Video not found }
+
+  /api/v1/videos/{id}/boost:
+    post:
+      tags: [videos]
+      summary: Boost a video (stub — persists boosted_until, no ranking effect yet)
+      operationId: videosBoost
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hours]
+              properties:
+                hours:
+                  type: integer
+                  minimum: 1
+                  maximum: 720
+                  description: Duration of the boost in hours (billing/ranking not yet implemented)
+      responses:
+        '200': { description: Boost scheduled (stub) }
+        '401': { description: Unauthorized }
+        '403': { description: Not owner/admin }
+        '404': { description: Video not found }
+
+  # ── VideoListResponse schema ────────────────────────────────────────────────
+    VideoListResponse:
+      type: object
+      properties:
+        videos:
+          type: array
+          items: { $ref: '#/components/schemas/VideoResponse' }
+        total:
+          type: integer
+
+    VideoResponse:
+      type: object
+      properties:
+        id:            { type: integer, format: int64 }
+        community_id:  { type: integer, format: int64 }
+        channel_id:    { type: integer, format: int64, description: "Deprecated alias for community_id" }
+        user_id:       { type: integer, format: int64 }
+        title:         { type: string }
+        description:   { type: string }
+        category:      { type: string }
+        tags:          { type: array, items: { type: string } }
+        visibility:    { type: string, enum: [public, unlisted, private] }
+        status:        { type: string, enum: [pending, processing, ready, failed, archived] }
+        cover_url:     { type: string }
+        hls_url:       { type: string }
+        mp4_360_url:   { type: string }
+        mp4_720_url:   { type: string }
+        duration_sec:  { type: number }
+        views_count:   { type: integer, format: int64 }
+        likes_count:   { type: integer, format: int64 }
+        comments_count: { type: integer, format: int64 }
+        is_liked:      { type: boolean }
+        created_at:    { type: string, format: date-time }
+        published_at:  { type: string, format: date-time, nullable: true }
+        publish_targets:
+          type: array
+          items: { type: string }
+          description: "video_feed | community_page"
+        boosted_until: { type: string, format: date-time, nullable: true }
+        processing_stage:    { type: string }
+        processing_progress: { type: integer }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Stage 3: Posts + Feed schemas
+  # ────────────────────────────────────────────────────────────────────────────
+    MediaItemRequest:
+      type: object
+      required: [type, storage_key]
+      properties:
+        type:        { type: string, enum: [image, video, audio] }
+        storage_key: { type: string }
+        width:       { type: integer }
+        height:      { type: integer }
+        duration_s:  { type: number }
+
+    MediaItemResponse:
+      allOf:
+        - $ref: '#/components/schemas/MediaItemRequest'
+
+    CreatePostRequest:
+      type: object
+      required: [author_type]
+      properties:
+        author_type:  { type: string, enum: [user, community] }
+        community_id: { type: integer, format: int64, nullable: true,
+                         description: "Required when author_type=community" }
+        text:         { type: string }
+        media:
+          type: array
+          items: { $ref: '#/components/schemas/MediaItemRequest' }
+        visibility:
+          type: string
+          enum: [everyone, friends, private]
+          description: "Only used when author_type=user"
+
+    UserPostResponse:
+      type: object
+      properties:
+        id:             { type: integer, format: int64 }
+        user_id:        { type: integer, format: int64 }
+        text:           { type: string }
+        media:
+          type: array
+          items: { $ref: '#/components/schemas/MediaItemResponse' }
+        visibility:     { type: string }
+        likes_count:    { type: integer, format: int64 }
+        comments_count: { type: integer, format: int64 }
+        created_at:     { type: string, format: date-time }
+
+    CommunityPostResponse:
+      type: object
+      properties:
+        id:              { type: integer, format: int64 }
+        community_id:    { type: integer, format: int64 }
+        author_user_id:  { type: integer, format: int64 }
+        text:            { type: string }
+        media:
+          type: array
+          items: { $ref: '#/components/schemas/MediaItemResponse' }
+        video_id:        { type: integer, format: int64, nullable: true }
+        pinned:          { type: boolean }
+        likes_count:     { type: integer, format: int64 }
+        comments_count:  { type: integer, format: int64 }
+        created_at:      { type: string, format: date-time }
+
+    CreatePostResponse:
+      type: object
+      properties:
+        source_type:    { type: string, enum: [user, community] }
+        user_post:      { $ref: '#/components/schemas/UserPostResponse' }
+        community_post: { $ref: '#/components/schemas/CommunityPostResponse' }
+
+    FeedItemResponse:
+      type: object
+      properties:
+        source_type:    { type: string, enum: [user, community] }
+        id:             { type: integer, format: int64 }
+        owner_id:       { type: integer, format: int64 }
+        community_id:   { type: integer, format: int64, nullable: true }
+        text:           { type: string }
+        media:
+          type: array
+          items: { $ref: '#/components/schemas/MediaItemResponse' }
+        likes_count:    { type: integer, format: int64 }
+        comments_count: { type: integer, format: int64 }
+        created_at:     { type: string, format: date-time }
+
+    FeedResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FeedItemResponse' }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Stage 3: Posts + Feed paths
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /api/v1/posts:
+    post:
+      tags: [posts]
+      summary: Create a post (as yourself or, with admin/owner rights, as a community)
+      operationId: postsCreate
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostRequest'
+      responses:
+        '201':
+          description: Post created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CreatePostResponse' }
+        '400': { description: Invalid request body }
+        '401': { description: Unauthorized }
+        '403': { description: Not admin/owner of the target community }
+        '404': { description: Community not found }
+        '422': { description: Invalid post payload }
+        '429': { description: Rate limited }
+
+  /api/v1/posts/{id}:
+    delete:
+      tags: [posts]
+      summary: Soft-delete a post
+      operationId: postsDelete
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: source
+          required: true
+          schema: { type: string, enum: [user, community] }
+          description: Which table the post lives in (the two post tables have independent ID sequences)
+      responses:
+        '204': { description: Deleted }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+        '404': { description: Post not found }
+        '422': { description: Missing/invalid source query parameter }
+
+  /api/v1/communities/{id}/posts:
+    post:
+      tags: [communities, posts]
+      summary: Create a post as a community (alias for POST /posts with author_type=community)
+      operationId: communitiesCreatePost
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:  { type: string }
+                media:
+                  type: array
+                  items: { $ref: '#/components/schemas/MediaItemRequest' }
+      responses:
+        '201':
+          description: Post created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/CreatePostResponse' }
+        '401': { description: Unauthorized }
+        '403': { description: Not admin/owner of the community }
+        '404': { description: Community not found }
+        '422': { description: Invalid post payload }
+
+  /api/v1/feed:
+    get:
+      tags: [feed]
+      summary: Get the personalised home feed (friends' posts + subscribed communities' posts)
+      operationId: feedListHome
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: type
+          schema: { type: string }
+          description: Optional filter restricting community posts to a single community type (e.g. video); user posts are always included
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Feed page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/FeedResponse' }
+        '401': { description: Unauthorized }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Stage 5: Messenger -> Community promotion schemas
+  # ────────────────────────────────────────────────────────────────────────────
+    PromoteToCommunityRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          example: general
+          description: Resulting community.Type
+        visibility:
+          type: string
+          enum: [public, private]
+          default: public
+
+    PromoteToCommunityResponse:
+      type: object
+      properties:
+        community_id: { type: integer, format: int64 }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Stage 5: Messenger -> Community promotion paths
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /api/v1/conversations/{id}/promote-to-community:
+    post:
+      tags: [messenger, communities]
+      summary: Promote a group or channel conversation into a full community (owner only)
+      operationId: conversationsPromoteToCommunity
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteToCommunityRequest'
+      responses:
+        '200':
+          description: Promotion successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/PromoteToCommunityResponse' }
+        '401': { description: Unauthorized }
+        '403': { description: Not the conversation owner }
+        '404': { description: Conversation not found }
+        '409': { description: Conversation already linked to a community }
+        '422': { description: Conversation is not a group or channel }
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Stage 6: Community stories paths
+  # ────────────────────────────────────────────────────────────────────────────
+
+  /api/v1/communities/{id}/stories:
+    post:
+      tags: [communities, stories]
+      summary: Publish a story as a community (owner/admin only; always visibility=everyone)
+      operationId: communitiesPublishStory
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slides, duration]
+              properties:
+                slides:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items:
+                    $ref: '#/components/schemas/StorySlide'
+                duration:
+                  type: integer
+                  enum: [1, 12, 24, 48]
+      responses:
+        '201':
+          description: Story published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/StoryResponse' }
+        '400': { description: Invalid request body }
+        '401': { description: Unauthorized }
+        '403': { description: Not admin/owner of the community }
+        '404': { description: Community not found }
+        '422': { description: Invalid story payload }
+
+    get:
+      tags: [communities, stories]
+      summary: List a community's active stories (members only)
+      operationId: communitiesListStories
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Active stories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/StoryResponse' }
+        '401': { description: Unauthorized }
+        '403': { description: Not a member of the community }
+        '404': { description: Community not found }

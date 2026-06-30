@@ -1,7 +1,3 @@
-DROP TABLE IF EXISTS stories;
-DROP TABLE IF EXISTS story_views;
-DROP TABLE IF EXISTS story_replies;
-DROP TABLE IF EXISTS story_likes;
 DROP TABLE IF EXISTS friendships;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS close_friends;

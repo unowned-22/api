@@ -10,3 +10,8 @@ users:
     full_name: "MXMV"
     phone: "+9876543210"
     plain_password: "mxmv@unowned.com"
+
+friendships:
+  - requester_username: "mark.unowned"
+    addressee_username: "mxmv.unowned"
+    status: "accepted"

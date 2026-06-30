@@ -55,6 +55,7 @@ func NewRouter(
 	photoHandler *handler.PhotoHandler,
 	albumHandler *handler.AlbumHandler,
 	photoCommentHandler *handler.PhotoCommentHandler,
+	communityHandler *handler.CommunityHandler,
 	videoChannelHandler *handler.VideoChannelHandler,
 	videoHandler *handler.VideoHandler,
 	videoCommentHandler *handler.VideoCommentHandler,
@@ -70,6 +71,8 @@ func NewRouter(
 	forgotPasswordLimiter *middleware.AuthRateLimiter,
 	resendVerificationLimiter *middleware.AuthRateLimiter,
 	tokenVersionCache user.TokenVersionCache,
+	postHandler *handler.PostHandler,
+	feedHandler *handler.FeedHandler,
 ) http.Handler {
 	r := chi.NewRouter()
 
@@ -209,13 +212,45 @@ func NewRouter(
 			r.Post("/photos/{photoID}/like", photoCommentHandler.LikePhoto)
 			r.Delete("/photos/{photoID}/like", photoCommentHandler.UnlikePhoto)
 
-			r.Post("/channels", videoChannelHandler.CreateMyChannel)
+			r.Post("/communities", communityHandler.Create)
+			r.Get("/communities/me/manageable", communityHandler.ListManageable)
+			r.Get("/communities/search", communityHandler.Search)
+			r.Get("/communities/{id}", communityHandler.GetByID)
+			r.Patch("/communities/{id}", communityHandler.Update)
+			r.Delete("/communities/{id}", communityHandler.Delete)
+			r.Patch("/communities/{id}/type", communityHandler.ChangeType)
+			r.Post("/communities/{id}/join", communityHandler.Join)
+			r.Post("/communities/{id}/leave", communityHandler.Leave)
+			r.Get("/communities/{id}/members", communityHandler.ListMembers)
+			r.Post("/communities/{id}/members/{userID}/role", communityHandler.SetMemberRole)
+			r.Get("/communities/{id}/videos", videoHandler.ListByCommunity)
+			r.Get("/communities/{id}/videos/drafts", videoHandler.ListDrafts)
+
+			r.Post("/conversations/{id}/promote-to-community", messengerHandler.PromoteToCommunity)
+
+			r.Post("/communities/{id}/stories", storyHandler.PublishForCommunity)
+			r.Get("/communities/{id}/stories", storyHandler.ListByCommunity)
+
+			r.Post("/posts", postHandler.Create)
+			r.Delete("/posts/{id}", postHandler.Delete)
+			r.Post("/communities/{id}/posts", postHandler.CreateForCommunity)
+
+			r.Get("/feed", feedHandler.ListHomeFeed)
+
+			//r.Post("/channels/{id}/subscribe", videoSubHandler.Subscribe)
+			//r.Delete("/channels/{id}/subscribe", videoSubHandler.Unsubscribe)
+			//r.Get("/channels/{id}/subscribers/count", videoSubHandler.GetSubscriberCount)
+			//r.Get("/channels/subscriptions", videoSubHandler.ListMySubscriptions)
+
+			r.Post("/channels", videoChannelHandler.CreateChannel)
 			r.Get("/channels/me", videoChannelHandler.GetMyChannel)
-			r.Patch("/channels/me", videoChannelHandler.UpdateMyChannel)
-			r.Post("/channels/me/avatar", videoChannelHandler.UploadAvatar)
-			r.Post("/channels/me/banner", videoChannelHandler.UploadBanner)
+			//r.Patch("/channels/me", videoChannelHandler.UpdateMyChannel)
+			//r.Post("/channels/me/avatar", videoChannelHandler.UploadAvatar)
+			//r.Post("/channels/me/banner", videoChannelHandler.UploadBanner)
 			r.Get("/channels/{id}", videoChannelHandler.GetChannel)
-			r.Get("/channels/{id}/videos", videoChannelHandler.ListChannelVideos)
+			r.Patch("/channels/{id}", videoChannelHandler.UpdateChannel)
+			r.Delete("/channels/{id}", videoChannelHandler.DeleteChannel)
+			//r.Get("/channels/{id}/videos", videoChannelHandler.ListChannelVideos)
 			r.Post("/channels/{id}/subscribe", videoSubscriptionHandler.Subscribe)
 			r.Delete("/channels/{id}/subscribe", videoSubscriptionHandler.Unsubscribe)
 			r.Get("/channels/{id}/subscribers", videoSubscriptionHandler.GetSubscriberCount)
@@ -229,6 +264,9 @@ func NewRouter(
 			r.Post("/videos/{id}/view", videoHandler.RecordView)
 			r.Post("/videos/{id}/like", videoHandler.LikeVideo)
 			r.Delete("/videos/{id}/like", videoHandler.UnlikeVideo)
+			r.Post("/videos/{id}/publish", videoHandler.PublishVideo)
+			r.Post("/videos/{id}/unpublish", videoHandler.UnpublishVideo)
+			r.Post("/videos/{id}/boost", videoHandler.BoostVideo)
 			r.Get("/videos/{videoID}/comments", videoCommentHandler.ListComments)
 			r.Post("/videos/{videoID}/comments", videoCommentHandler.AddComment)
 			r.Delete("/videos/{videoID}/comments/{commentID}", videoCommentHandler.DeleteComment)

@@ -20,6 +20,8 @@ type ConversationRepository interface {
 	SetInviteLink(ctx context.Context, convID int64, slug string) error
 	GetByInviteLink(ctx context.Context, slug string) (*Conversation, error)
 	RevokeInviteLink(ctx context.Context, convID int64) error
+	SetCommunityID(ctx context.Context, conversationID int64, communityID *int64) error
+	GetByCommunityID(ctx context.Context, communityID int64) (*Conversation, error)
 }
 
 type MessageRepository interface {
@@ -125,4 +127,5 @@ type Service interface {
 	AddReaction(ctx context.Context, userID, msgID int64, emoji string) error
 	RemoveReaction(ctx context.Context, userID, msgID int64, emoji string) error
 	UploadAttachment(ctx context.Context, userID int64, filename, contentType string, body io.Reader, size int64) (storageKey, url string, err error)
+	PromoteToCommunity(ctx context.Context, requesterID, conversationID int64, communityType, visibility string) (communityID int64, err error)
 }

@@ -2,6 +2,10 @@ package dto
 
 import "time"
 
+// ── Legacy channel DTOs (kept for /api/v1/channels alias endpoints) ───────────
+
+// ChannelResponse maps a community (type=video) to the old channel shape
+// so existing mobile clients don't break.
 type ChannelResponse struct {
 	ID               int64     `json:"id"`
 	UserID           int64     `json:"user_id"`
@@ -34,8 +38,20 @@ type UpdateChannelRequest struct {
 	AvatarKey   string `json:"avatar_key"`
 	BannerKey   string `json:"banner_key"`
 }
+
+type UpdateVideoRequest struct {
+	Title        string   `json:"title"`
+	Description  string   `json:"description"`
+	Category     string   `json:"category"`
+	Tags         []string `json:"tags"`
+	Visibility   string   `json:"visibility"`
+	ThumbnailKey string   `json:"thumbnail_key,omitempty"`
+}
+
 type VideoResponse struct {
-	ID            int64     `json:"id"`
+	ID          int64 `json:"id"`
+	CommunityID int64 `json:"community_id"`
+	// channel_id is kept as an alias for mobile client backward compatibility.
 	ChannelID     int64     `json:"channel_id"`
 	UserID        int64     `json:"user_id"`
 	Title         string    `json:"title"`
@@ -59,20 +75,18 @@ type VideoResponse struct {
 	CreatedAt     time.Time `json:"created_at"`
 	// Processing progress — only meaningful while status == "processing".
 	ProcessingStage    string `json:"processing_stage,omitempty"`
-	ProcessingProgress int    `json:"processing_progress"`
+	ProcessingProgress int    `json:"processing_progress,omitempty"`
+	// Publish lifecycle (Stage 2)
+	PublishedAt    *time.Time `json:"published_at,omitempty"`
+	PublishTargets []string   `json:"publish_targets,omitempty"`
+	BoostedUntil   *time.Time `json:"boosted_until,omitempty"`
 }
+
 type VideoListResponse struct {
 	Videos []*VideoResponse `json:"videos"`
 	Total  int              `json:"total"`
 }
-type UpdateVideoRequest struct {
-	Title        string   `json:"title"`
-	Description  string   `json:"description"`
-	Category     string   `json:"category"`
-	Tags         []string `json:"tags"`
-	Visibility   string   `json:"visibility"`
-	ThumbnailKey string   `json:"thumbnail_key,omitempty"`
-}
+
 type VideoCommentResponse struct {
 	ID         int64     `json:"id"`
 	VideoID    int64     `json:"video_id"`
@@ -87,10 +101,12 @@ type VideoCommentListResponse struct {
 	Comments []*VideoCommentResponse `json:"comments"`
 	Total    int                     `json:"total"`
 }
+
 type CreateVideoCommentRequest struct {
 	ParentID *int64 `json:"parent_id,omitempty"`
 	Body     string `json:"body"`
 }
+
 type PlaylistResponse struct {
 	ID          int64     `json:"id"`
 	UserID      int64     `json:"user_id"`
@@ -127,4 +143,33 @@ type PlaylistItemListResponse struct {
 	Total  int                    `json:"total"`
 	Limit  int                    `json:"limit"`
 	Offset int                    `json:"offset"`
+}
+
+type UploadVideoRequest struct {
+	// Passed as multipart form fields (not JSON body).
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+	Visibility  string `json:"visibility"`
+}
+
+type UpdateVideoMetaRequest struct {
+	Title        string   `json:"title"`
+	Description  string   `json:"description"`
+	Category     string   `json:"category"`
+	Tags         []string `json:"tags"`
+	Visibility   string   `json:"visibility"`
+	ThumbnailKey string   `json:"thumbnail_key"`
+}
+
+type PublishVideoRequest struct {
+	// Targets is a subset of ["video_feed", "community_page"].
+	// Defaults to ["video_feed"] if omitted.
+	Targets []string `json:"targets"`
+}
+
+type BoostVideoRequest struct {
+	// Hours is how long the boost should last (1–720).
+	// This is a stub — no billing or ranking logic is implemented.
+	Hours int `json:"hours"`
 }

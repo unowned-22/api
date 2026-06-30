@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/unowned-22/api/internal/config"
+	"github.com/unowned-22/api/internal/domain/community"
 	"github.com/unowned-22/api/internal/domain/event"
 	"github.com/unowned-22/api/internal/domain/friendship"
 	"github.com/unowned-22/api/internal/domain/messenger"
 	"github.com/unowned-22/api/internal/domain/notification"
 	"github.com/unowned-22/api/internal/domain/story"
 	"github.com/unowned-22/api/internal/domain/usersettings"
-	"github.com/unowned-22/api/internal/domain/videosubscription"
 	"github.com/unowned-22/api/internal/infrastructure/queue"
 	"github.com/unowned-22/api/internal/logger"
 	ws "github.com/unowned-22/api/internal/transport/ws"
@@ -22,7 +22,18 @@ type Consumer struct {
 	consumer *queue.AMQPConsumer
 }
 
-func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, storyRepo story.StoryRepository, userSettingsRepo usersettings.Repository, notificationRepo notification.Repository, hub *ws.Hub, messengerMemberRepo messenger.MemberRepository, videoSubRepo videosubscription.Repository) (*Consumer, error) {
+// NewConsumer wires all realtime event handlers.
+// videosubscription.Repository is replaced by community.Repository (Stage 2).
+func NewConsumer(
+	cfg *config.Config,
+	friendshipRepo friendship.Repository,
+	storyRepo story.StoryRepository,
+	userSettingsRepo usersettings.Repository,
+	notificationRepo notification.Repository,
+	hub *ws.Hub,
+	messengerMemberRepo messenger.MemberRepository,
+	communityRepo community.Repository, // was: videosubscription.Repository
+) (*Consumer, error) {
 	handlers := map[event.Name]event.Handler{
 		event.FriendRequestReceived:    NewFriendRequestReceivedHandler(userSettingsRepo, notificationRepo, hub),
 		event.FriendRequestAccepted:    NewFriendRequestAcceptedHandler(userSettingsRepo, notificationRepo, hub),
@@ -31,7 +42,7 @@ func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, story
 		event.PhotoCommented:           NewPhotoCommentedHandler(userSettingsRepo, notificationRepo, hub),
 		event.CommentReplied:           NewCommentRepliedHandler(userSettingsRepo, notificationRepo, hub),
 		event.CommentLiked:             NewCommentLikedHandler(userSettingsRepo, notificationRepo, hub),
-		event.VideoPublished:           NewVideoPublishedHandler(videoSubRepo, hub),
+		event.VideoPublished:           NewVideoPublishedHandler(communityRepo, hub),
 		event.VideoProcessingProgress:  NewVideoProcessingProgressHandler(hub),
 		event.MessengerMessageSent:     NewMessengerMessageSentHandler(hub, userSettingsRepo, notificationRepo),
 		event.MessengerScheduledReady:  NewMessengerScheduledReadyHandler(hub),
@@ -46,6 +57,7 @@ func NewConsumer(cfg *config.Config, friendshipRepo friendship.Repository, story
 		event.MessengerMemberAdded:     NewMessengerMemberAddedHandler(messengerMemberRepo, hub),
 		event.MessengerMemberRemoved:   NewMessengerMemberRemovedHandler(messengerMemberRepo, hub),
 		event.MessengerTyping:          NewMessengerTypingHandler(messengerMemberRepo, hub),
+		event.CommunityPostPublished:   NewCommunityPostHandler(communityRepo, hub),
 	}
 
 	consumer, err := queue.NewConsumer(queue.ConsumerConfig{
@@ -78,8 +90,4 @@ func (c *Consumer) Run(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (c *Consumer) Shutdown(ctx context.Context) error {
-	return c.consumer.Shutdown(ctx)
 }

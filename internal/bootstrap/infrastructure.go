@@ -22,7 +22,6 @@ import (
 	"github.com/unowned-22/api/internal/logger"
 )
 
-// InitInfrastructure initializes shared infrastructure components and returns them.
 func InitInfrastructure(cfg *config.Config) (
 	pool *pgxpool.Pool,
 	minio *storageInfra.MinIOStorage,

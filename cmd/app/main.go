@@ -17,6 +17,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
+	domainfriendship "github.com/unowned-22/api/internal/domain/friendship"
 	domainmailer "github.com/unowned-22/api/internal/domain/mailer"
 	domainusersettings "github.com/unowned-22/api/internal/domain/usersettings"
 	"github.com/unowned-22/api/internal/errs"
@@ -152,46 +153,85 @@ var seedCmd = &cobra.Command{
 
 		userRepo := postgres.NewUserRepository(pool)
 		userSettingsRepo := postgres.NewUserSettingsRepository(pool)
+		friendshipRepo := postgres.NewFriendshipRepository(pool)
 
-		log.Println("Parsing and building users from YAML...")
-		usersToCreate, err := bootstrap.LoadUserFixtures()
+		log.Println("Parsing and building fixtures from YAML...")
+		fixtures, err := bootstrap.LoadFixtures()
 		if err != nil {
 			log.Fatalf("Failed to build fixtures: %v", err)
 		}
 
-		log.Printf("Inserting %d users into database...\n", len(usersToCreate))
-		for _, u := range usersToCreate {
+		usernameToID := make(map[string]int64)
+
+		log.Printf("Inserting %d users into database...\n", len(fixtures.Users))
+		for _, u := range fixtures.Users {
 			err := userRepo.Create(ctx, u)
 			if err != nil {
 				if errors.Is(err, errs.ErrUserAlreadyExists) || errors.Is(err, errs.ErrUsernameAlreadyExists) {
-					log.Printf("User %s already exists, skipping.\n", u.Email)
+					log.Printf("User %s already exists, пытаемся получить его ID...\n", u.Email)
+					existingUser, getErr := userRepo.GetByEmail(ctx, u.Email)
+					if getErr != nil {
+						log.Fatalf("Failed to fetch existing user %s: %v", u.Email, getErr)
+					}
+					u.ID = existingUser.ID
+				} else {
+					log.Fatalf("Failed to seed user %s: %v", u.Email, err)
+				}
+			} else {
+				err = userRepo.MarkEmailVerified(ctx, u.ID)
+				if err != nil {
+					log.Fatalf("Failed to mark email verified for user %s: %v", u.Email, err)
+				}
+
+				quotaBytes := int64(10 * 1024 * 1024 * 1024)
+				bucketName := fmt.Sprintf("user-%d", u.ID)
+
+				us := &domainusersettings.UserSettings{
+					UserID:                  u.ID,
+					StorageQuotaBytes:       quotaBytes,
+					StorageUsedBytes:        0,
+					BucketName:              bucketName,
+					Theme:                   json.RawMessage(`{}`),
+					NotificationPreferences: json.RawMessage(`{}`),
+				}
+
+				if err := userSettingsRepo.Create(ctx, us); err != nil {
+					log.Fatalf("Failed to create user_settings for user %s: %v", u.Email, err)
+				}
+				log.Printf("Successfully created user: %s (ID: %d)\n", u.Email, u.ID)
+			}
+
+			usernameToID[u.Username] = u.ID
+		}
+
+		log.Printf("Establishing %d friendships...\n", len(fixtures.Friendships))
+		for _, f := range fixtures.Friendships {
+			requesterID, ok1 := usernameToID[f.RequesterUsername]
+			addresseeID, ok2 := usernameToID[f.AddresseeUsername]
+
+			if !ok1 || !ok2 {
+				log.Printf("Warning: Skipping friendship between %s and %s. One of them wasn't found in database.\n", f.RequesterUsername, f.AddresseeUsername)
+				continue
+			}
+
+			createdFriendship, err := friendshipRepo.Create(ctx, requesterID, addresseeID)
+			if err != nil {
+				if errors.Is(err, errs.ErrFriendshipAlreadyExist) {
+					log.Printf("Friendship between %s and %s already exists, skipping.\n", f.RequesterUsername, f.AddresseeUsername)
 					continue
 				}
-				log.Fatalf("Failed to seed user %s: %v", u.Email, err)
+				log.Fatalf("Failed to create friendship between %s and %s: %v", f.RequesterUsername, f.AddresseeUsername, err)
 			}
 
-			err = userRepo.MarkEmailVerified(ctx, u.ID)
-			if err != nil {
-				log.Fatalf("Failed to mark email verified for user %s: %v", u.Email, err)
+			if f.Status == "accepted" {
+				_, err = friendshipRepo.UpdateStatus(ctx, createdFriendship.ID, domainfriendship.StatusAccepted)
+				if err != nil {
+					log.Fatalf("Failed to update friendship status to Accepted for ID %d: %v", createdFriendship.ID, err)
+				}
+				log.Printf("Successfully friended (Accepted): %s + %s\n", f.RequesterUsername, f.AddresseeUsername)
+			} else {
+				log.Printf("Successfully created friendship request (Pending): %s -> %s\n", f.RequesterUsername, f.AddresseeUsername)
 			}
-
-			quotaBytes := int64(10 * 1024 * 1024 * 1024)
-			bucketName := fmt.Sprintf("user-%d", u.ID)
-
-			us := &domainusersettings.UserSettings{
-				UserID:                  u.ID,
-				StorageQuotaBytes:       quotaBytes,
-				StorageUsedBytes:        0,
-				BucketName:              bucketName,
-				Theme:                   json.RawMessage(`{}`),
-				NotificationPreferences: json.RawMessage(`{}`),
-			}
-
-			if err := userSettingsRepo.Create(ctx, us); err != nil {
-				log.Fatalf("Failed to create user_settings for user %s: %v", u.Email, err)
-			}
-
-			log.Printf("Successfully created user: %s (ID: %d)\n", u.Email, u.ID)
 		}
 
 		log.Println("Database seeding completely finished!")

@@ -20,6 +20,7 @@ type Handlers struct {
 	Photo             *handler.PhotoHandler
 	Album             *handler.AlbumHandler
 	PhotoComment      *handler.PhotoCommentHandler
+	Community         *handler.CommunityHandler
 	VideoChannel      *handler.VideoChannelHandler
 	Video             *handler.VideoHandler
 	VideoComment      *handler.VideoCommentHandler
@@ -28,9 +29,10 @@ type Handlers struct {
 	CloseFriend       *handler.CloseFriendHandler
 	Messenger         *handler.MessengerHandler
 	UserSearch        *handler.UserSearchHandler
+	Post              *handler.PostHandler
+	Feed              *handler.FeedHandler
 }
 
-// InitHandlers wires HTTP handlers from services and infra.
 func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStorage, hub *ws.Hub) *Handlers {
 	authHandler := handler.NewAuthHandler(svcs.Auth)
 	passwordResetHandler := handler.NewPasswordResetHandler(svcs.PasswordReset)
@@ -44,14 +46,17 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 	photoHandler := handler.NewPhotoHandler(svcs.Photo, svcs.Album, svcs.Profile)
 	albumHandler := handler.NewAlbumHandler(svcs.Album, svcs.Photo, svcs.Profile)
 	photoCommentHandler := handler.NewPhotoCommentHandler(svcs.PhotoComment, svcs.Photo)
-	videoChannelHandler := handler.NewVideoChannelHandler(svcs.VideoChannel, svcs.VideoSubscription, svcs.Video)
-	videoHandler := handler.NewVideoHandler(svcs.Video, svcs.VideoChannel, svcs.User, storage, cfg)
+	communityHandler := handler.NewCommunityHandler(svcs.Community)
+	videoChannelHandler := handler.NewVideoChannelHandler(svcs.Community)
+	videoHandler := handler.NewVideoHandler(svcs.Video, svcs.Community, svcs.User, storage, cfg)
 	videoCommentHandler := handler.NewVideoCommentHandler(svcs.VideoComment)
 	videoPlaylistHandler := handler.NewVideoPlaylistHandler(svcs.VideoPlaylist)
-	videoSubscriptionHandler := handler.NewVideoSubscriptionHandler(svcs.VideoSubscription, svcs.VideoChannel)
+	videoSubscriptionHandler := handler.NewVideoSubscriptionHandler(svcs.Community)
 	closeFriendHandler := handler.NewCloseFriendHandler(svcs.CloseFriend)
 	messengerHandler := handler.NewMessengerHandler(svcs.Messenger, storage, *cfg)
 	userSearchHandler := handler.NewUserSearchHandler(svcs.UserSearch)
+	postHandler := handler.NewPostHandler(svcs.Post)
+	feedHandler := handler.NewFeedHandler(svcs.Feed)
 
 	return &Handlers{
 		Auth:              authHandler,
@@ -65,6 +70,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 		Notification:      notificationHandler,
 		Photo:             photoHandler,
 		PhotoComment:      photoCommentHandler,
+		Community:         communityHandler,
 		VideoChannel:      videoChannelHandler,
 		Video:             videoHandler,
 		VideoComment:      videoCommentHandler,
@@ -74,5 +80,7 @@ func InitHandlers(cfg *config.Config, svcs *Services, storage *storage.MinIOStor
 		CloseFriend:       closeFriendHandler,
 		Messenger:         messengerHandler,
 		UserSearch:        userSearchHandler,
+		Post:              postHandler,
+		Feed:              feedHandler,
 	}
 }

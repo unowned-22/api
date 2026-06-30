@@ -22,17 +22,9 @@ const (
 	AccountDeactivated          Name = "audit.account_deactivated"
 	AccountActivated            Name = "audit.account_activated"
 	RefreshTokenReuseDetected   Name = "audit.refresh_token_reuse_detected"
-	// UserEmailVerified is published after successful email verification and triggers
-	// provisioning of the user bucket and user_settings. It is distinct from the
-	// audit.email_verified event so that AuditHandler and provisioning can subscribe
-	// independently.
-	UserEmailVerified Name = "user.email_verified"
-	// UserProfileUpdated is published whenever a user's searchable profile
-	// fields change (full_name, username, avatar) so the search index can be
-	// re-synced. Not published for unverified users.
-	UserProfileUpdated Name = "user.profile_updated"
-	// EmailSend is used to request an email send via the outbox/worker pipeline.
-	EmailSend Name = "email.send"
+	UserEmailVerified           Name = "user.email_verified"
+	UserProfileUpdated          Name = "user.profile_updated"
+	EmailSend                   Name = "email.send"
 
 	// Friend events
 	FriendRequestReceived Name = "friend.request_received"
@@ -44,13 +36,12 @@ const (
 	// StoryPublished is emitted when a user publishes a story
 	StoryPublished Name = "story.published"
 
-	VideoPublished Name = "video.published"
-	// VideoProcessingProgress is published throughout video transcoding (throttled — at most
-	// once per second per video) and pushed via WS to the video owner only. Not durable/audited.
+	VideoPublished          Name = "video.published"
 	VideoProcessingProgress Name = "video.processing_progress"
 	VideoCommented          Name = "video.commented"
 	VideoCommentReplied     Name = "video.comment_replied"
 	VideoLiked              Name = "video.liked"
+	CommunityPostPublished  Name = "community.post_published"
 
 	MessengerMessageSent     Name = "messenger.message_sent"
 	MessengerReadReceipt     Name = "messenger.read_receipt"
@@ -69,14 +60,11 @@ const (
 	MessengerMemberRemoved  Name = "messenger.member_removed"
 )
 
-// Event is a unit of publication.
 type Event struct {
 	Name    Name
 	Payload []byte // JSON-serialized body
 }
 
-// Publisher is the contract for publishing events.
-// Implementation lives in internal/infrastructure/queue.
 type Publisher interface {
 	Publish(ctx context.Context, event Event) error
 	Close() error
